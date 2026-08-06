@@ -1,8 +1,8 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
-    <id>org.jetbrains.plugins.template</id>
+    <id>com.github.piotrszybicki.independentintelijaiplugin</id>
     <name>Anthropic Chat</name>
-    <vendor>JetBrains</vendor>
+    <vendor>piotr-szybicki</vendor>
     <description><![CDATA[
         <p><b>Anthropic Chat</b> is a simple chat tool window backed by the Anthropic Messages API.</p>
         <p>Configure your API key under Settings | Tools | Anthropic Chat, then chat from the tool window.</p>
@@ -13,12 +13,12 @@
     <depends>org.jetbrains.plugins.terminal</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="org.jetbrains.plugins.template.toolWindow.ChatToolWindowFactory" id="Anthropic Chat"
+        <toolWindow factoryClass="com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory" id="Anthropic Chat"
                     anchor="right" icon="/icons/chatToolWindow.svg"/>
         <applicationConfigurable
             parentId="tools"
-            instance="org.jetbrains.plugins.template.settings.AnthropicSettingsConfigurable"
-            id="org.jetbrains.plugins.template.settings.AnthropicSettingsConfigurable"
+            instance="com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable"
+            id="com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable"
             displayName="Anthropic Chat"/>
     </extensions>
 </idea-plugin>
