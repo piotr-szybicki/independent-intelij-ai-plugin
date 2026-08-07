@@ -21,7 +21,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Holds the "what has Claude changed this session" state: one baseline text per file, captured the
+ * Holds the "what has the AI changed this session" state: one baseline text per file, captured the
  * first time a tool touches it.
  *
  * The baseline is grabbed in [DocumentListener.beforeDocumentChange], while the document still holds
@@ -196,7 +196,7 @@ class ChangeSessionService(private val project: Project) : Disposable {
             addAll(currentLines.subList(hunk.newEnd, currentLines.size))
         }.joinToString("\n")
 
-        WriteCommandAction.runWriteCommandAction(project, "Reject Claude Change", null, Runnable {
+        WriteCommandAction.runWriteCommandAction(project, "Reject AI Change", null, Runnable {
             document.setText(restored)
         })
 
@@ -248,7 +248,7 @@ class ChangeSessionService(private val project: Project) : Disposable {
         val failed = mutableListOf<String>()
         val documentManager = FileDocumentManager.getInstance()
 
-        WriteCommandAction.runWriteCommandAction(project, "Revert Claude Changes", null, Runnable {
+        WriteCommandAction.runWriteCommandAction(project, "Revert AI Changes", null, Runnable {
             for ((file, baseline) in snapshot) {
                 val document = documentManager.getDocument(file)
                 if (document == null || !document.isWritable) {

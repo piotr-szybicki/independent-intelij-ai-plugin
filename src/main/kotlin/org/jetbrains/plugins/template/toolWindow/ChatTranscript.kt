@@ -26,7 +26,7 @@ import javax.swing.SwingConstants
 import javax.swing.SwingUtilities
 
 /**
- * Scrollable transcript of a conversation: user messages as tinted bubbles, Claude's replies as
+ * Scrollable transcript of a conversation: user messages as tinted bubbles, the model's replies as
  * plain markdown, and tool calls as compact cards that expand on click.
  */
 internal class ChatTranscript(onCancel: () -> Unit) {
@@ -158,7 +158,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         init {
             border = JBUI.Borders.empty(28, 8, 0, 8)
             add(
-                JBLabel("Ask Claude about this project", SwingConstants.CENTER).apply {
+                JBLabel("Ask AI about this project", SwingConstants.CENTER).apply {
                     font = JBFont.label().asBold()
                     foreground = ChatColors.foreground
                 }
@@ -203,7 +203,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
 
         init {
             add(
-                JBLabel("Claude").apply {
+                JBLabel("AI").apply {
                     font = JBFont.small().asBold()
                     foreground = ChatColors.accent
                 },
@@ -331,12 +331,12 @@ internal class ChatTranscript(onCancel: () -> Unit) {
     private class ThinkingRow(onCancel: () -> Unit) : ChatRow(BorderLayout(JBUI.scale(6), 0)) {
 
         private companion object {
-            const val ENABLED_TOOLTIP = "Stop — cancel what Claude is doing"
+            const val ENABLED_TOOLTIP = "Stop — cancel what the AI is doing"
             const val DISABLED_TOOLTIP = "Cannot be stopped from here — this is running in the terminal"
         }
 
         private var cancellable = true
-        private val label = JBLabel("Claude is working", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT).apply {
+        private val label = JBLabel("AI is working", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT).apply {
             font = JBFont.small()
             foreground = ChatColors.muted
             iconTextGap = JBUI.scale(6)
@@ -359,7 +359,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
             stop.icon = if (value) AllIcons.Actions.Suspend else IconLoader.getDisabledIcon(AllIcons.Actions.Suspend)
             stop.setActive(value)
             stop.toolTipText = if (value) ENABLED_TOOLTIP else DISABLED_TOOLTIP
-            label.text = if (value) "Claude is working" else "Claude is waiting for the terminal"
+            label.text = if (value) "AI is working" else "AI is waiting for the terminal"
             stop.repaint()
         }
     }

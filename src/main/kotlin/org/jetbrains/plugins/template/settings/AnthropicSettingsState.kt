@@ -11,8 +11,8 @@ import com.intellij.openapi.components.service
  *
  * Providers differ only in the header name, not in the request body, so this is enough to reach any
  * endpoint that speaks the Messages API -- Anthropic's own, a corporate gateway in front of it, or
- * Microsoft Foundry. Keeping it an enum rather than a free-text header name is what lets the token
- * stay in PasswordSafe: the secret is never part of the settings XML.
+ * Microsoft Foundry. Keeping it an enum rather than a free-text header name is what keeps the token
+ * out of here: the secret comes from the environment and is never part of the settings XML.
  */
 enum class AuthScheme(val headerName: String, val displayName: String) {
     X_API_KEY("x-api-key", "x-api-key (Anthropic API)"),

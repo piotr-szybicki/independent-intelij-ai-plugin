@@ -40,8 +40,9 @@ class RunActionTool(private val project: Project) : AnthropicTool {
     override val description =
         "Runs an IDE action by its id, after asking the user to approve it. Use find_by_name with " +
             "type \"action\" to discover ids. Good for things the IDE does better than editing " +
-            "text by hand -- reformatting, optimising imports, running a configuration, VCS " +
-            "operations. The action runs against the current editor and project, so open or select " +
+            "text by hand -- reformatting, optimising imports, VCS operations. This reports only " +
+            "whether the action ran, not what it produced, so use run_configuration to run " +
+            "something and read its results. The action runs against the current editor and project, so open or select " +
             "the file it should apply to first. An action that opens a dialog will wait for the " +
             "user to answer it. Changes an action makes are undone with the IDE's Undo, not by " +
             "reverting this chat's changes."
@@ -124,7 +125,7 @@ class RunActionTool(private val project: Project) : AnthropicTool {
             choice = Messages.showDialog(
                 project,
                 buildString {
-                    append("Claude wants to run an IDE action:\n\n")
+                    append("The AI wants to run an IDE action:\n\n")
                     append("$label  ($actionId)\n\n")
                     reason?.let { append("Why: $it\n\n") }
                     append(

@@ -30,7 +30,10 @@ data class AnthropicEndpoint(
 
     /** A human-readable reason the endpoint cannot be used, or null when it looks usable. */
     fun validate(): String? {
-        if (token.isBlank()) return "no API token is configured"
+        if (token.isBlank()) {
+            return "no API token is configured -- set the ${AnthropicCredentials.ENV_VAR} " +
+                "environment variable and restart the IDE"
+        }
         if (url.isBlank()) return "no endpoint URL is configured"
         val uri = runCatching { URI(url) }.getOrNull()
             ?: return "the endpoint URL is not a valid URL: $url"
@@ -43,11 +46,7 @@ data class AnthropicEndpoint(
 
     companion object {
 
-        /**
-         * Reads the configured endpoint, including the token.
-         *
-         * Touches PasswordSafe, which can block, so this must not be called on the EDT.
-         */
+        /** Reads the configured endpoint, including the token from the environment. */
         fun fromSettings(): AnthropicEndpoint {
             val settings = AnthropicSettingsState.getInstance().state
             return AnthropicEndpoint(

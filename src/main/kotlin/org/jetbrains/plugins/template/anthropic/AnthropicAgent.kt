@@ -6,9 +6,18 @@ import com.intellij.openapi.diagnostic.Logger
 
 /**
  * Drives the request/tool-call/tool-result cycle described at
- * https://docs.anthropic.com/en/docs/build-with-claude/tool-use until Claude stops asking for tools.
+ * https://docs.anthropic.com/en/docs/build-with-claude/tool-use until the model stops asking for tools.
  */
-class AnthropicAgent(tools: List<AnthropicTool>, private val maxIterations: Int = 10) {
+class AnthropicAgent(
+    tools: List<AnthropicTool>,
+    /**
+     * Machine-specific facts appended to the system prompt. A lambda rather than a string because
+     * describing the environment reads IDE settings, which must not happen on the EDT -- the agent
+     * is constructed there, but [systemPrompt] is not resolved until the first request.
+     */
+    private val environment: () -> String = { "" },
+    private val maxIterations: Int = 10,
+) {
 
     interface Listener {
         fun onAssistantText(text: String)
@@ -29,7 +38,7 @@ class AnthropicAgent(tools: List<AnthropicTool>, private val maxIterations: Int 
 
     companion object {
         /**
-         * Sent as the request's `system` field on every turn. This is what tells Claude it is a
+         * Sent as the request's `system` field on every turn. This is what tells the model it is a
          * coding assistant working inside an IDE rather than a general chat model -- without it the
          * only thing shaping its behaviour is the tool schemas and whatever the user typed.
          */
@@ -50,6 +59,16 @@ class AnthropicAgent(tools: List<AnthropicTool>, private val maxIterations: Int 
             - Paths are relative to the project root.
             - Match the surrounding code: its naming, its idiom, its comment density. A change should
               be hard to pick out as yours.
+
+            Running things -- these overlap, so pick in this order:
+            - `run_configuration` first. It returns per-test results and a real exit code, so it is
+              the way to run tests and read back which ones failed.
+            - `run_shell_command` for builds, git, and anything the project has no run configuration
+              for. It needs the user's approval and its output comes back as terminal text.
+            - `start_debug_configuration` only when you need to stop at a breakpoint; pair it with
+              `toggle_breakpoint` and `await_breakpoint`.
+            - `run_action` for IDE commands that are not runnable any other way. It reports whether
+              the action ran, not what it produced, so do not use it to run tests.
 
             Your file changes are tracked, shown to the user as diffs, and can be reverted as a
             group, so you do not need to explain every edit in prose -- but do say what you changed
@@ -75,6 +94,15 @@ class AnthropicAgent(tools: List<AnthropicTool>, private val maxIterations: Int 
                 "and do not start over."
     }
 
+    /**
+     * Resolved once, off the EDT, on the first request -- and stable for the rest of the
+     * conversation, which keeps it inside the cacheable prefix of every subsequent turn.
+     */
+    private val systemPrompt: String by lazy {
+        val facts = runCatching { environment() }.getOrDefault("").trim()
+        if (facts.isEmpty()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$facts"
+    }
+
     private val log = Logger.getInstance(AnthropicAgent::class.java)
     private val toolsByName = tools.associateBy { it.name }
     private val toolDefinitions = tools.map { it.toDefinition() }
@@ -97,7 +125,7 @@ class AnthropicAgent(tools: List<AnthropicTool>, private val maxIterations: Int 
         repeat(maxIterations) {
             if (isCancelled()) return
             val turn =
-                AnthropicClient.sendMessage(endpoint, model, maxTokens, history, toolDefinitions, SYSTEM_PROMPT)
+                AnthropicClient.sendMessage(endpoint, model, maxTokens, history, toolDefinitions, systemPrompt)
             val truncated = turn.stopReason == "max_tokens"
             val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
             if (content.size() > 0) {

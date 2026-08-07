@@ -39,7 +39,19 @@ class RunShellCommandTool(private val project: Project) : AnthropicTool {
         /** Command output is frequently enormous and the tail is the part that matters. */
         private const val MAX_OUTPUT_CHARS = 20_000
 
-        private const val TAB_NAME = "Claude"
+        private const val TAB_NAME = "AI"
+
+        /**
+         * Names the terminal's shell for the system prompt, so commands are written in the dialect
+         * that will actually interpret them rather than whatever the model assumes.
+         *
+         * Reads a settings value, so this must not run on the EDT.
+         */
+        fun shellDialect(project: Project): String = when (Shell.of(project)) {
+            Shell.POWERSHELL -> "PowerShell"
+            Shell.CMD -> "cmd.exe"
+            Shell.POSIX -> "a POSIX shell (bash/zsh)"
+        }
     }
 
     /**
@@ -62,7 +74,9 @@ class RunShellCommandTool(private val project: Project) : AnthropicTool {
     override val name = "run_shell_command"
     override val description =
         "Runs a shell command in the IDE's Terminal tool window and returns its exit code and " +
-            "output. Use it for builds, tests, git, and other command-line tools. The user watches " +
+            "output. Use it for builds, git, and other command-line tools, and for anything the " +
+            "project has no run configuration for. Prefer run_configuration when one exists -- it " +
+            "reports per-test results rather than raw terminal text. The user watches " +
             "it run and can stop it with Ctrl+C, and approves each command first, so prefer one " +
             "purposeful command over a chain of exploratory ones. Use the dedicated file tools for " +
             "reading and editing files. Interactive commands that wait for input will hang until " +
@@ -235,7 +249,7 @@ class RunShellCommandTool(private val project: Project) : AnthropicTool {
         ApplicationManager.getApplication().invokeAndWait {
             choice = Messages.showDialog(
                 project,
-                "Claude wants to run a shell command in the Terminal tool window:\n\n$command\n\n" +
+                "The AI wants to run a shell command in the Terminal tool window:\n\n$command\n\n" +
                     "Directory: ${workDir.path}\nWaits up to ${timeoutSeconds}s for it to finish\n\n" +
                     "It runs with your account's permissions and is not limited to the project. " +
                     "You can stop it with Ctrl+C in the terminal.",

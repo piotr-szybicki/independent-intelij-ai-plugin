@@ -3,7 +3,7 @@ package org.jetbrains.plugins.template.settings
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.SimpleListCellRenderer
-import com.intellij.ui.components.JBPasswordField
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
@@ -14,7 +14,7 @@ import javax.swing.JComponent
 
 class AnthropicSettingsConfigurable : Configurable {
 
-    private val apiKeyField = JBPasswordField()
+    private val apiKeyStatusLabel = JBLabel()
     private val modelField = JBTextField()
     private val endpointField = JBTextField()
     private val anthropicVersionField = JBTextField()
@@ -40,8 +40,12 @@ class AnthropicSettingsConfigurable : Configurable {
                     "gateway or proxy to route through it, as long as it speaks the Messages API.",
             )
             row("API token:") {
-                cell(apiKeyField).align(AlignX.FILL)
-            }.rowComment("Stored in the IDE's password safe, not in settings files.")
+                cell(apiKeyStatusLabel).align(AlignX.FILL)
+            }.rowComment(
+                "Read from the <code>${AnthropicCredentials.ENV_VAR}</code> environment variable. " +
+                    "The IDE only sees variables set when it was launched, so set it and then " +
+                    "restart the IDE.",
+            )
             row("Send token as:") {
                 cell(authSchemeCombo).align(AlignX.FILL)
             }
@@ -52,7 +56,7 @@ class AnthropicSettingsConfigurable : Configurable {
                 cell(extraHeadersArea).align(AlignX.FILL)
             }.rowComment(
                 "One <code>Name: Value</code> per line, for routing or tenancy headers a gateway " +
-                    "needs. Stored in plain text &mdash; put secrets in the API token field instead.",
+                    "needs. Stored in plain text &mdash; keep secrets in the environment instead.",
             )
         }
         group("Model") {
@@ -64,8 +68,7 @@ class AnthropicSettingsConfigurable : Configurable {
 
     override fun isModified(): Boolean {
         val settings = AnthropicSettingsState.getInstance().state
-        return String(apiKeyField.password) != (AnthropicCredentials.apiKey ?: "") ||
-            modelField.text != settings.model ||
+        return modelField.text != settings.model ||
             endpointField.text != settings.endpointUrl ||
             anthropicVersionField.text != settings.anthropicVersion ||
             extraHeadersArea.text != settings.extraHeaders ||
@@ -73,8 +76,6 @@ class AnthropicSettingsConfigurable : Configurable {
     }
 
     override fun apply() {
-        AnthropicCredentials.apiKey = String(apiKeyField.password)
-
         val settings = AnthropicSettingsState.getInstance().state
         settings.model = modelField.text.trim().ifBlank { "claude-sonnet-5" }
         // Blanking the endpoint means "back to Anthropic" rather than an unusable configuration.
@@ -87,7 +88,11 @@ class AnthropicSettingsConfigurable : Configurable {
 
     override fun reset() {
         val settings = AnthropicSettingsState.getInstance().state
-        apiKeyField.text = AnthropicCredentials.apiKey ?: ""
+        apiKeyStatusLabel.text = if (AnthropicCredentials.apiKey == null) {
+            "Not set -- ${AnthropicCredentials.ENV_VAR} is empty or undefined in the IDE's environment."
+        } else {
+            "Set from ${AnthropicCredentials.ENV_VAR}."
+        }
         modelField.text = settings.model
         endpointField.text = settings.endpointUrl
         anthropicVersionField.text = settings.anthropicVersion

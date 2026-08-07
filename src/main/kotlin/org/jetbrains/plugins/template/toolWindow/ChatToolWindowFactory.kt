@@ -29,6 +29,7 @@ import org.jetbrains.plugins.template.anthropic.AnthropicEndpoint
 import org.jetbrains.plugins.template.anthropic.ChatMessage
 import org.jetbrains.plugins.template.changes.ChangeSessionService
 import org.jetbrains.plugins.template.changes.ChangeTrackingTool
+import org.jetbrains.plugins.template.settings.AnthropicCredentials
 import org.jetbrains.plugins.template.settings.AnthropicSettingsConfigurable
 import org.jetbrains.plugins.template.settings.AnthropicSettingsState
 import org.jetbrains.plugins.template.tools.AddImportTool
@@ -46,9 +47,11 @@ import org.jetbrains.plugins.template.tools.InsertMemberTool
 import org.jetbrains.plugins.template.tools.ListDirectoryTool
 import org.jetbrains.plugins.template.tools.ListOpenFilesTool
 import org.jetbrains.plugins.template.tools.MoveFileTool
+import org.jetbrains.plugins.template.tools.ProjectEnvironment
 import org.jetbrains.plugins.template.tools.ReadProjectFileTool
 import org.jetbrains.plugins.template.tools.RenameSymbolTool
 import org.jetbrains.plugins.template.tools.RunActionTool
+import org.jetbrains.plugins.template.tools.RunConfigurationTool
 import org.jetbrains.plugins.template.tools.RunShellCommandTool
 import org.jetbrains.plugins.template.tools.SafeDeleteTool
 import org.jetbrains.plugins.template.tools.StartDebugConfigurationTool
@@ -114,6 +117,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     AddImportTool(project),
                     InsertMemberTool(project),
                     ToggleBreakpointTool(project),
+                    RunConfigurationTool(project),
                     StartDebugConfigurationTool(project),
                     AwaitBreakpointTool(project),
                     DebuggerActionTool(project),
@@ -121,7 +125,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     shellTool,
                 ),
                 session,
-            )
+            ),
+            environment = { ProjectEnvironment.describe(project) },
         )
 
         private val transcript = ChatTranscript(onCancel = { cancelTurn() })
@@ -135,7 +140,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             wrapStyleWord = true
             border = JBUI.Borders.empty()
             background = UIUtil.getTextFieldBackground()
-            emptyText.text = "Ask Claude about this project…"
+            emptyText.text = "Ask AI about this project…"
         }
 
         private val sendButton = JButton("Send").apply {
@@ -185,7 +190,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             font = JBFont.small()
             foreground = ChatColors.foreground
         }
-        private val approveButton = JButton("Approve").apply { toolTipText = "Keep all changes Claude made" }
+        private val approveButton = JButton("Approve").apply { toolTipText = "Keep all changes the AI made" }
         private val revertButton = JButton("Revert").apply { toolTipText = "Restore all touched files" }
         private val sessionListener = ChangeSessionService.Listener { count -> updateChangesBar(count) }
 
@@ -320,7 +325,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 project,
                 "Restore ${paths.size} file(s) to their state before this session?\n\n$fileList\n\n" +
                     "Any edits you made to these files yourself will be discarded too.",
-                "Revert Claude Changes",
+                "Revert AI Changes",
                 "Revert",
                 "Cancel",
                 Messages.getWarningIcon(),
@@ -371,9 +376,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             cancelled.set(false)
 
-            // Resolving the endpoint reads the token out of PasswordSafe, which is a slow operation
-            // and must not run on the EDT, so it happens here on the pooled thread alongside the
-            // network call.
+            // Resolving the endpoint happens here on the pooled thread, alongside the network call.
             turn = ApplicationManager.getApplication().executeOnPooledThread {
                 val endpoint = AnthropicEndpoint.fromSettings()
                 if (endpoint.token.isBlank()) {
@@ -445,7 +448,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             turn?.cancel(true)
             setBusy(false)
-            transcript.addError("Stopped. Claude's reply is incomplete.")
+            transcript.addError("Stopped. The reply is incomplete.")
         }
 
         private fun setBusy(busy: Boolean) {
@@ -520,7 +523,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 if (text.length > maxAttachmentChars) {
                     statusLabel.text =
                         "$displayPath is too large to attach (${text.length} characters). " +
-                            "Select the part you mean, or just ask -- Claude can read it itself."
+                            "Select the part you mean, or just ask -- the AI can read it itself."
                     return
                 }
                 setAttachment(
@@ -582,7 +585,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun promptForMissingApiKey() {
             val openSettings = Messages.showYesNoDialog(
                 project,
-                "Set your Anthropic API key in Settings first.",
+                "Set the ${AnthropicCredentials.ENV_VAR} environment variable to your Anthropic API " +
+                    "key, then restart the IDE so it picks the value up.",
                 "API Key Missing",
                 "Open Settings",
                 "Cancel",
@@ -597,7 +601,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun askToContinue(): Boolean {
             val answer = Messages.showYesNoDialog(
                 project,
-                "Claude's reply was cut off at the ${AnthropicSettingsState.getInstance().state.maxTokens}-token " +
+                "The reply was cut off at the ${AnthropicSettingsState.getInstance().state.maxTokens}-token " +
                     "output limit.\n\nContinue the reply where it stopped? This sends another request, so it " +
                     "costs an extra turn. You can also raise Max Tokens in Settings.",
                 "Response Cut Off",

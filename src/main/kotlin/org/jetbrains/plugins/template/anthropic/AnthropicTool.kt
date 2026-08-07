@@ -18,7 +18,7 @@ interface AnthropicTool {
      */
     val interruptible: Boolean get() = true
 
-    /** Executes the tool with the arguments Claude supplied and returns the text result to send back. */
+    /** Executes the tool with the arguments the model supplied and returns the text result to send back. */
     fun execute(input: JsonObject): String
 
     fun toDefinition() = ToolDefinition(name, description, inputSchema)
