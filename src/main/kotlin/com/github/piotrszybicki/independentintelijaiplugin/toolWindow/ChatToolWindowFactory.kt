@@ -33,6 +33,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicCre
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.tools.AddImportTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ApplyQuickFixTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.AwaitBreakpointTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.CreateFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.DebuggerActionTool
@@ -43,6 +44,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.FindByNameTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindInFilesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindUsagesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GetFileProblemsTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.GetFileStructureTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GetSymbolInfoTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.InsertMemberTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ListDirectoryTool
@@ -106,7 +108,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     ListDirectoryTool(project),
                     FileExistsTool(project),
                     ReadProjectFileTool(project),
+                    GetFileStructureTool(project),
                     GetFileProblemsTool(project),
+                    ApplyQuickFixTool(project),
                     EditFileLinesTool(project),
                     CreateFileTool(project),
                     MoveFileTool(project),

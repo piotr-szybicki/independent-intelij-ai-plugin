@@ -52,6 +52,9 @@ class AnthropicAgent(
             - Read before you edit. `read_project_file` and `find_in_files` are cheap; guessing at a
               file's contents is not. `read_project_file` takes a line range -- use it once you know
               which lines you want rather than pulling in whole files.
+            - `get_file_structure` is how you find out which lines those are. It outlines a file's
+              declarations with their line numbers for a fraction of the cost of reading it, so on
+              anything but a short file, outline first and then read the range you need.
             - `get_symbol_info` answers "what is this?" in one call. Point it at a call, a type, or
               any name you are unsure of and it returns the declaration -- signature, doc comment and
               source -- including for library and JDK symbols no project file contains. Reach for it
@@ -62,6 +65,10 @@ class AnthropicAgent(
               they update every reference instead of just the line in front of you.
             - Reach for `edit_file_lines` for changes those tools don't cover. Rewrite a whole file
               only when you are genuinely replacing it.
+            - When `get_file_problems` reports something, try `apply_quick_fix` on that line before
+              editing by hand. An unresolved reference is the clearest case: the IDE knows the fully
+              qualified name and will add the right import, where guessing at one costs a turn and
+              often gets it wrong. Call it without `fix` to see what is on offer, then with the name.
             - Paths are relative to the project root.
             - Match the surrounding code: its naming, its idiom, its comment density. A change should
               be hard to pick out as yours.

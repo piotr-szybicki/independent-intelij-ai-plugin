@@ -49,7 +49,9 @@ class GetFileProblemsTool(private val project: Project) : AnthropicTool {
             "references, type errors, and inspection findings -- as path:line:column with the " +
             "message. This is the fastest way to check whether an edit was valid: it analyses the " +
             "unsaved in-memory file, so it sees changes you have just made and a build would not. " +
-            "Call it after editing a file, and prefer it over running a build to check for mistakes."
+            "Call it after editing a file, and prefer it over running a build to check for " +
+            "mistakes. To fix what it reports, try apply_quick_fix on the reported line before " +
+            "editing by hand -- the IDE usually knows the fix already."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
