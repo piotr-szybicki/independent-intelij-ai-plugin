@@ -60,6 +60,9 @@ class AnthropicAgent(
               source -- including for library and JDK symbols no project file contains. Reach for it
               instead of reading a whole file to find one signature, and before `find_usages` or
               `rename_symbol` when several declarations share a name.
+            - `find_implementations` for "who implements this" and "what overrides this".
+              `find_usages` will not answer either: a class can implement an interface without ever
+              mentioning its methods by name, so it shows up in one and not the other.
             - Prefer the refactoring tools over hand-editing text when one fits: `rename_symbol`,
               `safe_delete`, `add_import`, and `insert_member` go through the IDE's own engine, so
               they update every reference instead of just the line in front of you.

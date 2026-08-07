@@ -41,6 +41,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.DeleteFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.EditFileLinesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FileExistsTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindByNameTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.FindImplementationsTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindInFilesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindUsagesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GetFileProblemsTool
@@ -118,6 +119,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     FindInFilesTool(project),
                     FindByNameTool(project),
                     FindUsagesTool(project),
+                    FindImplementationsTool(project),
                     GetSymbolInfoTool(project),
                     RenameSymbolTool(project),
                     SafeDeleteTool(project),
