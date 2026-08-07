@@ -7,6 +7,7 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
 
@@ -14,17 +15,23 @@ class SafeDeleteTool(private val project: Project) : AnthropicTool {
 
     override val name = "safe_delete"
     override val description =
-        "Deletes a symbol only if it has no remaining usages. Returns the list of references if the symbol is still in use."
+        "Deletes a symbol only if it has no remaining usages. Returns the list of references if the " +
+            "symbol is still in use. Point it at the declaration or at any use of the symbol; either " +
+            "way it is the declaration that is removed. Symbols declared in a library or the SDK " +
+            "cannot be deleted."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
             add("path", JsonObject().apply {
                 addProperty("type", "string")
-                addProperty("description", "File path relative to the project root where the symbol is declared")
+                addProperty(
+                    "description",
+                    "File path relative to the project root, at a line where the symbol is declared or used",
+                )
             })
             add("line", JsonObject().apply {
                 addProperty("type", "integer")
-                addProperty("description", "1-based line number of the symbol declaration")
+                addProperty("description", "1-based line number of the declaration or the use")
             })
             add("symbol", JsonObject().apply {
                 addProperty("type", "string")
@@ -35,6 +42,8 @@ class SafeDeleteTool(private val project: Project) : AnthropicTool {
     }
 
     private data class DeleteInfo(
+        /** The file holding the *declaration*, which is not necessarily the one the caller named. */
+        val file: VirtualFile,
         val oldText: String,
         val newText: String,
         val usages: List<String>,
@@ -45,8 +54,14 @@ class SafeDeleteTool(private val project: Project) : AnthropicTool {
         val line = input.get("line")?.asInt ?: return "Error: missing 'line'"
         val symbol = input.get("symbol")?.asString ?: return "Error: missing 'symbol'"
 
-        val element = PsiTargets.resolveElement(project, path, line, symbol)
+        val element = PsiTargets.resolveTarget(project, path, line, symbol)
             ?: return "Error: could not resolve symbol '$symbol' at $path:$line"
+
+        // A use site resolves to wherever the symbol actually comes from, which may be a jar.
+        if (!PsiTargets.isInProject(project, element)) {
+            return "Error: '$symbol' is declared outside the project -- in a library or the SDK -- so it " +
+                "cannot be deleted. Use get_symbol_info to see where it comes from."
+        }
 
         val info = ReadAction.compute<DeleteInfo?, RuntimeException> {
             val vf = element.containingFile?.virtualFile ?: return@compute null
@@ -67,14 +82,15 @@ class SafeDeleteTool(private val project: Project) : AnthropicTool {
             val removeEnd = if (endLine + 1 < doc.lineCount) doc.getLineStartOffset(endLine + 1) else doc.textLength
             val newText = oldText.removeRange(removeStart, removeEnd)
 
-            DeleteInfo(oldText, newText, usages)
+            DeleteInfo(vf, oldText, newText, usages)
         } ?: return "Error: could not read file for '$symbol'"
 
         if (info.usages.isNotEmpty()) {
             return "Cannot safely delete '$symbol': still referenced at:\n${info.usages.joinToString("\n")}"
         }
 
-        val vf = PsiTargets.resolveProjectFile(project, path)!!
+        val vf = info.file
+        val declaredIn = PsiTargets.relativePath(project, vf)
 
         var error: String? = null
         ApplicationManager.getApplication().invokeAndWait {
@@ -89,6 +105,6 @@ class SafeDeleteTool(private val project: Project) : AnthropicTool {
         }
         if (error != null) return error!!
 
-        return "Deleted '$symbol' from $path."
+        return "Deleted '$symbol' from $declaredIn."
     }
 }

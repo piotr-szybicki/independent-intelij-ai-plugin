@@ -13,17 +13,22 @@ class RenameSymbolTool(private val project: Project) : AnthropicTool {
 
     override val name = "rename_symbol"
     override val description =
-        "Renames a symbol and all its usages across the project. Updates references in every file."
+        "Renames a symbol and all its usages across the project. Updates references in every file. " +
+            "Point it at the declaration or at any use of the symbol. Symbols declared in a library " +
+            "or the SDK cannot be renamed."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
             add("path", JsonObject().apply {
                 addProperty("type", "string")
-                addProperty("description", "File path relative to the project root where the symbol is declared")
+                addProperty(
+                    "description",
+                    "File path relative to the project root, at a line where the symbol is declared or used",
+                )
             })
             add("line", JsonObject().apply {
                 addProperty("type", "integer")
-                addProperty("description", "1-based line number of the symbol declaration")
+                addProperty("description", "1-based line number of the declaration or the use")
             })
             add("symbol", JsonObject().apply {
                 addProperty("type", "string")
@@ -43,11 +48,21 @@ class RenameSymbolTool(private val project: Project) : AnthropicTool {
         val symbol = input.get("symbol")?.asString ?: return "Error: missing 'symbol'"
         val newName = input.get("new_name")?.asString ?: return "Error: missing 'new_name'"
 
-        val element = PsiTargets.resolveElement(project, path, line, symbol)
+        val element = PsiTargets.resolveTarget(project, path, line, symbol)
             ?: return "Error: could not resolve symbol '$symbol' at $path:$line"
+
+        // A use site resolves to wherever the symbol actually comes from, which may be a jar.
+        if (!PsiTargets.isInProject(project, element)) {
+            return "Error: '$symbol' is declared outside the project -- in a library or the SDK -- so it " +
+                "cannot be renamed. Use get_symbol_info to see where it comes from."
+        }
 
         val usageCount = ReadAction.compute<Int, RuntimeException> {
             ReferencesSearch.search(element).findAll().size
+        }
+        // Not necessarily $path: the model may have pointed at a use rather than the declaration.
+        val declaredIn = ReadAction.compute<String, RuntimeException> {
+            element.containingFile?.virtualFile?.let { PsiTargets.relativePath(project, it) } ?: path
         }
 
         var result = ""
@@ -56,7 +71,7 @@ class RenameSymbolTool(private val project: Project) : AnthropicTool {
                 val processor = RenameProcessor(project, element, newName, false, false)
                 processor.setPreviewUsages(false)
                 processor.run()
-                "Renamed '$symbol' to '$newName' ($path:$line and $usageCount reference(s))."
+                "Renamed '$symbol' to '$newName' (declared in $declaredIn, $usageCount reference(s) updated)."
             } catch (e: Exception) {
                 "Error renaming '$symbol': ${e.message}"
             }

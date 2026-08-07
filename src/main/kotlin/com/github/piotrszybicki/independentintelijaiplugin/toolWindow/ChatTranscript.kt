@@ -2,6 +2,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.intellij.icons.AllIcons
 import com.intellij.ui.AnimatedIcon
+import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.InplaceButton
 import com.intellij.ui.components.JBLabel
@@ -14,6 +15,7 @@ import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.LayoutManager
 import java.awt.Rectangle
+import java.awt.datatransfer.StringSelection
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.awt.event.MouseAdapter
@@ -178,7 +180,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
 
         init {
             border = JBUI.Borders.emptyLeft(ChatMetrics.userIndent)
-            body.setHtml(MarkdownRenderer.toHtml(markdown))
+            body.setHtml(MarkdownRenderer.toHtml(MarkdownRenderer.normalizeQuoteFences(markdown)))
             add(
                 RoundedPanel(
                     BorderLayout(),
@@ -220,7 +222,19 @@ internal class ChatTranscript(onCancel: () -> Unit) {
     private class ToolRow(name: String, summary: String, private val details: String) : ChatRow(BorderLayout()) {
 
         private val chevron = JBLabel(AllIcons.General.ChevronRight)
-        private val detailPane = HtmlTextPane().apply { isVisible = false }
+
+        // Selectable so the output can be copied: the card's own click-to-toggle listener is kept
+        // off this pane, and it gets a text cursor instead of the card's hand cursor.
+        private val detailPane = HtmlTextPane().apply {
+            isVisible = false
+            isFocusable = true
+            cursor = Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR)
+        }
+
+        private val copyButton = InplaceButton("Copy the output", AllIcons.Actions.Copy) {
+            CopyPasteManager.getInstance().setContents(StringSelection(details))
+        }.apply { isVisible = false }
+
         private var hovered = false
         private var expanded = false
         private var detailsLoaded = false
@@ -259,6 +273,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
                     },
                     BorderLayout.CENTER,
                 )
+                add(copyButton, BorderLayout.EAST)
             }
 
             card.add(header, BorderLayout.NORTH)
@@ -282,7 +297,10 @@ internal class ChatTranscript(onCancel: () -> Unit) {
             card.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         }
 
+        // The detail pane and the copy button handle their own clicks, so toggling must not be
+        // wired onto them — otherwise selecting the output would collapse the card.
         private fun installRecursively(component: JComponent, listener: MouseAdapter) {
+            if (component === detailPane || component === copyButton) return
             component.addMouseListener(listener)
             component.components.filterIsInstance<JComponent>().forEach { installRecursively(it, listener) }
         }
@@ -296,6 +314,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
                 if (availableWidth > 0) detailPane.applyWidth(detailWidth(availableWidth))
             }
             detailPane.isVisible = expanded
+            copyButton.isVisible = expanded
             revalidate()
             repaint()
         }

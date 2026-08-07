@@ -50,7 +50,13 @@ class AnthropicAgent(
 
             Working in this project:
             - Read before you edit. `read_project_file` and `find_in_files` are cheap; guessing at a
-              file's contents is not.
+              file's contents is not. `read_project_file` takes a line range -- use it once you know
+              which lines you want rather than pulling in whole files.
+            - `get_symbol_info` answers "what is this?" in one call. Point it at a call, a type, or
+              any name you are unsure of and it returns the declaration -- signature, doc comment and
+              source -- including for library and JDK symbols no project file contains. Reach for it
+              instead of reading a whole file to find one signature, and before `find_usages` or
+              `rename_symbol` when several declarations share a name.
             - Prefer the refactoring tools over hand-editing text when one fits: `rename_symbol`,
               `safe_delete`, `add_import`, and `insert_member` go through the IDE's own engine, so
               they update every reference instead of just the line in front of you.
@@ -61,10 +67,15 @@ class AnthropicAgent(
               be hard to pick out as yours.
 
             Running things -- these overlap, so pick in this order:
-            - `run_configuration` first. It returns per-test results and a real exit code, so it is
-              the way to run tests and read back which ones failed.
-            - `run_shell_command` for builds, git, and anything the project has no run configuration
-              for. It needs the user's approval and its output comes back as terminal text.
+            - `run_configuration` first, when a saved configuration already covers what you want to
+              run. It returns per-test results and a real exit code, so it is the way to run tests
+              and read back which ones failed.
+            - `run_at_location` when none does -- a test class you just wrote will not have one.
+              Give it the file and the line of the test class or method and it creates the
+              configuration the way the editor's gutter Run button does, then reports the same
+              results. Do not ask the user to set a configuration up; this is what it is for.
+            - `run_shell_command` for builds, git, and anything neither of those can launch. It
+              needs the user's approval and its output comes back as terminal text.
             - `start_debug_configuration` only when you need to stop at a breakpoint; pair it with
               `toggle_breakpoint` and `await_breakpoint`.
             - `run_action` for IDE commands that are not runnable any other way. It reports whether

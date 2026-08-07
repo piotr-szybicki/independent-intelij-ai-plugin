@@ -54,9 +54,9 @@ class ReadProjectFileTool(private val project: Project) : AnthropicTool {
             return "Error: file not found: $relativePath"
         }
 
-        // Read through the Document when one exists, not off disk. Tools write into the Document and
-        // leave it unsaved for the user to accept or reject, so the disk copy lags behind by every
-        // edit made this session -- and the model would then be numbering lines that are stale.
+        // Read through the Document when one exists, not off disk. Tool edits are written out after
+        // every call, so for those the two agree -- but the user's own edits may be sitting unsaved
+        // in an editor, and the model would then be numbering lines that are stale.
         val text = ReadAction.compute<String, RuntimeException> {
             val vf = PsiTargets.resolveProjectFile(project, relativePath)
             val document = vf?.let { FileDocumentManager.getInstance().getDocument(it) }

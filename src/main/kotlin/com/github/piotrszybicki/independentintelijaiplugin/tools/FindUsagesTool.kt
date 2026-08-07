@@ -12,17 +12,22 @@ class FindUsagesTool(private val project: Project) : AnthropicTool {
 
     override val name = "find_usages"
     override val description =
-        "Finds all usages (references) of a symbol in the project. Returns a list of file:line locations."
+        "Finds all usages (references) of a symbol in the project. Point it at the declaration or " +
+            "at any use of the symbol -- a use resolves to what it refers to first. Returns a list " +
+            "of file:line locations."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
             add("path", JsonObject().apply {
                 addProperty("type", "string")
-                addProperty("description", "File path relative to the project root where the symbol is declared")
+                addProperty(
+                    "description",
+                    "File path relative to the project root, at a line where the symbol is declared or used",
+                )
             })
             add("line", JsonObject().apply {
                 addProperty("type", "integer")
-                addProperty("description", "1-based line number of the symbol declaration")
+                addProperty("description", "1-based line number of the declaration or the use")
             })
             add("symbol", JsonObject().apply {
                 addProperty("type", "string")
@@ -37,7 +42,7 @@ class FindUsagesTool(private val project: Project) : AnthropicTool {
         val line = input.get("line")?.asInt ?: return "Error: missing 'line'"
         val symbol = input.get("symbol")?.asString ?: return "Error: missing 'symbol'"
 
-        val element = PsiTargets.resolveElement(project, path, line, symbol)
+        val element = PsiTargets.resolveTarget(project, path, line, symbol)
             ?: return "Error: could not resolve symbol '$symbol' at $path:$line"
 
         val usages = ReadAction.compute<List<String>, RuntimeException> {

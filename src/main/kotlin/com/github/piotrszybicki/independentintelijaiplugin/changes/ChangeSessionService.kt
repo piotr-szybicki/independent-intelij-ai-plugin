@@ -2,6 +2,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.changes
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.components.Service
@@ -31,6 +32,11 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * A session runs from the first captured file until [approveAll] or [revertAll]. Baselines live in
  * memory only, so closing the project behaves like an approve: the edits stay, the markers go.
+ *
+ * Edits reach disk as they are made -- see [flushToDisk]. Reverting is a matter of the baselines
+ * held here, not of the file being left unwritten, so nothing is lost by saving: anything that reads
+ * the project from outside the IDE (a compiler, a test runner, git) sees what the model actually
+ * wrote rather than the last state the user happened to save.
  */
 @Service(Service.Level.PROJECT)
 class ChangeSessionService(private val project: Project) : Disposable {
@@ -124,6 +130,51 @@ class ChangeSessionService(private val project: Project) : Disposable {
         }, project.disposed)
     }
 
+    // --- writing through to disk ----------------------------------------------------------------
+
+    /**
+     * Saves every file changed this session that is still sitting unsaved in a document.
+     *
+     * Called once a tool call has finished rather than per document change: a refactoring touches
+     * many files inside one command, and saving each one as it is edited would mean writing some
+     * files several times for a single tool call.
+     *
+     * The session's markers and baselines are unaffected -- saving is not approving. Accept, reject
+     * and revert all keep working afterwards, because they replay the baseline into the document and
+     * that write is itself saved.
+     */
+    fun flushToDisk() {
+        saveNow(synchronized(lock) { baselines.keys.toList() })
+    }
+
+    /**
+     * Writes [files] out now. Safe to call from either thread: saving is an EDT operation, and the
+     * tools reach here from a pooled thread while the UI reaches it from the EDT already.
+     */
+    private fun saveNow(files: Collection<VirtualFile>) {
+        if (files.isEmpty()) return
+        val documentManager = FileDocumentManager.getInstance()
+
+        val save = Runnable {
+            WriteAction.run<RuntimeException> {
+                for (file in files) {
+                    val document = documentManager.getDocument(file) ?: continue
+                    if (!documentManager.isDocumentUnsaved(document)) continue
+                    try {
+                        documentManager.saveDocument(document)
+                    } catch (e: Exception) {
+                        // A read-only or externally-deleted file. The edit is still in the document
+                        // and still revertible; only the write-through failed.
+                        log.warn("Could not save ${file.path}: ${e.message}")
+                    }
+                }
+            }
+        }
+
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) save.run() else application.invokeAndWait(save)
+    }
+
     // --- session state ------------------------------------------------------------------------
 
     val changedFileCount: Int
@@ -213,6 +264,10 @@ class ChangeSessionService(private val project: Project) : Disposable {
      * the document and the baseline agree.
      */
     private fun settle(file: VirtualFile, newBaseline: String, document: Document) {
+        // Rejecting a hunk rewrote the document, so disk is now behind. Accepting one did not touch
+        // it, in which case this finds nothing unsaved and does nothing.
+        saveNow(listOf(file))
+
         val done = document.text == newBaseline
         synchronized(lock) {
             if (done) baselines.remove(file) else baselines[file] = newBaseline
@@ -260,6 +315,10 @@ class ChangeSessionService(private val project: Project) : Disposable {
                 }
             }
         })
+
+        // The edits were written to disk as they were made, so restoring the document is only half
+        // the revert -- without this, disk keeps the version being undone.
+        saveNow(snapshot.keys)
 
         if (failed.isNotEmpty()) {
             log.warn("Could not revert ${failed.size} file(s): ${failed.joinToString()}")

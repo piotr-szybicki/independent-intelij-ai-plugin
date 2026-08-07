@@ -43,6 +43,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.FindByNameTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindInFilesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindUsagesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GetFileProblemsTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.GetSymbolInfoTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.InsertMemberTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ListDirectoryTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ListOpenFilesTool
@@ -51,6 +52,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironm
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ReadProjectFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RenameSymbolTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunActionTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.RunAtLocationTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunConfigurationTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunShellCommandTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.SafeDeleteTool
@@ -112,12 +114,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     FindInFilesTool(project),
                     FindByNameTool(project),
                     FindUsagesTool(project),
+                    GetSymbolInfoTool(project),
                     RenameSymbolTool(project),
                     SafeDeleteTool(project),
                     AddImportTool(project),
                     InsertMemberTool(project),
                     ToggleBreakpointTool(project),
                     RunConfigurationTool(project),
+                    RunAtLocationTool(project),
                     StartDebugConfigurationTool(project),
                     AwaitBreakpointTool(project),
                     DebuggerActionTool(project),
@@ -144,7 +148,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private val sendButton = JButton("Send").apply {
-            toolTipText = "Send message (Enter)"
+            toolTipText = "Send message (Enter; Ctrl+Enter or Shift+Enter for a new line)"
         }
 
         private val attachButton = InplaceButton(
@@ -273,7 +277,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
             revertButton.addActionListener { revertChanges() }
             input.addKeyListener(object : KeyAdapter() {
                 override fun keyPressed(e: KeyEvent) {
-                    if (e.keyCode == KeyEvent.VK_ENTER && !e.isShiftDown) {
+                    if (e.keyCode != KeyEvent.VK_ENTER) return
+                    if (e.isControlDown) {
+                        // Ctrl+Enter is not bound to a newline by default, so insert one by hand.
+                        e.consume()
+                        input.replaceSelection("\n")
+                    } else if (!e.isShiftDown) {
                         e.consume()
                         send()
                     }
