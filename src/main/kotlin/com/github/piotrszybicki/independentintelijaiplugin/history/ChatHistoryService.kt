@@ -139,8 +139,6 @@ class ChatHistoryService(project: Project) {
         }
     }
 
-    fun newChatId(): String = UUID.randomUUID().toString()
-
     // --- storage --------------------------------------------------------------------------------
 
     private fun fileFor(id: String): Path = directory.resolve("$id.json")
@@ -206,6 +204,9 @@ class ChatHistoryService(project: Project) {
         private const val MAX_TITLE_LENGTH = 60
 
         fun getInstance(project: Project): ChatHistoryService = project.getService(ChatHistoryService::class.java)
+
+        /** On the companion so naming a chat never has to instantiate the service. */
+        fun newChatId(): String = UUID.randomUUID().toString()
 
         /** Names a chat after what the user opened it with -- its first line, trimmed of markup. */
         fun titleFor(transcript: List<StoredRow>): String {

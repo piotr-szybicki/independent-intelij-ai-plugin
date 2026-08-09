@@ -4,16 +4,14 @@ import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistorySe
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatSummary
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.SimpleTextAttributes
-import com.intellij.ui.components.JBList
 import com.intellij.util.text.DateFormatUtil
 import com.intellij.util.ui.EmptyIcon
 import java.awt.event.ActionListener
 import java.awt.event.KeyEvent
-import javax.swing.DefaultListModel
-import javax.swing.JComponent
 import javax.swing.JList
 import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
@@ -41,48 +39,56 @@ internal object ChatHistoryPopup {
             return
         }
 
-        val model = DefaultListModel<ChatSummary>().apply { chats.forEach { addElement(it) } }
-        val list = JBList(model).apply {
-            selectionMode = ListSelectionModel.SINGLE_SELECTION
-            cellRenderer = object : ColoredListCellRenderer<ChatSummary>() {
-                override fun customizeCellRenderer(
-                    list: JList<out ChatSummary>,
-                    value: ChatSummary,
-                    index: Int,
-                    selected: Boolean,
-                    hasFocus: Boolean,
-                ) {
-                    icon = if (value.id == currentId) AllIcons.Actions.Forward else EmptyIcon.ICON_16
-                    append(value.title)
-                    append("  ${DateFormatUtil.formatPrettyDateTime(value.updatedAt)}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                }
+        val renderer = object : ColoredListCellRenderer<ChatSummary>() {
+            override fun customizeCellRenderer(
+                list: JList<out ChatSummary>,
+                value: ChatSummary,
+                index: Int,
+                selected: Boolean,
+                hasFocus: Boolean,
+            ) {
+                icon = if (value.id == currentId) AllIcons.Actions.Forward else EmptyIcon.ICON_16
+                append(value.title)
+                append(
+                    "  ${DateFormatUtil.formatPrettyDateTime(value.updatedAt)}",
+                    SimpleTextAttributes.GRAYED_ATTRIBUTES,
+                )
             }
-            chats.firstOrNull { it.id == currentId }?.let { setSelectedValue(it, true) }
         }
 
-        val popup = JBPopupFactory.getInstance().createPopupChooserBuilder(list)
+        // The builder owns its list, so the delete action below cannot read the selection off it --
+        // it is tracked here instead, seeded with whatever the popup opens on.
+        var selected: ChatSummary? = chats.firstOrNull { it.id == currentId }
+        var popup: JBPopup? = null
+
+        val builder = JBPopupFactory.getInstance().createPopupChooserBuilder(chats)
             .setTitle("Chat History")
             .setMovable(true)
             .setResizable(true)
+            .setRenderer(renderer)
+            .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
             .setNamerForFiltering { it.title }
+            .setItemSelectedCallback { selected = it }
             .setItemChosenCallback { onOpen(it.id) }
             .setAdText("Enter opens a chat, Delete removes it")
-            .createPopup()
+            .registerKeyboardAction(
+                KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0),
+                ActionListener {
+                    val victim = selected
+                    if (victim != null) {
+                        service.delete(victim.id)
+                        if (victim.id == currentId) onCurrentDeleted()
+                        // The list cannot be refreshed from out here, so the popup closes rather
+                        // than going on offering a chat that is no longer there.
+                        popup?.cancel()
+                    }
+                },
+            )
 
-        list.registerKeyboardAction(
-            ActionListener {
-                val selected = list.selectedValue
-                if (selected != null) {
-                    service.delete(selected.id)
-                    model.removeElement(selected)
-                    if (selected.id == currentId) onCurrentDeleted()
-                    if (model.isEmpty) popup.cancel()
-                }
-            },
-            KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0),
-            JComponent.WHEN_FOCUSED,
-        )
+        selected?.let { builder.setSelectedValue(it, true) }
 
-        popup.showInBestPositionFor(dataContext)
+        val created = builder.createPopup()
+        popup = created
+        created.showInBestPositionFor(dataContext)
     }
 }

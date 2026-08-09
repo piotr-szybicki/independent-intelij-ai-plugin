@@ -12,6 +12,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.startup.StartupManager
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.util.Disposer
@@ -114,8 +115,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private val rows = mutableListOf<StoredRow>()
 
-        private val chatHistory = ChatHistoryService.getInstance(project)
-        private var chatId = chatHistory.newChatId()
+        /**
+         * Lazy on purpose. A tool window that was open when the IDE last closed is rebuilt during
+         * frame init, and pulling a service out of the container that early -- from the EDT here,
+         * and from the pooled thread [restoreLastChat] starts -- is how startup deadlocks and
+         * initialization cycles are made. Nothing here needs it until the user does something.
+         */
+        private val chatHistory by lazy { ChatHistoryService.getInstance(project) }
+        private var chatId = ChatHistoryService.newChatId()
         private var chatCreatedAt = System.currentTimeMillis()
 
         private val session = ChangeSessionService.getInstance(project)
@@ -339,10 +346,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         // --- chat history ---------------------------------------------------------------------
 
-        /** Reopens whatever the tool window was last left on, so a restart resumes the conversation. */
+        /**
+         * Reopens whatever the tool window was last left on, so a restart resumes the conversation.
+         *
+         * Held back until the project is open rather than run from the constructor: a restored tool
+         * window is built during frame init, and reading files -- let alone instantiating a service
+         * to do it -- is not something to be doing while the IDE is still starting. `runAfterOpened`
+         * fires straight away when the window is opened by hand later on.
+         */
         private fun restoreLastChat() {
-            ApplicationManager.getApplication().executeOnPooledThread {
-                val chat = chatHistory.activeId()?.let { chatHistory.load(it) } ?: return@executeOnPooledThread
+            StartupManager.getInstance(project).runAfterOpened {
+                val chat = chatHistory.activeId()?.let { chatHistory.load(it) } ?: return@runAfterOpened
                 ApplicationManager.getApplication().invokeLater({
                     // Reading the files took a moment; if the user has already started talking in
                     // the meantime, their conversation wins.
@@ -400,7 +414,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private fun resetConversation(
-            id: String = chatHistory.newChatId(),
+            id: String = ChatHistoryService.newChatId(),
             createdAt: Long = System.currentTimeMillis(),
         ) {
             chatId = id
