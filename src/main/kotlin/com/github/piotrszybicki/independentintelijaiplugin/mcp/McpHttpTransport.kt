@@ -1,0 +1,153 @@
+package com.github.piotrszybicki.independentintelijaiplugin.mcp
+
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import com.google.gson.JsonParser
+import com.intellij.openapi.diagnostic.Logger
+import java.io.BufferedReader
+import java.io.InputStream
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.charset.StandardCharsets
+import java.time.Duration
+
+/**
+ * Speaks to a remote server over the Streamable HTTP transport: every message is a POST, and the
+ * reply comes back either as one JSON object or as an SSE stream the response is picked out of.
+ *
+ * Only the current transport is implemented, not the deprecated HTTP+SSE one that opened a separate
+ * `/sse` channel for replies -- servers still on that will fail at the handshake rather than
+ * misbehave later.
+ */
+class McpHttpTransport(private val config: McpServerConfig) : McpTransport {
+
+    companion object {
+        private val LOG = Logger.getInstance(McpHttpTransport::class.java)
+
+        private val client: HttpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build()
+    }
+
+    private val gson = Gson()
+    private val url = config.url.orEmpty()
+
+    /**
+     * Handed out by the server at initialize and required on every request after it. Servers that
+     * keep no per-client state never send one, so its absence is not an error.
+     */
+    @Volatile
+    private var sessionId: String? = null
+
+    /** Echoed back on later requests once the handshake has agreed on it, as the spec requires. */
+    @Volatile
+    var protocolVersion: String? = null
+
+    override fun request(message: JsonObject, timeoutMillis: Long): JsonObject {
+        val id = message.get("id")?.asInt ?: throw McpException("internal: request without an id")
+        val response = post(message, timeoutMillis)
+
+        if (response.statusCode() !in 200..299) {
+            val body = runCatching { response.body().reader(StandardCharsets.UTF_8).readText() }.getOrDefault("")
+            response.body().close()
+            throw McpException("HTTP ${response.statusCode()} from $url${body.take(500).let { if (it.isBlank()) "" else ": $it" }}")
+        }
+
+        response.headers().firstValue("mcp-session-id").ifPresent { sessionId = it }
+
+        val contentType = response.headers().firstValue("content-type").orElse("").lowercase()
+        return response.body().use { stream ->
+            if (contentType.contains("text/event-stream")) {
+                readEventStream(stream.bufferedReader(StandardCharsets.UTF_8), id)
+            } else {
+                val body = stream.reader(StandardCharsets.UTF_8).readText()
+                val parsed = runCatching { JsonParser.parseString(body) }.getOrNull()
+                parsed?.takeIf { it.isJsonObject }?.asJsonObject
+                    ?: throw McpException("$url answered with something that is not a JSON-RPC message: ${body.take(500)}")
+            }
+        }
+    }
+
+    override fun notify(message: JsonObject) {
+        // The server acknowledges with 202 and no body; there is nothing to correlate or wait for,
+        // so a failure here is logged rather than raised -- it does not invalidate the session.
+        val response = runCatching { post(message, config.timeoutSeconds * 1000L) }.getOrElse {
+            LOG.info("MCP notification to $url failed: ${it.message}")
+            return
+        }
+        response.body().close()
+    }
+
+    override fun close() {
+        // Nothing to tear down: each request is its own exchange, and the shared client is static.
+    }
+
+    // --- plumbing -----------------------------------------------------------------------------
+
+    private fun post(message: JsonObject, timeoutMillis: Long): HttpResponse<InputStream> {
+        val builder = HttpRequest.newBuilder()
+            .uri(runCatching { URI.create(url) }.getOrElse { throw McpException("not a usable URL: $url") })
+            .timeout(Duration.ofMillis(timeoutMillis))
+            .header("Content-Type", "application/json")
+            // Both, because which one comes back is the server's choice per request.
+            .header("Accept", "application/json, text/event-stream")
+            .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(message)))
+
+        sessionId?.let { builder.header("Mcp-Session-Id", it) }
+        protocolVersion?.let { builder.header("MCP-Protocol-Version", it) }
+        config.headers.forEach { (name, value) -> builder.header(name, value) }
+
+        return try {
+            client.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream())
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw McpException("interrupted while waiting for $url")
+        } catch (e: Exception) {
+            throw McpException("could not reach $url: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Pulls the response with the matching id out of an SSE stream.
+     *
+     * The stream can carry progress notifications and, on servers that use it as a general channel,
+     * messages for other requests, so events are skipped until the id lines up. Returning closes the
+     * stream, which matters: the server may otherwise hold it open indefinitely.
+     */
+    private fun readEventStream(reader: BufferedReader, id: Int): JsonObject {
+        val data = StringBuilder()
+
+        fun matched(): JsonObject? {
+            val payload = data.toString()
+            data.setLength(0)
+            if (payload.isBlank()) return null
+            val message = runCatching { JsonParser.parseString(payload) }.getOrNull()
+                ?.takeIf { it.isJsonObject }?.asJsonObject
+                ?: return null
+            // runCatching because the id is the server's to echo: a string one would otherwise
+            // throw out of here rather than simply not matching.
+            val answered = runCatching { message.get("id")?.asInt }.getOrNull()
+            return message.takeIf { answered == id }
+        }
+
+        for (line in reader.lineSequence()) {
+            when {
+                // A blank line terminates the event, which is the point at which its data parses.
+                line.isEmpty() -> matched()?.let { return it }
+                line.startsWith("data:") -> {
+                    if (data.isNotEmpty()) data.append('\n')
+                    data.append(line.removePrefix("data:").removePrefix(" "))
+                }
+                // `event:`, `id:`, `retry:` and `:` comments carry nothing this needs.
+                else -> Unit
+            }
+        }
+        // A stream that ends straight after its last event never sends the terminating blank line.
+        matched()?.let { return it }
+
+        throw McpException("$url ended its response stream without answering request $id")
+    }
+}

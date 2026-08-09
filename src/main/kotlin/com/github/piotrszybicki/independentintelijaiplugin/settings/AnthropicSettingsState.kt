@@ -44,6 +44,19 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
          * and tenancy headers a gateway needs -- never for secrets, which belong in the token field.
          */
         var extraHeaders: String = "",
+
+        /**
+         * MCP servers, in the `mcpServers` JSON every other MCP client uses, so an entry can be
+         * pasted in from a server's own README. Kept as text rather than a structured list because
+         * that is the form it arrives in, and parsing it is [com.github.piotrszybicki.independentintelijaiplugin.mcp.McpServerConfig]'s job.
+         *
+         * Stored in plain XML like everything else here, which is why values support
+         * `${env:NAME}` -- a server's token belongs in the environment, not in this field.
+         */
+        var mcpServers: String = "",
+
+        /** Whether each MCP tool call is shown for approval, as shell commands are. */
+        var confirmMcpToolCalls: Boolean = true,
     )
 
     private var state = State()

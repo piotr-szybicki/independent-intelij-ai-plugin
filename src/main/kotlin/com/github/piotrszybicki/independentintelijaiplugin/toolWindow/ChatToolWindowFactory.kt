@@ -34,6 +34,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeTrackin
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryService
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredRow
+import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicCredentials
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
@@ -130,44 +131,56 @@ class ChatToolWindowFactory : ToolWindowFactory {
         // Held onto so "Always Run in This Chat" can be cleared when the conversation is reset.
         private val shellTool = RunShellCommandTool(project)
 
+        /**
+         * Same reasoning as [chatHistory]: connecting to the configured MCP servers starts
+         * processes and opens sockets, which is not something to be doing from the EDT while the
+         * tool window is being built. The service defers all of that to the first turn.
+         */
+        private val mcp by lazy { McpService.getInstance(project) }
+
+        private val builtInTools = listOf(
+            GetEditorContextTool(project),
+            ListOpenFilesTool(project),
+            ListDirectoryTool(project),
+            FileExistsTool(project),
+            ReadProjectFileTool(project),
+            ReadLibraryClassTool(project),
+            AttachLibrarySourcesTool(project),
+            GetFileStructureTool(project),
+            GetFileProblemsTool(project),
+            ApplyQuickFixTool(project),
+            EditFileLinesTool(project),
+            CreateFileTool(project),
+            MoveFileTool(project),
+            DeleteFileTool(project),
+            FindInFilesTool(project),
+            FindByNameTool(project),
+            FindUsagesTool(project),
+            FindImplementationsTool(project),
+            GetSymbolInfoTool(project),
+            RenameSymbolTool(project),
+            SafeDeleteTool(project),
+            AddImportTool(project),
+            InsertMemberTool(project),
+            ToggleBreakpointTool(project),
+            RunConfigurationTool(project),
+            RunAtLocationTool(project),
+            StartDebugConfigurationTool(project),
+            AwaitBreakpointTool(project),
+            DebuggerActionTool(project),
+            EvaluateExpressionTool(project),
+            RunActionTool(project),
+            shellTool,
+        )
+
         private val agent = AnthropicAgent(
-            ChangeTrackingTool.wrapAll(
-                listOf(
-                    GetEditorContextTool(project),
-                    ListOpenFilesTool(project),
-                    ListDirectoryTool(project),
-                    FileExistsTool(project),
-                    ReadProjectFileTool(project),
-                    ReadLibraryClassTool(project),
-                    AttachLibrarySourcesTool(project),
-                    GetFileStructureTool(project),
-                    GetFileProblemsTool(project),
-                    ApplyQuickFixTool(project),
-                    EditFileLinesTool(project),
-                    CreateFileTool(project),
-                    MoveFileTool(project),
-                    DeleteFileTool(project),
-                    FindInFilesTool(project),
-                    FindByNameTool(project),
-                    FindUsagesTool(project),
-                    FindImplementationsTool(project),
-                    GetSymbolInfoTool(project),
-                    RenameSymbolTool(project),
-                    SafeDeleteTool(project),
-                    AddImportTool(project),
-                    InsertMemberTool(project),
-                    ToggleBreakpointTool(project),
-                    RunConfigurationTool(project),
-                    RunAtLocationTool(project),
-                    StartDebugConfigurationTool(project),
-                    AwaitBreakpointTool(project),
-                    DebuggerActionTool(project),
-                    EvaluateExpressionTool(project),
-                    RunActionTool(project),
-                    shellTool,
-                ),
-                session,
-            ),
+            tools = {
+                // The MCP tools are wrapped along with the rest. The change session cannot track
+                // what a server writes straight to disk -- no more than it can for
+                // run_shell_command -- but the wrapper also flushes the model's unsaved edits
+                // before every call, which is what lets a server that reads files see them.
+                ChangeTrackingTool.wrapAll(builtInTools + mcp.tools(), session)
+            },
             environment = { ProjectEnvironment.describe(project) },
         )
 
@@ -421,8 +434,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatCreatedAt = createdAt
             history.clear()
             rows.clear()
-            // Shell approvals are given for a conversation, not for the project.
+            // Shell and MCP approvals are given for a conversation, not for the project.
             shellTool.forgetApprovals()
+            mcp.forgetApprovals()
             transcript.clear()
             clearAttachment()
         }

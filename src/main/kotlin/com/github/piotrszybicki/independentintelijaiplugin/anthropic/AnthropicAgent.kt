@@ -9,7 +9,15 @@ import com.intellij.openapi.diagnostic.Logger
  * https://docs.anthropic.com/en/docs/build-with-claude/tool-use until the model stops asking for tools.
  */
 class AnthropicAgent(
-    tools: List<AnthropicTool>,
+    /**
+     * The tools to offer, asked for once per [run] rather than fixed at construction.
+     *
+     * A supplier because not every tool is known when the agent is built: the MCP ones only exist
+     * once their servers have been connected to, which is network and process work that cannot
+     * happen on the EDT where the tool window is assembled. Resolving per turn also means a server
+     * added in settings is usable on the next message instead of after a restart.
+     */
+    private val tools: () -> List<AnthropicTool>,
     /**
      * Machine-specific facts appended to the system prompt. A lambda rather than a string because
      * describing the environment reads IDE settings, which must not happen on the EDT -- the agent
@@ -141,8 +149,6 @@ class AnthropicAgent(
     }
 
     private val log = Logger.getInstance(AnthropicAgent::class.java)
-    private val toolsByName = tools.associateBy { it.name }
-    private val toolDefinitions = tools.map { it.toDefinition() }
 
     /**
      * Runs the loop, mutating [history] in place with every assistant/tool-result turn produced.
@@ -159,6 +165,13 @@ class AnthropicAgent(
         listener: Listener,
         isCancelled: () -> Boolean = { false },
     ) {
+        // Once for the whole turn, not once per iteration: connecting to an MCP server is not free,
+        // and a tool list that changed underneath the loop would leave the model calling a tool
+        // that no longer exists.
+        val available = tools()
+        val toolsByName = available.associateBy { it.name }
+        val toolDefinitions = available.map { it.toDefinition() }
+
         repeat(maxIterations) {
             if (isCancelled()) return
             val turn =

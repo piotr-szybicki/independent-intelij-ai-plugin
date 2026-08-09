@@ -5,7 +5,7 @@
     <vendor>piotr-szybicki</vendor>
     <description><![CDATA[
         <p><b>Anthropic Chat</b> is a simple chat tool window backed by the Anthropic Messages API.</p>
-        <p>Set the <code>AI_API_KEY</code> environment variable to your Anthropic API key and restart the IDE, then chat from the tool window. Model and endpoint are configured under Settings | Tools | Anthropic Chat.</p>
+        <p>Set the <code>AI_API_KEY</code> environment variable to your Anthropic API key and restart the IDE, then chat from the tool window. Model, endpoint and MCP servers are configured under Settings | Tools | Anthropic Chat.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
