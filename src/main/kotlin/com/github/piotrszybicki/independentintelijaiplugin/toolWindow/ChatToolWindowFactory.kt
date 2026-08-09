@@ -39,6 +39,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.CreateFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.DebuggerActionTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.DeleteFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.EditFileLinesTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.EvaluateExpressionTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FileExistsTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindByNameTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindImplementationsTool
@@ -131,6 +132,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     StartDebugConfigurationTool(project),
                     AwaitBreakpointTool(project),
                     DebuggerActionTool(project),
+                    EvaluateExpressionTool(project),
                     RunActionTool(project),
                     shellTool,
                 ),

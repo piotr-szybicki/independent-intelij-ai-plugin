@@ -87,7 +87,10 @@ class AnthropicAgent(
             - `run_shell_command` for builds, git, and anything neither of those can launch. It
               needs the user's approval and its output comes back as terminal text.
             - `start_debug_configuration` only when you need to stop at a breakpoint; pair it with
-              `toggle_breakpoint` and `await_breakpoint`.
+              `toggle_breakpoint` and `await_breakpoint`. Once stopped, `evaluate_expression` asks
+              the debugger questions the variable list does not answer -- what an expression comes
+              to, what a call returns right here. Reach for it instead of adding a print statement
+              and running again. It executes what you write, so read state rather than change it.
             - `run_action` for IDE commands that are not runnable any other way. It reports whether
               the action ran, not what it produced, so do not use it to run tests.
 

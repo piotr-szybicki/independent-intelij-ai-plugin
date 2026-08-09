@@ -8,6 +8,7 @@ import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebugSessionListener
 import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.XDebuggerManagerListener
+import com.intellij.xdebugger.evaluation.XDebuggerEvaluator
 import com.intellij.xdebugger.frame.XCompositeNode
 import com.intellij.xdebugger.frame.XDebuggerTreeNodeHyperlink
 import com.intellij.xdebugger.frame.XFullValueEvaluator
@@ -47,6 +48,12 @@ internal class DebuggerPause(private val project: Project) {
 
         private const val MAX_VARIABLES = 100
         private const val MAX_VALUE_CHARS = 300
+
+        /**
+         * Evaluated results get a longer leash than variables in scope: there are a hundred of the
+         * latter and one of the former, and a big value is often exactly what was being asked for.
+         */
+        private const val MAX_EVALUATED_CHARS = 2_000
     }
 
     /**
@@ -139,6 +146,63 @@ internal class DebuggerPause(private val project: Project) {
         }
     }
 
+    // --- evaluation -----------------------------------------------------------------------------
+
+    /**
+     * Evaluates [expression] against the frame [session] is stopped in, and renders the result the
+     * same way a variable in scope is rendered.
+     *
+     * The evaluator is the debugger's own, so the expression is whatever the debuggee's language
+     * accepts -- and, as in the Evaluate Expression dialog, calling a method really calls it.
+     */
+    fun evaluate(session: XDebugSession, expression: String, timeoutMillis: Long): String {
+        val frame = session.currentStackFrame
+            ?: return "No stack frame is available at this stop, so there is nothing to evaluate against."
+        val evaluator = frame.evaluator
+            ?: return "This debugger cannot evaluate expressions at this stop."
+
+        val result = AtomicReference<XValue?>()
+        val failure = AtomicReference<String?>()
+        val done = CountDownLatch(1)
+
+        val callback = object : XDebuggerEvaluator.XEvaluationCallback {
+            override fun evaluated(result1: XValue) {
+                result.set(result1)
+                done.countDown()
+            }
+
+            override fun errorOccurred(errorMessage: String) {
+                failure.set(errorMessage)
+                done.countDown()
+            }
+
+            /** Malformed rather than failed -- a syntax error, before anything ran. */
+            override fun invalidExpression(error: String) {
+                failure.set(error)
+                done.countDown()
+            }
+        }
+
+        try {
+            // The frame's position is what gives the expression its scope: which locals are visible,
+            // and what `this` means.
+            evaluator.evaluate(expression, callback, frame.sourcePosition)
+        } catch (e: Exception) {
+            return "Could not evaluate \"$expression\": ${e.message ?: e::class.java.simpleName}"
+        }
+
+        if (!done.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+            return "The debugger did not answer within ${timeoutMillis / 1000}s. The expression may " +
+                "have called something that blocks, or the session may have resumed underneath it."
+        }
+
+        failure.get()?.let { return "Could not evaluate \"$expression\": $it" }
+        val value = result.get() ?: return "The debugger returned neither a value nor an error."
+
+        return present(listOf(expression to value), MAX_EVALUATED_CHARS).firstOrNull()
+            ?: "$expression = <not rendered in time>"
+    }
+
     // --- variables ------------------------------------------------------------------------------
 
     private class Variables(
@@ -204,7 +268,10 @@ internal class DebuggerPause(private val project: Project) {
     }
 
     /** Every value renders itself asynchronously, so they are all asked at once and awaited together. */
-    private fun present(values: List<Pair<String, XValue>>): List<String> {
+    private fun present(
+        values: List<Pair<String, XValue>>,
+        maxValueChars: Int = MAX_VALUE_CHARS,
+    ): List<String> {
         val rendered = ConcurrentHashMap<String, String>()
         val remaining = CountDownLatch(values.size)
 
@@ -221,13 +288,13 @@ internal class DebuggerPause(private val project: Project) {
             value.computePresentation(
                 object : XValueNode {
                     override fun setPresentation(icon: Icon?, type: String?, value: String, hasChildren: Boolean) =
-                        answer(format(name, type, value, hasChildren))
+                        answer(format(name, type, value, hasChildren, maxValueChars))
 
                     override fun setPresentation(
                         icon: Icon?,
                         presentation: XValuePresentation,
                         hasChildren: Boolean,
-                    ) = answer(format(name, presentation.type, render(presentation), hasChildren))
+                    ) = answer(format(name, presentation.type, render(presentation), hasChildren, maxValueChars))
 
                     override fun setFullValueEvaluator(evaluator: XFullValueEvaluator) = Unit
                 },
@@ -242,8 +309,14 @@ internal class DebuggerPause(private val project: Project) {
         }
     }
 
-    private fun format(name: String, type: String?, value: String, hasChildren: Boolean): String {
-        val trimmed = if (value.length <= MAX_VALUE_CHARS) value else value.take(MAX_VALUE_CHARS) + "…"
+    private fun format(
+        name: String,
+        type: String?,
+        value: String,
+        hasChildren: Boolean,
+        maxValueChars: Int,
+    ): String {
+        val trimmed = if (value.length <= maxValueChars) value else value.take(maxValueChars) + "…"
         return buildString {
             append(name)
             if (!type.isNullOrBlank()) append(": $type")
