@@ -44,8 +44,9 @@ class RunConfigurationTool(private val project: Project) : AnthropicTool {
             "application, a Gradle or Maven task -- and returns its exit code and console output. " +
             "Use this to run tests and read back which ones failed. The configuration must already " +
             "exist; naming one that does not returns the list of the ones that do. To run a test " +
-            "class or method that has no configuration yet, use run_at_location instead. Use " +
-            "start_debug_configuration when you need to stop at a breakpoint."
+            "class or method that has no configuration yet, use run_at_location instead. When you " +
+            "need to stop at a breakpoint, use start_debug_configuration, or run_at_location with " +
+            "debug=true if there is no configuration for it."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

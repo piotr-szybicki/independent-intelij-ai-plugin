@@ -83,7 +83,8 @@ class EvaluateExpressionTool(private val project: Project) : AnthropicTool {
         val live = XDebuggerManager.getInstance(project).debugSessions.filterNot { it.isStopped }
         return if (live.isEmpty()) {
             "No debug session is running, so there is no frame to evaluate in. Set a breakpoint with " +
-                "toggle_breakpoint and start one with start_debug_configuration, then wait for it " +
+                "toggle_breakpoint and start one with start_debug_configuration -- or with " +
+                "run_at_location and debug=true when nothing suitable is saved -- then wait for it " +
                 "with await_breakpoint."
         } else {
             "The debugger is running (${live.joinToString { it.sessionName }}) but is not paused, so " +

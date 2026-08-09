@@ -45,6 +45,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.FindByNameTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindImplementationsTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindInFilesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.FindUsagesTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.GetEditorContextTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GetFileProblemsTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GetFileStructureTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GetSymbolInfoTool
@@ -106,6 +107,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val agent = AnthropicAgent(
             ChangeTrackingTool.wrapAll(
                 listOf(
+                    GetEditorContextTool(project),
                     ListOpenFilesTool(project),
                     ListDirectoryTool(project),
                     FileExistsTool(project),

@@ -23,9 +23,9 @@ class AwaitBreakpointTool(private val project: Project) : AnthropicTool {
     override val description =
         "Waits until the running debugger stops at a breakpoint (or finishes a step) and returns " +
             "the file and line it stopped on plus the variables in scope, with their values. " +
-            "Returns straight away if it is already stopped. Requires a debug session the user has " +
-            "started or that start_debug_configuration attached; use debugger_action to move on " +
-            "from the pause afterwards."
+            "Returns straight away if it is already stopped. Requires a debug session -- one the " +
+            "user started, or one started by start_debug_configuration or by run_at_location with " +
+            "debug=true; use debugger_action to move on from the pause afterwards."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
@@ -53,8 +53,9 @@ class AwaitBreakpointTool(private val project: Project) : AnthropicTool {
     private fun timeoutMessage(timeoutSeconds: Int): String {
         val sessions = XDebuggerManager.getInstance(project).debugSessions.filterNot { it.isStopped }
         return if (sessions.isEmpty()) {
-            "No debug session is running, so nothing can hit a breakpoint. Ask the user to start " +
-                "one, or use start_debug_configuration if they have a run configuration for it."
+            "No debug session is running, so nothing can hit a breakpoint. Start one with " +
+                "start_debug_configuration if a configuration covers what you want to debug, or " +
+                "with run_at_location and debug=true if none does."
         } else {
             "The debugger did not stop within ${timeoutSeconds}s. It is running " +
                 "(${sessions.joinToString { it.sessionName }}) but has not reached a breakpoint -- " +

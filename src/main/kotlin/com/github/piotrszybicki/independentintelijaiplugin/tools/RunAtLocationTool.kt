@@ -25,6 +25,12 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * The producers themselves come from whatever plugins the IDE has -- JUnit, Gradle, pytest. None of
  * them are referenced here, so this needs no extra plugin dependency and degrades to "nothing
  * runnable here" in an IDE that has no producer for the language in question.
+ *
+ * `debug` picks the gutter's *other* button. The configuration a producer makes is executor-neutral,
+ * so debugging it is the same launch with [com.intellij.execution.executors.DefaultDebugExecutor]
+ * instead -- which is what lets a test that has no saved configuration be stopped in at all.
+ * [StartDebugConfigurationTool] can only debug what already exists, and a test class just written
+ * has nothing.
  */
 class RunAtLocationTool(private val project: Project) : AnthropicTool {
 
@@ -47,7 +53,10 @@ class RunAtLocationTool(private val project: Project) : AnthropicTool {
             "the declaration you want to run: a line inside a test method runs that one method, a " +
             "line on the class runs the whole class, and omitting the line runs the file. Returns " +
             "the same exit code, per-test results and console output as run_configuration. Prefer " +
-            "run_configuration when a configuration for this already exists."
+            "run_configuration when a configuration for this already exists. Pass debug=true to " +
+            "start it under the debugger instead, which is how you stop in a test that has no saved " +
+            "configuration: set the breakpoint with toggle_breakpoint first, then call " +
+            "await_breakpoint to catch the hit."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
@@ -64,6 +73,16 @@ class RunAtLocationTool(private val project: Project) : AnthropicTool {
                         "choice. Omit to run the file as a whole.",
                 )
             })
+            add("debug", JsonObject().apply {
+                addProperty("type", "boolean")
+                addProperty(
+                    "description",
+                    "Start it under the debugger rather than just running it, as the gutter's Debug " +
+                        "button does. Returns as soon as the debugger attaches, without waiting for " +
+                        "the run to finish or reporting its results -- follow it with " +
+                        "await_breakpoint. Defaults to false.",
+                )
+            })
             add("timeout_seconds", JsonObject().apply {
                 addProperty("type", "integer")
                 addProperty(
@@ -71,7 +90,11 @@ class RunAtLocationTool(private val project: Project) : AnthropicTool {
                     "How long to wait for it to finish before giving up on its output. It keeps " +
                         "running in the IDE either way. Defaults to " +
                         "${ConfigurationRunner.DEFAULT_TIMEOUT_SECONDS}, maximum " +
-                        "${ConfigurationRunner.MAX_TIMEOUT_SECONDS}.",
+                        "${ConfigurationRunner.MAX_TIMEOUT_SECONDS}. With debug=true it means " +
+                        "something different, because there is no output to wait for: how long to " +
+                        "wait for the debugger to attach, defaulting to " +
+                        "${ConfigurationRunner.DEFAULT_DEBUG_WAIT_SECONDS} with a maximum of " +
+                        "${ConfigurationRunner.MAX_DEBUG_WAIT_SECONDS}.",
                 )
             })
         })
@@ -83,8 +106,16 @@ class RunAtLocationTool(private val project: Project) : AnthropicTool {
         if (path.isEmpty()) return "Error: missing 'path'"
 
         val line = input.get("line")?.asInt
-        val timeoutSeconds = (input.get("timeout_seconds")?.asInt ?: ConfigurationRunner.DEFAULT_TIMEOUT_SECONDS)
-            .coerceIn(1, ConfigurationRunner.MAX_TIMEOUT_SECONDS)
+        val debug = input.get("debug")?.asBoolean ?: false
+
+        // The same field means a different wait in each mode, so it is bounded differently too.
+        val timeoutSeconds = if (debug) {
+            (input.get("timeout_seconds")?.asInt ?: ConfigurationRunner.DEFAULT_DEBUG_WAIT_SECONDS)
+                .coerceIn(1, ConfigurationRunner.MAX_DEBUG_WAIT_SECONDS)
+        } else {
+            (input.get("timeout_seconds")?.asInt ?: ConfigurationRunner.DEFAULT_TIMEOUT_SECONDS)
+                .coerceIn(1, ConfigurationRunner.MAX_TIMEOUT_SECONDS)
+        }
 
         if (PsiTargets.resolveProjectPath(project, path) == null) {
             return "Error: path is outside the project directory"
@@ -111,7 +142,9 @@ class RunAtLocationTool(private val project: Project) : AnthropicTool {
                 append("Reused the existing ${produced.typeName} configuration \"${produced.settings.name}\".")
             } else {
                 append("Created a temporary ${produced.typeName} configuration ")
-                append("\"${produced.settings.name}\", as the gutter Run button would.")
+                append("\"${produced.settings.name}\", as the gutter ")
+                append(if (debug) "Debug" else "Run")
+                append(" button would.")
             }
             if (produced.alternatives.isNotEmpty()) {
                 append(" The producers also offered: ")
@@ -120,7 +153,12 @@ class RunAtLocationTool(private val project: Project) : AnthropicTool {
             }
         }
 
-        return "$header\n\n" + runner.run(produced.settings, produced.settings.name, timeoutSeconds)
+        val outcome = if (debug) {
+            runner.debug(produced.settings, produced.settings.name, timeoutSeconds)
+        } else {
+            runner.run(produced.settings, produced.settings.name, timeoutSeconds)
+        }
+        return "$header\n\n$outcome"
     }
 
     private class Produced(

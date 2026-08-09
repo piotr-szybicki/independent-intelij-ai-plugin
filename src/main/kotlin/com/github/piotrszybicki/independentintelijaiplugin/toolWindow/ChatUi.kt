@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import com.intellij.diagnostic.LoadingState
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.HTMLEditorKitBuilder
@@ -8,6 +9,7 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import java.awt.Color
 import java.awt.Dimension
+import java.awt.Font
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.LayoutManager
@@ -113,8 +115,24 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
         addStyles(kit.styleSheet)
     }
 
+    /**
+     * Monospace family for code spans, taken from the editor scheme so it matches the rest of the
+     * IDE.
+     *
+     * Guarded, because reading it is the first thing that instantiates `EditorColorsManager`, and
+     * that service reads the registry in its constructor: when a restored tool window builds its
+     * panes during frame init, the registry is not loaded yet and the platform logs an error. The
+     * AWT logical family is a fine stand-in for the rare pane built that early.
+     */
+    private fun codeFontName(): String =
+        if (LoadingState.COMPONENTS_LOADED.isOccurred) {
+            EditorColorsManager.getInstance().globalScheme.editorFontName
+        } else {
+            Font.MONOSPACED
+        }
+
     private fun addStyles(sheet: StyleSheet) {
-        val codeFont = EditorColorsManager.getInstance().globalScheme.editorFontName
+        val codeFont = codeFontName()
         val codeBackground = ChatColors.hex(ChatColors.codeBackground)
         val quoteBorder = ChatColors.hex(ChatColors.mix(ChatColors.background, ChatColors.foreground, 0.25))
         sheet.addRule("body { margin: 0; padding: 0; }")

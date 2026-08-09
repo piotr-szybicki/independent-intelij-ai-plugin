@@ -4,12 +4,14 @@ import com.intellij.execution.ExecutionListener
 import com.intellij.execution.ExecutionManager
 import com.intellij.execution.ProgramRunnerUtil
 import com.intellij.execution.RunnerAndConfigurationSettings
+import com.intellij.execution.executors.DefaultDebugExecutor
 import com.intellij.execution.executors.DefaultRunExecutor
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.execution.runners.ExecutionEnvironment
+import com.intellij.execution.runners.ProgramRunner
 import com.intellij.execution.testframework.sm.runner.SMTRunnerEventsAdapter
 import com.intellij.execution.testframework.sm.runner.SMTRunnerEventsListener
 import com.intellij.execution.testframework.sm.runner.SMTestProxy
@@ -17,18 +19,24 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.Key
+import com.intellij.xdebugger.XDebugProcess
+import com.intellij.xdebugger.XDebugSession
+import com.intellij.xdebugger.XDebuggerManager
+import com.intellij.xdebugger.XDebuggerManagerListener
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Launches a [RunnerAndConfigurationSettings] and reports back what it did: exit code, per-test
- * results, console output.
+ * Launches a [RunnerAndConfigurationSettings], either under Run -- reporting back exit code,
+ * per-test results and console output -- or under the debugger, where the point is to stop rather
+ * than to finish.
  *
- * Shared by [RunConfigurationTool] and [RunAtLocationTool], which differ only in how they come by
- * their settings -- one looks a configuration up by name, the other has the platform produce one
- * from a source location. Everything after that point is identical, and it is the part with the
+ * Shared by every tool that starts something: [RunConfigurationTool] and [RunAtLocationTool] differ
+ * only in how they come by their settings -- one looks a configuration up by name, the other has the
+ * platform produce one from a source location -- and [StartDebugConfigurationTool] differs only in
+ * which executor it asks for. Everything after that point is identical, and it is the part with the
  * timing hazards, so it lives in one place.
  *
  * The output is read by attaching a [ProcessListener] to the launched process rather than by
@@ -40,6 +48,14 @@ class ConfigurationRunner(private val project: Project) {
     companion object {
         const val DEFAULT_TIMEOUT_SECONDS = 180
         const val MAX_TIMEOUT_SECONDS = 900
+
+        /**
+         * A debug launch only waits for the session to appear, not for the process to end, so its
+         * budget is much smaller than a run's: this covers compiling and starting a JVM, or the
+         * handshake with an already-running one.
+         */
+        const val DEFAULT_DEBUG_WAIT_SECONDS = 20
+        const val MAX_DEBUG_WAIT_SECONDS = 120
 
         /** Test output is frequently enormous and the failure summary is at the end. */
         private const val MAX_OUTPUT_CHARS = 20_000
@@ -194,6 +210,71 @@ class ConfigurationRunner(private val project: Project) {
         } else {
             "\"$label\" $verdict.\n\n$body"
         }
+    }
+
+    /**
+     * Starts [settings] under the debugger and returns as soon as a debug session exists, or after
+     * [waitSeconds] if none does. [label] names the thing being started in those messages.
+     *
+     * Deliberately does not wait for the process: the caller wants it stopped at a breakpoint, and
+     * that is `await_breakpoint`'s job. Waiting for output here would block until the debuggee ran
+     * to completion -- past every breakpoint, since nothing would be reading the pause.
+     */
+    fun debug(settings: RunnerAndConfigurationSettings, label: String, waitSeconds: Int): String {
+        val executor = DefaultDebugExecutor.getDebugExecutorInstance()
+
+        // Not every configuration can be debugged -- a Maven goal or a shell script has no runner
+        // for the debug executor. executeConfiguration answers that by doing nothing at all, which
+        // is indistinguishable from a slow start, so ask first and say so.
+        if (ProgramRunner.getRunner(executor.id, settings.configuration) == null) {
+            return "\"$label\" (${settings.type.displayName}) cannot be debugged: the IDE has no " +
+                "debug runner for this kind of configuration, which is why its Debug button is " +
+                "disabled. Run it instead, or debug something that can be -- a test or an " +
+                "application configuration."
+        }
+
+        val started = AtomicReference<XDebugSession?>()
+        val attached = CountDownLatch(1)
+        val scope = Disposer.newDisposable("configuration_runner_debug")
+
+        try {
+            // Subscribed before the launch: attaching to an already-running JVM can complete before
+            // executeConfiguration has even returned.
+            project.messageBus.connect(scope).subscribe(
+                XDebuggerManager.TOPIC,
+                object : XDebuggerManagerListener {
+                    override fun processStarted(debugProcess: XDebugProcess) {
+                        if (started.compareAndSet(null, debugProcess.session)) attached.countDown()
+                    }
+                },
+            )
+
+            var failure: Exception? = null
+            ApplicationManager.getApplication().invokeAndWait {
+                try {
+                    ProgramRunnerUtil.executeConfiguration(settings, executor)
+                } catch (e: Exception) {
+                    failure = e
+                }
+            }
+            failure?.let { return "Error: could not start \"$label\" under the debugger: ${it.message}" }
+
+            if (!attached.await(waitSeconds.toLong(), TimeUnit.SECONDS)) {
+                // executeConfiguration reports its own failures in the Run window, not to the
+                // caller, so a missing session is the only signal available here.
+                return "Started \"$label\" under the debugger, but no debug session appeared within " +
+                    "${waitSeconds}s. That is usually a compilation error, or -- for a remote " +
+                    "configuration -- nothing listening on the configured host and port, so check " +
+                    "the target process is running with the matching -agentlib:jdwp options. The " +
+                    "IDE's Debug tool window has the real error."
+            }
+        } finally {
+            Disposer.dispose(scope)
+        }
+
+        val session = started.get()
+        return "Debugger attached: \"$label\" is running as session " +
+            "\"${session?.sessionName ?: label}\". Call await_breakpoint to wait for it to stop."
     }
 
     /**

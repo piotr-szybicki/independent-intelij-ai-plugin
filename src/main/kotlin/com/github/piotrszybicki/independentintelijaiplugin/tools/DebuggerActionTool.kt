@@ -102,7 +102,7 @@ class DebuggerActionTool(private val project: Project) : AnthropicTool {
 
         val session = XDebuggerManager.getInstance(project).currentSession?.takeUnless { it.isStopped }
             ?: return "Error: no debug session is running. Start one with start_debug_configuration, " +
-                "or ask the user to launch it."
+                "or with run_at_location and debug=true when nothing suitable is saved."
 
         if (action.needsPause && !session.isPaused) {
             return "Error: the debugger is running, not stopped, so \"$actionId\" does not apply. " +
