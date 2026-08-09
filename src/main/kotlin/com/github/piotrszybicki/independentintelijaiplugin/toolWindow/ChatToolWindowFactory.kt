@@ -5,6 +5,7 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -29,11 +30,15 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicEn
 import com.github.piotrszybicki.independentintelijaiplugin.anthropic.ChatMessage
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeTrackingTool
+import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryService
+import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
+import com.github.piotrszybicki.independentintelijaiplugin.history.StoredRow
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicCredentials
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.tools.AddImportTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ApplyQuickFixTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.AttachLibrarySourcesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.AwaitBreakpointTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.CreateFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.DebuggerActionTool
@@ -54,6 +59,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.ListDirectoryTo
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ListOpenFilesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.MoveFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ReadLibraryClassTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ReadProjectFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RenameSymbolTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunActionTool
@@ -87,6 +93,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         toolWindow.setTitleActions(
             listOf(
                 DumbAwareAction.create("New Chat", AllIcons.General.Add) { chatPanel.startNewChat() },
+                DumbAwareAction.create("Chat History", AllIcons.Vcs.History) { e -> chatPanel.showHistory(e) },
                 DumbAwareAction.create("Settings", AllIcons.General.Settings) {
                     ShowSettingsUtil.getInstance().showSettingsDialog(project, AnthropicSettingsConfigurable::class.java)
                 },
@@ -99,6 +106,18 @@ class ChatToolWindowFactory : ToolWindowFactory {
     private class ChatPanel(private val project: Project) : Disposable {
 
         private val history = mutableListOf<ChatMessage>()
+
+        /**
+         * The same conversation as [history], but as the transcript drew it. Kept alongside rather
+         * than derived, because the two disagree on purpose -- an attachment is sent in full and
+         * shown as a chip -- and it is this list that gets replayed when a saved chat is reopened.
+         */
+        private val rows = mutableListOf<StoredRow>()
+
+        private val chatHistory = ChatHistoryService.getInstance(project)
+        private var chatId = chatHistory.newChatId()
+        private var chatCreatedAt = System.currentTimeMillis()
+
         private val session = ChangeSessionService.getInstance(project)
 
         // Held onto so "Always Run in This Chat" can be cleared when the conversation is reset.
@@ -112,6 +131,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     ListDirectoryTool(project),
                     FileExistsTool(project),
                     ReadProjectFileTool(project),
+                    ReadLibraryClassTool(project),
+                    AttachLibrarySourcesTool(project),
                     GetFileStructureTool(project),
                     GetFileProblemsTool(project),
                     ApplyQuickFixTool(project),
@@ -306,20 +327,160 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             session.addListener(sessionListener)
             updateChangesBar(session.changedFileCount)
+            restoreLastChat()
         }
 
         override fun dispose() {
             session.removeListener(sessionListener)
+            // Synchronously, unlike every other save: the panel is going away, and a pooled thread
+            // started here is not guaranteed to get to run before the project closes.
+            saveCurrentChat(active = true, background = false)
+        }
+
+        // --- chat history ---------------------------------------------------------------------
+
+        /** Reopens whatever the tool window was last left on, so a restart resumes the conversation. */
+        private fun restoreLastChat() {
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val chat = chatHistory.activeId()?.let { chatHistory.load(it) } ?: return@executeOnPooledThread
+                ApplicationManager.getApplication().invokeLater({
+                    // Reading the files took a moment; if the user has already started talking in
+                    // the meantime, their conversation wins.
+                    if (history.isEmpty() && rows.isEmpty()) applyChat(chat)
+                }, project.disposed)
+            }
         }
 
         fun startNewChat() {
             if (!sendButton.isEnabled) return
+            saveCurrentChat(active = false)
+            resetConversation()
+            statusLabel.text = " "
+            input.text = ""
+        }
+
+        fun showHistory(e: AnActionEvent) {
+            ChatHistoryPopup.show(
+                service = chatHistory,
+                chats = chatHistory.chats(),
+                currentId = chatId,
+                dataContext = e.dataContext,
+                onOpen = ::openChat,
+                // The chat on screen was deleted, so there is nothing left to save or come back to.
+                onCurrentDeleted = { resetConversation() },
+            )
+        }
+
+        private fun openChat(id: String) {
+            if (id == chatId) return
+            if (!sendButton.isEnabled) {
+                statusLabel.text = "Wait for the current reply to finish before switching chats."
+                return
+            }
+
+            // Saved and loaded in one task rather than two, so the outgoing chat is written before
+            // the incoming one takes over as the active chat.
+            val outgoing = snapshot()
+            ApplicationManager.getApplication().executeOnPooledThread {
+                if (outgoing != null) chatHistory.save(outgoing, active = false)
+                val chat = chatHistory.load(id)
+                ApplicationManager.getApplication().invokeLater({
+                    if (chat == null) showError("That chat could not be opened.") else applyChat(chat)
+                }, project.disposed)
+            }
+        }
+
+        /** Replaces the conversation on screen -- and the one the model sees -- with [chat]. */
+        private fun applyChat(chat: StoredChat) {
+            resetConversation(chat.id, chat.createdAt)
+            history.addAll(chat.messages)
+            rows.addAll(chat.transcript)
+            chat.transcript.forEach { render(it) }
+            ApplicationManager.getApplication().executeOnPooledThread { chatHistory.setActiveId(chat.id) }
+        }
+
+        private fun resetConversation(
+            id: String = chatHistory.newChatId(),
+            createdAt: Long = System.currentTimeMillis(),
+        ) {
+            chatId = id
+            chatCreatedAt = createdAt
             history.clear()
+            rows.clear()
+            // Shell approvals are given for a conversation, not for the project.
             shellTool.forgetApprovals()
             transcript.clear()
             clearAttachment()
-            statusLabel.text = " "
-            input.text = ""
+        }
+
+        /** Null until the conversation has something worth keeping. */
+        private fun snapshot(): StoredChat? {
+            if (history.isEmpty() || rows.isEmpty()) return null
+            return StoredChat(
+                id = chatId,
+                title = ChatHistoryService.titleFor(rows),
+                createdAt = chatCreatedAt,
+                updatedAt = System.currentTimeMillis(),
+                messages = history.toList(),
+                transcript = rows.toList(),
+            )
+        }
+
+        /**
+         * @param active false when the user is leaving this chat, which also stops it being the one
+         *   reopened next time
+         */
+        private fun saveCurrentChat(active: Boolean, background: Boolean = true) {
+            // A turn running on the pooled thread appends to history as it goes, and dispose can
+            // land mid-turn, so copying the lists is not guaranteed to be safe. A chat that fails
+            // to snapshot is one turn behind on disk, which is not worth failing a close over.
+            val chat = runCatching { snapshot() }.getOrNull()
+            val leaving = chatId
+
+            val write = Runnable {
+                when {
+                    chat != null -> chatHistory.save(chat, active)
+                    // An empty chat has nothing to write, but leaving one still has to stop it
+                    // being the chat reopened next time -- New Chat pressed twice, say.
+                    !active && chatHistory.activeId() == leaving -> chatHistory.setActiveId(null)
+                }
+            }
+            if (background) ApplicationManager.getApplication().executeOnPooledThread(write) else write.run()
+        }
+
+        // --- transcript ------------------------------------------------------------------------
+
+        // Every row goes through one of these: what is drawn and what is stored have to stay in
+        // step, or a reopened chat comes back missing pieces.
+
+        private fun showUserMessage(markdown: String) {
+            rows += StoredRow(StoredRow.USER, text = markdown)
+            transcript.addUserMessage(markdown)
+        }
+
+        private fun showAssistantMessage(markdown: String) {
+            rows += StoredRow(StoredRow.ASSISTANT, text = markdown)
+            transcript.addAssistantMessage(markdown)
+        }
+
+        private fun showToolCall(name: String, summary: String, details: String) {
+            rows += StoredRow(StoredRow.TOOL, name = name, summary = summary, details = details)
+            transcript.addToolCall(name, summary, details)
+        }
+
+        private fun showError(message: String) {
+            rows += StoredRow(StoredRow.ERROR, text = message)
+            transcript.addError(message)
+        }
+
+        /** Draws a stored row without recording it again -- the replay half of [showUserMessage] and friends. */
+        private fun render(row: StoredRow) {
+            when (row.kind) {
+                StoredRow.USER -> transcript.addUserMessage(row.text)
+                StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
+                StoredRow.TOOL -> transcript.addToolCall(row.name, row.summary, row.details)
+                else -> transcript.addError(row.text)
+            }
         }
 
         private fun updateChangesBar(count: Int) {
@@ -384,7 +545,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             val sizeBeforeTurn = history.size
             history.add(ChatMessage.text("user", messageText))
-            transcript.addUserMessage(displayText)
+            showUserMessage(displayText)
             input.text = ""
             clearAttachment()
             setBusy(true)
@@ -411,7 +572,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     agent.run(endpoint, model, maxTokens, history, object : AnthropicAgent.Listener {
                         override fun onAssistantText(text: String) {
                             if (text.isBlank()) return
-                            ApplicationManager.getApplication().invokeLater { transcript.addAssistantMessage(text) }
+                            ApplicationManager.getApplication().invokeLater { showAssistantMessage(text) }
                         }
 
                         override fun onToolStarted(name: String, interruptible: Boolean) {
@@ -421,7 +582,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                         override fun onToolCall(name: String, toolInput: JsonObject, result: String) {
                             ApplicationManager.getApplication().invokeLater {
                                 transcript.setCancellable(true)
-                                transcript.addToolCall(name, summarizeToolInput(toolInput), toolCallDetails(toolInput, result))
+                                showToolCall(name, summarizeToolInput(toolInput), toolCallDetails(toolInput, result))
                             }
                         }
 
@@ -435,18 +596,18 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             return resume
                         }
                     }, isCancelled = cancelled::get)
-                    ApplicationManager.getApplication().invokeLater { setBusy(false) }
+                    ApplicationManager.getApplication().invokeLater { endTurn() }
                 } catch (e: Exception) {
                     // A cancel usually surfaces as an exception first -- an interrupted wait, or a
                     // half-torn-down HTTP call -- and reporting that as a failure would be noise.
                     if (cancelled.get()) {
-                        ApplicationManager.getApplication().invokeLater { setBusy(false) }
+                        ApplicationManager.getApplication().invokeLater { endTurn() }
                         return@executeOnPooledThread
                     }
                     ApplicationManager.getApplication().invokeLater {
                         rollbackHistoryTo(sizeBeforeTurn)
-                        setBusy(false)
-                        transcript.addError(e.message ?: "The request failed.")
+                        showError(e.message ?: "The request failed.")
+                        endTurn()
                     }
                 }
             }
@@ -466,14 +627,20 @@ class ChatToolWindowFactory : ToolWindowFactory {
             if (!cancelled.compareAndSet(false, true)) return
 
             turn?.cancel(true)
-            setBusy(false)
-            transcript.addError("Stopped. The reply is incomplete.")
+            showError("Stopped. The reply is incomplete.")
+            endTurn()
         }
 
         private fun setBusy(busy: Boolean) {
             sendButton.isEnabled = !busy
             transcript.setThinking(busy)
             statusLabel.text = " "
+        }
+
+        /** Ends a turn on the EDT: the composer goes back to idle and the conversation reaches disk. */
+        private fun endTurn() {
+            setBusy(false)
+            saveCurrentChat(active = true)
         }
 
         /** Short one-liner shown next to a tool name, e.g. the file it touched. */
@@ -629,7 +796,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 Messages.getQuestionIcon(),
             )
             val resume = answer == Messages.YES
-            transcript.addError(
+            showError(
                 if (resume) "Response hit the max_tokens limit — continuing."
                 else "Response hit the max_tokens limit and is incomplete."
             )

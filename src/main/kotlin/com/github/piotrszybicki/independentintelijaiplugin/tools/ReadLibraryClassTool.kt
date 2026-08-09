@@ -119,11 +119,28 @@ class ReadLibraryClassTool(private val project: Project) : AnthropicTool {
         }
 
         val header = "${candidate.qualifiedName} — ${candidate.virtualFile.name}, " +
-            "lines $start-$lastLine of ${range.lineCount}"
+            "lines $start-$lastLine of ${range.lineCount}" + provenance(candidate)
         if (body.length <= MAX_CHARS) return "$header\n$body"
 
         val shown = body.take(MAX_CHARS).substringBeforeLast("\n")
         return "$header\n$shown\n\n[TRUNCATED at $MAX_CHARS characters. Request a narrower line " +
             "range to see the rest.]"
+    }
+
+    /**
+     * Says whether this is real source or decompiled bytecode.
+     *
+     * Worth stating rather than leaving to be inferred: decompiled output has no comments, no
+     * parameter names beyond what the bytecode kept, and no Javadoc, so an answer drawn from it is
+     * working with less than the library actually documents. Knowing which one it is reading tells
+     * the model how much to trust it -- and tells the user there is something they could fix.
+     */
+    private fun provenance(candidate: LibraryClasses.Candidate): String {
+        if (candidate.fromSources) return "  (source)"
+
+        val library = candidate.libraryName?.let { " for $it" }.orEmpty()
+        return "  (decompiled — no sources attached$library; comments and Javadoc are absent, and " +
+            "parameter names may be synthetic. attach_library_sources can fetch them, with the " +
+            "user's approval, if that missing detail actually matters here.)"
     }
 }

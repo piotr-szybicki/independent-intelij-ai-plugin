@@ -1,6 +1,5 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.ide.structureView.StructureViewTreeElement
 import com.intellij.ide.structureView.TreeBasedStructureViewBuilder
@@ -8,18 +7,14 @@ import com.intellij.ide.util.treeView.smartTree.TreeElement
 import com.intellij.lang.LanguageStructureViewBuilder
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.editor.Document
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
-import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiFile
 import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
 
 /**
- * The Structure tool window, as a tool: what is in a file and on which line, without reading the
- * file.
+ * The Structure tool window, as a tool: what is in a file and on which line, without reading it.
  *
  * Built on the platform's own structure view model rather than a PSI walk, for two reasons. It
  * already knows what counts as a member in each language -- a raw walk over named elements returns
@@ -28,7 +23,9 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  *
  * The line numbers are the point as much as the names are: they are what `read_project_file` takes
  * as a range and what `edit_file_lines` takes as a target, so an outline turns "read the whole file
- * to find one method" into "read fifteen lines".
+ * to find one method" into "read fifteen lines". The same applies to `class_name`, where the file is
+ * a dependency read through `read_library_class` -- a decompiled class is often thousands of lines,
+ * and outlining it first is the difference between an API you can survey and a wall of text.
  */
 class GetFileStructureTool(private val project: Project) : AnthropicTool {
 
@@ -37,6 +34,7 @@ class GetFileStructureTool(private val project: Project) : AnthropicTool {
         private const val MAX_MAX_DEPTH = 10
         private const val DEFAULT_MAX_ITEMS = 300
         private const val MAX_MAX_ITEMS = 1000
+        private const val MAX_CANDIDATES = 20
     }
 
     override val name = "get_file_structure"
@@ -46,14 +44,26 @@ class GetFileStructureTool(private val project: Project) : AnthropicTool {
             "whole file when you want to know what is in it or where something is defined -- it " +
             "costs a fraction of the tokens, and the line numbers it returns are what " +
             "read_project_file and edit_file_lines take, so you can then read or edit just the part " +
-            "you need. Use get_symbol_info instead when you already know the name and want the " +
-            "declaration itself."
+            "you need. Pass 'path' for a file in the project, or 'class_name' to outline a class " +
+            "from a library or the JDK, whose lines then feed read_library_class. Use " +
+            "get_symbol_info instead when you already know the name and want the declaration itself."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
             add("path", JsonObject().apply {
                 addProperty("type", "string")
-                addProperty("description", "File path relative to the project root, e.g. src/Main.kt")
+                addProperty(
+                    "description",
+                    "File path relative to the project root, e.g. src/Main.kt. Give this or 'class_name'.",
+                )
+            })
+            add("class_name", JsonObject().apply {
+                addProperty("type", "string")
+                addProperty(
+                    "description",
+                    "Class from a library, framework or the JDK, simple or fully qualified. Use " +
+                        "instead of 'path' for anything outside the project.",
+                )
             })
             add("max_depth", JsonObject().apply {
                 addProperty("type", "integer")
@@ -71,38 +81,45 @@ class GetFileStructureTool(private val project: Project) : AnthropicTool {
                 )
             })
         })
-        add("required", JsonArray().apply { add("path") })
     }
 
     override fun execute(input: JsonObject): String {
-        val path = input.get("path")?.asString ?: return "Error: missing 'path'"
+        val path = input.get("path")?.asString?.trim()?.takeIf { it.isNotEmpty() }
+        val className = input.get("class_name")?.asString?.trim()?.takeIf { it.isNotEmpty() }
 
-        val vf = PsiTargets.resolveProjectFile(project, path)
-            ?: return "Error: path is outside the project directory or does not exist: $path"
-        if (vf.isDirectory) return "Error: not a file: $path"
+        if (path == null && className == null) return "Error: give either 'path' or 'class_name'"
+        if (path != null && className != null) {
+            return "Error: give either 'path' or 'class_name', not both"
+        }
 
         val maxDepth = (input.get("max_depth")?.asInt ?: DEFAULT_MAX_DEPTH).coerceIn(1, MAX_MAX_DEPTH)
         val maxItems = (input.get("max_items")?.asInt ?: DEFAULT_MAX_ITEMS).coerceIn(1, MAX_MAX_ITEMS)
 
+        val source = if (path != null) fromPath(path) else fromClassName(className!!)
+        val target = when (source) {
+            is Source.Error -> return source.message
+            is Source.Resolved -> source
+        }
+
         val outline = try {
-            compute(vf, maxDepth, maxItems)
+            compute(target.file, maxDepth, maxItems)
         } catch (e: Exception) {
-            return "Error: could not outline $path: ${e.message ?: e::class.java.simpleName}"
-        } ?: return "Error: could not open $path as a source file."
+            return "Error: could not outline ${target.label}: ${e.message ?: e::class.java.simpleName}"
+        } ?: return "Error: could not read ${target.label}."
 
         if (!outline.supported) {
-            return "No structure available for $path -- the IDE has no outline for this file type. " +
-                "Use read_project_file instead."
+            return "No structure available for ${target.label} -- the IDE has no outline for this " +
+                "file type. Use ${if (path != null) "read_project_file" else "read_library_class"} instead."
         }
         if (outline.entries.isEmpty()) {
-            return "$path has no declarations to outline (${outline.lineCount} lines)."
+            return "${target.label} has no declarations to outline (${outline.lineCount} lines)."
         }
 
         val width = outline.lineCount.toString().length
         val blank = " ".repeat(width)
 
         return buildString {
-            append(path).append(" — ").append(outline.lineCount).append(" lines, ")
+            append(target.label).append(" — ").append(outline.lineCount).append(" lines, ")
             append(outline.entries.size).append(" declaration(s)")
             if (outline.truncated) append(" (truncated at $maxItems)")
             append(":\n")
@@ -116,6 +133,48 @@ class GetFileStructureTool(private val project: Project) : AnthropicTool {
         }
     }
 
+    private sealed class Source {
+        class Resolved(val file: PsiFile, val label: String) : Source()
+        class Error(val message: String) : Source()
+    }
+
+    private fun fromPath(path: String): Source {
+        val vf = PsiTargets.resolveProjectFile(project, path)
+            ?: return Source.Error(
+                "Error: path is outside the project directory or does not exist: $path. For a class " +
+                    "from a library or the JDK, use 'class_name' instead."
+            )
+        if (vf.isDirectory) return Source.Error("Error: not a file: $path")
+
+        val psiFile = PsiTargets.resolvePsiFile(project, path)
+            ?: return Source.Error("Error: could not open $path as a source file.")
+        return Source.Resolved(psiFile, path)
+    }
+
+    private fun fromClassName(className: String): Source {
+        val resolution = try {
+            LibraryClasses.resolve(project, className, MAX_CANDIDATES)
+        } catch (e: Exception) {
+            return Source.Error("Error: could not look up \"$className\": ${e.message ?: e::class.java.simpleName}")
+        }
+
+        return when (resolution) {
+            is LibraryClasses.Resolution.NotFound -> Source.Error(
+                "No class named \"$className\" is visible to this project. Check the spelling, and " +
+                    "note this searches the project's own sources plus its libraries and SDK."
+            )
+
+            is LibraryClasses.Resolution.Ambiguous -> Source.Error(
+                "\"$className\" is ambiguous — ${resolution.candidates.size} classes match:\n" +
+                    resolution.candidates.joinToString("\n") { "  ${it.qualifiedName}" } +
+                    "\n\nCall again with the fully qualified name."
+            )
+
+            is LibraryClasses.Resolution.Found ->
+                Source.Resolved(resolution.candidate.file, resolution.candidate.qualifiedName)
+        }
+    }
+
     private class Entry(val depth: Int, val line: Int?, val label: String)
 
     private class Outline(
@@ -126,30 +185,31 @@ class GetFileStructureTool(private val project: Project) : AnthropicTool {
         val supported: Boolean,
     )
 
-    private fun compute(vf: VirtualFile, maxDepth: Int, maxItems: Int): Outline? {
+    private fun compute(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? {
         var result: Outline? = null
         ApplicationManager.getApplication().invokeAndWait {
-            result = ReadAction.compute<Outline?, RuntimeException> { build(vf, maxDepth, maxItems) }
+            result = ReadAction.compute<Outline?, RuntimeException> { build(psiFile, maxDepth, maxItems) }
         }
         return result
     }
 
-    private fun build(vf: VirtualFile, maxDepth: Int, maxItems: Int): Outline? {
-        val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return null
-        val document = FileDocumentManager.getInstance().getDocument(vf) ?: return null
-        val lineCount = document.lineCount
+    private fun build(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? {
+        // Line numbers come from the PSI text rather than a Document: PSI offsets are defined
+        // against it, and a decompiled library class has no Document at all.
+        val text = psiFile.text ?: return null
+        val lines = Lines(text)
 
         val builder = LanguageStructureViewBuilder.getInstance().getStructureViewBuilder(psiFile)
         if (builder !is TreeBasedStructureViewBuilder) {
-            return Outline(emptyList(), lineCount, truncated = false, supported = false)
+            return Outline(emptyList(), lines.count, truncated = false, supported = false)
         }
 
         // No editor: the model only needs one to track the caret, which nothing here does.
         val model = builder.createStructureViewModel(null)
         try {
             val entries = mutableListOf<Entry>()
-            val truncated = walk(model.root.children, 0, maxDepth, maxItems, entries, document)
-            return Outline(entries, lineCount, truncated, supported = true)
+            val truncated = walk(model.root.children, 0, maxDepth, maxItems, entries, lines)
+            return Outline(entries, lines.count, truncated, supported = true)
         } finally {
             Disposer.dispose(model)
         }
@@ -162,7 +222,7 @@ class GetFileStructureTool(private val project: Project) : AnthropicTool {
         maxDepth: Int,
         maxItems: Int,
         entries: MutableList<Entry>,
-        document: Document,
+        lines: Lines,
     ): Boolean {
         if (depth >= maxDepth) return false
 
@@ -177,23 +237,53 @@ class GetFileStructureTool(private val project: Project) : AnthropicTool {
             // but their children are -- and indenting under a row that was never printed would be
             // misleading, so the children stay at this depth.
             if (text.isEmpty()) {
-                if (walk(element.children, depth, maxDepth, maxItems, entries, document)) return true
+                if (walk(element.children, depth, maxDepth, maxItems, entries, lines)) return true
                 continue
             }
 
             val label = if (location.isNullOrEmpty()) text else "$text  $location"
-            entries.add(Entry(depth, lineOf(element, document), label))
+            entries.add(Entry(depth, lineOf(element, lines), label))
 
-            if (walk(element.children, depth + 1, maxDepth, maxItems, entries, document)) return true
+            if (walk(element.children, depth + 1, maxDepth, maxItems, entries, lines)) return true
         }
         return false
     }
 
-    private fun lineOf(element: TreeElement, document: Document): Int? {
+    private fun lineOf(element: TreeElement, lines: Lines): Int? {
         val psi = (element as? StructureViewTreeElement)?.value as? PsiElement ?: return null
         if (!psi.isValid) return null
         val range = psi.textRange ?: return null
-        val offset = range.startOffset.coerceIn(0, document.textLength)
-        return document.getLineNumber(offset) + 1
+        return lines.lineAt(range.startOffset)
+    }
+
+    /**
+     * Line starts, indexed once so that resolving three hundred element offsets does not mean three
+     * hundred scans of a file that may be tens of thousands of lines after decompilation.
+     */
+    private class Lines(text: String) {
+        private val starts: IntArray
+
+        val count: Int
+
+        init {
+            val split = LineRange(text).lines
+            count = split.size
+            starts = IntArray(split.size)
+            var offset = 0
+            for (i in split.indices) {
+                starts[i] = offset
+                offset += split[i].length + 1
+            }
+        }
+
+        /** 1-based line containing [offset]. */
+        fun lineAt(offset: Int): Int? {
+            if (count == 0) return null
+            val found = java.util.Arrays.binarySearch(starts, offset)
+            // binarySearch returns -(insertionPoint) - 1 when there is no exact hit; the line we
+            // want is the one starting just before the offset.
+            val index = if (found >= 0) found else (-found - 2).coerceAtLeast(0)
+            return index + 1
+        }
     }
 }

@@ -58,6 +58,13 @@ class AnthropicAgent(
             - `get_file_structure` is how you find out which lines those are. It outlines a file's
               declarations with their line numbers for a fraction of the cost of reading it, so on
               anything but a short file, outline first and then read the range you need.
+            - Code from a dependency is readable too: `read_library_class` takes a class name rather
+              than a path and returns its source, or its decompiled bytecode when the library ships
+              no sources. `get_file_structure` takes the same name via `class_name`, and on a
+              decompiled class that is worth doing first -- they run to thousands of lines. Read the
+              library rather than guessing at an API you cannot see. Decompiled code carries no
+              comments or Javadoc; `attach_library_sources` fetches the real thing, but it asks the
+              user and downloads, so reach for it only when that missing detail is what you need.
             - `get_symbol_info` answers "what is this?" in one call. Point it at a call, a type, or
               any name you are unsure of and it returns the declaration -- signature, doc comment and
               source -- including for library and JDK symbols no project file contains. Reach for it
