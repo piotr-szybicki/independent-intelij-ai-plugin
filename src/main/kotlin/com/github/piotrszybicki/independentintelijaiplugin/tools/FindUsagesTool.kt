@@ -45,7 +45,7 @@ class FindUsagesTool(private val project: Project) : AICodingAgentTool {
         val element = PsiTargets.resolveTarget(project, path, line, symbol)
             ?: return "Error: could not resolve symbol '$symbol' at $path:$line"
 
-        val usages = ReadAction.compute<List<String>, RuntimeException> {
+        val usages = ReadAction.computeBlocking<List<String>, RuntimeException> {
             ReferencesSearch.search(element).mapNotNull { ref ->
                 val refElement = ref.element
                 val refFile = refElement.containingFile?.virtualFile ?: return@mapNotNull null

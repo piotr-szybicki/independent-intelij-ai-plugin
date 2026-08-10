@@ -86,8 +86,8 @@ class MoveFileTool(private val project: Project) : AICodingAgentTool {
         val targetDirVf = createDirectory(targetDir.path)
             ?: return "Error: cannot create target directory ${targetDir.path}"
 
-        val psiFile = ReadAction.compute<PsiFile?, RuntimeException> { PsiManager.getInstance(project).findFile(vf) }
-        val psiDir = ReadAction.compute<PsiDirectory?, RuntimeException> {
+        val psiFile = ReadAction.computeBlocking<PsiFile?, RuntimeException> { PsiManager.getInstance(project).findFile(vf) }
+        val psiDir = ReadAction.computeBlocking<PsiDirectory?, RuntimeException> {
             PsiManager.getInstance(project).findDirectory(targetDirVf)
         }
 

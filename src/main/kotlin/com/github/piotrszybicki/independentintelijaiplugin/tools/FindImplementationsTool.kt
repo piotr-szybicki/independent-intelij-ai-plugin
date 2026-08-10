@@ -91,7 +91,7 @@ class FindImplementationsTool(private val project: Project) : AICodingAgentTool 
                 "whole word against that line's text -- check it appears there exactly as spelled."
 
         val hits = try {
-            ReadAction.compute<List<Hit>, RuntimeException> { search(target) }
+            ReadAction.computeBlocking<List<Hit>, RuntimeException> { search(target) }
         } catch (e: Exception) {
             return "Error: could not search for implementations of '$symbol': " +
                 (e.message ?: e::class.java.simpleName)

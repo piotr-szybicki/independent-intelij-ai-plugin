@@ -166,12 +166,12 @@ class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
      * is not the same as the file having no problems, and must not be reported as such.
      */
     private fun cachedHighlights(vf: VirtualFile, minSeverity: HighlightSeverity): List<Problem>? =
-        ReadAction.compute<List<Problem>?, RuntimeException> {
-            val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@compute null
+        ReadAction.computeBlocking<List<Problem>?, RuntimeException> {
+            val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking null
             if (!DaemonCodeAnalyzerEx.getInstanceEx(project).isErrorAnalyzingFinished(psiFile)) {
-                return@compute null
+                return@computeBlocking null
             }
-            val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@compute null
+            val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@computeBlocking null
 
             DaemonCodeAnalyzerImpl.getHighlights(document, minSeverity, project).map { info ->
                 val offset = info.startOffset.coerceIn(0, document.textLength)

@@ -232,6 +232,9 @@ internal class DebuggerPause(private val project: Project) {
             }
 
             // Everything below ends the wait rather than reporting into a tree that does not exist.
+            // tooManyChildren(Int) is deprecated in favour of the (Int, Runnable) overload, but it is
+            // still abstract on XCompositeNode, so it has to be implemented either way.
+            @Suppress("OVERRIDE_DEPRECATION")
             override fun tooManyChildren(remaining: Int) {
                 truncated.set(true)
                 listed.countDown()

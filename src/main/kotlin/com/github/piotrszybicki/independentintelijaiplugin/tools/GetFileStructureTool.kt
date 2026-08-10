@@ -188,7 +188,7 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
     private fun compute(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? {
         var result: Outline? = null
         ApplicationManager.getApplication().invokeAndWait {
-            result = ReadAction.compute<Outline?, RuntimeException> { build(psiFile, maxDepth, maxItems) }
+            result = ReadAction.computeBlocking<Outline?, RuntimeException> { build(psiFile, maxDepth, maxItems) }
         }
         return result
     }

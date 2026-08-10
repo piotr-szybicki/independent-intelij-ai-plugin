@@ -155,8 +155,8 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
     private fun awaitAnalysis(vf: VirtualFile) {
         val deadline = System.currentTimeMillis() + ANALYSIS_TIMEOUT_MILLIS
         while (System.currentTimeMillis() < deadline) {
-            val finished = ReadAction.compute<Boolean, RuntimeException> {
-                val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@compute true
+            val finished = ReadAction.computeBlocking<Boolean, RuntimeException> {
+                val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking true
                 DaemonCodeAnalyzerEx.getInstanceEx(project).isErrorAnalyzingFinished(psiFile)
             }
             if (finished) return
@@ -167,7 +167,7 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
     private fun collect(vf: VirtualFile, editor: Editor, line: Int): List<Fix> {
         var result: List<Fix> = emptyList()
         ApplicationManager.getApplication().invokeAndWait {
-            result = ReadAction.compute<List<Fix>, RuntimeException> { gather(vf, editor, line) }
+            result = ReadAction.computeBlocking<List<Fix>, RuntimeException> { gather(vf, editor, line) }
         }
         return result
     }

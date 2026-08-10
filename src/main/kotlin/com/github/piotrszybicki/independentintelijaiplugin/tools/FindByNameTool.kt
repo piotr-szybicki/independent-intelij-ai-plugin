@@ -115,7 +115,7 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
             // A contributor that throws (an unhealthy language plugin, an index still building) must
             // not take the whole search down -- the others may still have the answer.
             val names = runCatching {
-                ReadAction.compute<Array<String>, RuntimeException> {
+                ReadAction.computeBlocking<Array<String>, RuntimeException> {
                     contributor.getNames(project, false)
                 }
             }.getOrDefault(emptyArray())
@@ -124,7 +124,7 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
                 if (!matches(candidateName)) continue
 
                 val items = runCatching {
-                    ReadAction.compute<Array<NavigationItem>, RuntimeException> {
+                    ReadAction.computeBlocking<Array<NavigationItem>, RuntimeException> {
                         // includeNonProjectItems stays false: library and JDK classes are not part
                         // of the project the user is asking about, and there are a great many of them.
                         contributor.getItemsByName(candidateName, candidateName, project, false)
@@ -141,15 +141,15 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
     }
 
     private fun renderNavigationItem(name: String, item: NavigationItem): String =
-        ReadAction.compute<String, RuntimeException> {
+        ReadAction.computeBlocking<String, RuntimeException> {
             val element = item as? PsiElement
             val vf = element?.containingFile?.virtualFile
-                ?: return@compute "$name (location unavailable)"
+                ?: return@computeBlocking "$name (location unavailable)"
 
             val path = PsiTargets.relativePath(project, vf)
             val document = FileDocumentManager.getInstance().getDocument(vf)
             val offset = element.textOffset
-            if (document == null || offset !in 0..document.textLength) return@compute "$name — $path"
+            if (document == null || offset !in 0..document.textLength) return@computeBlocking "$name — $path"
 
             "$name — $path:${document.getLineNumber(offset) + 1}"
         }

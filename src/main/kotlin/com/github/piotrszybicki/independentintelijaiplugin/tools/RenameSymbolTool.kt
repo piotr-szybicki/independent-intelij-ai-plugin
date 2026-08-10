@@ -57,11 +57,11 @@ class RenameSymbolTool(private val project: Project) : AICodingAgentTool {
                 "cannot be renamed. Use get_symbol_info to see where it comes from."
         }
 
-        val usageCount = ReadAction.compute<Int, RuntimeException> {
+        val usageCount = ReadAction.computeBlocking<Int, RuntimeException> {
             ReferencesSearch.search(element).findAll().size
         }
         // Not necessarily $path: the model may have pointed at a use rather than the declaration.
-        val declaredIn = ReadAction.compute<String, RuntimeException> {
+        val declaredIn = ReadAction.computeBlocking<String, RuntimeException> {
             element.containingFile?.virtualFile?.let { PsiTargets.relativePath(project, it) } ?: path
         }
 

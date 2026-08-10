@@ -107,7 +107,7 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
                 ". read_library_class will return real source for it."
         }
 
-        val entries = ReadAction.compute<List<LibraryOrderEntry>, RuntimeException> {
+        val entries = ReadAction.computeBlocking<List<LibraryOrderEntry>, RuntimeException> {
             ProjectFileIndex.getInstance(project)
                 .getOrderEntriesForFile(candidate.virtualFile)
                 .filterIsInstance<LibraryOrderEntry>()
@@ -170,7 +170,7 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         if (providers.isEmpty()) return emptyList()
 
         val found = mutableListOf<AttachAction>()
-        ReadAction.run<RuntimeException> {
+        ReadAction.runBlocking<RuntimeException> {
             for (provider in providers) {
                 // One misbehaving provider must not hide the others' actions.
                 val actions = runCatching {

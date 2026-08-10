@@ -41,12 +41,23 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdea("2026.2.1")
+        intellijIdea("2026.2.0.1")
         // run_shell_command drives the IDE's own terminal so the user can watch and Ctrl+C.
         bundledPlugin("org.jetbrains.plugins.terminal")
-        // get_file_problems uses CodeSmellDetector, which lives here because VCS is what runs
-        // code analysis before a commit -- it is the platform's on-demand "analyse this file" entry point.
-        bundledModule("intellij.platform.vcs.impl")
+        // ConfigurationRunner listens to test events via SMTestProxy / SMTRunnerEventsListener.
+        // These were core platform classes through 2025.x; 2026.2 moved them out into the bundled
+        // Test Runner plugin (plugins/platform-testRunner-plugin), so they now need declaring.
+        bundledPlugin("intellij.testRunner.plugin")
+        // get_file_problems uses CodeSmellDetector (com.intellij.openapi.vcs), the platform's
+        // on-demand "analyse this file" entry point -- it lives in VCS because that is what runs
+        // code analysis before a commit.
+        //
+        // Up to 2025.x this was bundledModule("intellij.platform.vcs.impl"), but 2026.2 flattened
+        // lib/modules/ into lib/ and the Gradle plugin (2.18.1) cannot resolve modules there yet --
+        // see https://github.com/JetBrains/intellij-platform-gradle-plugin/issues/2165.
+        // bundledLibrary() is the documented workaround for exactly that gap; switch back to
+        // bundledModule() once the Gradle plugin catches up with the 262 classpath layout.
+        bundledLibrary("lib/intellij.platform.vcs.impl.jar")
         testFramework(TestFrameworkType.Platform)
     }
 }

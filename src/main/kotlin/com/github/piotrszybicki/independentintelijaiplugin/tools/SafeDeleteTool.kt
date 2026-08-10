@@ -63,9 +63,9 @@ class SafeDeleteTool(private val project: Project) : AICodingAgentTool {
                 "cannot be deleted. Use get_symbol_info to see where it comes from."
         }
 
-        val info = ReadAction.compute<DeleteInfo?, RuntimeException> {
-            val vf = element.containingFile?.virtualFile ?: return@compute null
-            val doc = FileDocumentManager.getInstance().getDocument(vf) ?: return@compute null
+        val info = ReadAction.computeBlocking<DeleteInfo?, RuntimeException> {
+            val vf = element.containingFile?.virtualFile ?: return@computeBlocking null
+            val doc = FileDocumentManager.getInstance().getDocument(vf) ?: return@computeBlocking null
 
             val usages = ReferencesSearch.search(element).mapNotNull { ref ->
                 val refElement = ref.element
@@ -103,7 +103,7 @@ class SafeDeleteTool(private val project: Project) : AICodingAgentTool {
                 doc.setText(info.newText)
             })
         }
-        if (error != null) return error!!
+        if (error != null) return error
 
         return "Deleted '$symbol' from $declaredIn."
     }

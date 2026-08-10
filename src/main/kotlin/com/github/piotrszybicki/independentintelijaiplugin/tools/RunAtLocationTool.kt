@@ -178,7 +178,7 @@ class RunAtLocationTool(private val project: Project) : AICodingAgentTool {
     private fun produce(element: PsiElement): Produced? {
         var result: Produced? = null
         ApplicationManager.getApplication().invokeAndWait {
-            result = ReadAction.compute<Produced?, RuntimeException> { ask(element) }
+            result = ReadAction.computeBlocking<Produced?, RuntimeException> { ask(element) }
         }
         return result
     }

@@ -813,7 +813,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
                         override fun onToolCall(
                             name: String,
-                            toolInput: JsonObject,
+                            input: JsonObject,
                             result: String,
                             outcome: AICodingAgent.ToolOutcome,
                         ) {
@@ -824,13 +824,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
                                     AICodingAgent.ToolOutcome.FAILED -> ChatTranscript.ToolStatus.FAILED
                                     AICodingAgent.ToolOutcome.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
                                 }
-                                val details = toolCallDetails(toolInput, result)
+                                val details = toolCallDetails(input, result)
                                 // A tool the cancel got to first was never started, so there is no
                                 // row waiting for it -- it is drawn here, settled, instead.
                                 if (runningTool != null) {
                                     finishToolCall(details, status)
                                 } else {
-                                    showToolCall(name, summarizeToolInput(toolInput), details, status)
+                                    showToolCall(name, summarizeToolInput(input), details, status)
                                 }
                             }
                         }

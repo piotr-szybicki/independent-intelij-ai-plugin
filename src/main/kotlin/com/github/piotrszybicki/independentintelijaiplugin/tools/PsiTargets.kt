@@ -35,13 +35,13 @@ object PsiTargets {
     }
 
     fun resolveElement(project: Project, relativePath: String, line: Int, symbolName: String): PsiElement? {
-        return ReadAction.compute<PsiElement?, RuntimeException> {
-            val vf = resolveProjectFile(project, relativePath) ?: return@compute null
-            val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@compute null
-            val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@compute null
+        return ReadAction.computeBlocking<PsiElement?, RuntimeException> {
+            val vf = resolveProjectFile(project, relativePath) ?: return@computeBlocking null
+            val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking null
+            val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@computeBlocking null
 
             val lineIndex = line - 1
-            if (lineIndex < 0 || lineIndex >= document.lineCount) return@compute null
+            if (lineIndex < 0 || lineIndex >= document.lineCount) return@computeBlocking null
 
             val lineStart = document.getLineStartOffset(lineIndex)
             val lineEnd = document.getLineEndOffset(lineIndex)
@@ -52,7 +52,7 @@ object PsiTargets {
                 if (leaf != null) {
                     val named = PsiTreeUtil.getParentOfType(leaf, PsiNamedElement::class.java, false)
                     if (named != null && named.name == symbolName) {
-                        return@compute named
+                        return@computeBlocking named
                     }
                     offset = leaf.textRange.endOffset.coerceAtLeast(offset + 1)
                 } else {
@@ -82,7 +82,7 @@ object PsiTargets {
         line: Int,
         symbolName: String,
         occurrence: Int = 1,
-    ): PsiElement? = ReadAction.compute<PsiElement?, RuntimeException> {
+    ): PsiElement? = ReadAction.computeBlocking<PsiElement?, RuntimeException> {
         val resolved = occurrenceOffset(project, relativePath, line, symbolName, occurrence)?.let { offset ->
             val vf = resolveProjectFile(project, relativePath)
             val psiFile = vf?.let { PsiManager.getInstance(project).findFile(it) }
@@ -92,8 +92,8 @@ object PsiTargets {
     }
 
     fun resolvePsiFile(project: Project, relativePath: String): PsiFile? =
-        ReadAction.compute<PsiFile?, RuntimeException> {
-            val vf = resolveProjectFile(project, relativePath) ?: return@compute null
+        ReadAction.computeBlocking<PsiFile?, RuntimeException> {
+            val vf = resolveProjectFile(project, relativePath) ?: return@computeBlocking null
             PsiManager.getInstance(project).findFile(vf)
         }
 
@@ -105,20 +105,20 @@ object PsiTargets {
      * themselves, so landing anywhere inside the declaration is enough.
      */
     fun elementAtLine(project: Project, relativePath: String, line: Int): PsiElement? =
-        ReadAction.compute<PsiElement?, RuntimeException> {
-            val vf = resolveProjectFile(project, relativePath) ?: return@compute null
-            val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@compute null
-            val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@compute null
+        ReadAction.computeBlocking<PsiElement?, RuntimeException> {
+            val vf = resolveProjectFile(project, relativePath) ?: return@computeBlocking null
+            val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking null
+            val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@computeBlocking null
 
             val lineIndex = line - 1
-            if (lineIndex < 0 || lineIndex >= document.lineCount) return@compute null
+            if (lineIndex < 0 || lineIndex >= document.lineCount) return@computeBlocking null
             val lineStart = document.getLineStartOffset(lineIndex)
             val lineEnd = document.getLineEndOffset(lineIndex)
 
             var offset = lineStart
             while (offset < lineEnd) {
                 val leaf = psiFile.findElementAt(offset)
-                if (leaf != null && leaf.text.isNotBlank()) return@compute leaf
+                if (leaf != null && leaf.text.isNotBlank()) return@computeBlocking leaf
                 offset = leaf?.textRange?.endOffset?.coerceAtLeast(offset + 1) ?: (offset + 1)
             }
             // A blank line still belongs to something -- the enclosing class, usually.
@@ -127,7 +127,7 @@ object PsiTargets {
 
     /** True when [element] is declared in a file under the project root, and so is ours to change. */
     fun isInProject(project: Project, element: PsiElement): Boolean {
-        val vf = ReadAction.compute<VirtualFile?, RuntimeException> { element.containingFile?.virtualFile }
+        val vf = ReadAction.computeBlocking<VirtualFile?, RuntimeException> { element.containingFile?.virtualFile }
             ?: return false
         val basePath = project.basePath ?: return false
         return vf.path.startsWith(basePath)

@@ -36,11 +36,11 @@ class AICodingAgentSettingsConfigurable : Configurable {
     private val apiVersionField = JBTextField()
 
     private val authSchemeCombo = ComboBox(DefaultComboBoxModel(AuthScheme.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create("") { scheme -> scheme.displayName }
+        renderer = SimpleListCellRenderer.create { label, scheme, _ -> label.text = scheme?.displayName.orEmpty() }
     }
 
     private val protocolCombo = ComboBox(DefaultComboBoxModel(WireProtocol.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create("") { protocol -> protocol.displayName }
+        renderer = SimpleListCellRenderer.create { label, protocol, _ -> label.text = protocol?.displayName.orEmpty() }
     }
 
     private val extraHeadersArea = JBTextArea(4, 40).apply {

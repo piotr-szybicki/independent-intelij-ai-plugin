@@ -4,6 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionPlaces
+import com.intellij.openapi.actionSystem.ActionUiKind
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -104,17 +105,24 @@ class RunActionTool(private val project: Project) : AICodingAgentTool {
             .add(CommonDataKeys.VIRTUAL_FILE, editorFile)
             .build()
 
-        val event = AnActionEvent.createFromAnAction(action, null, ActionPlaces.UNKNOWN, context)
+        val event = AnActionEvent.createEvent(
+            action,
+            context,
+            action.templatePresentation.clone(),
+            ActionPlaces.UNKNOWN,
+            ActionUiKind.NONE,
+            null,
+        )
 
         // Ask the action whether it applies before firing it: an action that is disabled in this
         // context would otherwise silently do nothing and read as success.
-        ActionUtil.performDumbAwareUpdate(action, event, true)
+        ActionUtil.updateAction(action, event)
         if (!event.presentation.isEnabled) {
             return "\"${event.presentation.text ?: actionId}\" is not available in the current " +
                 "context (it is disabled). Open or select the file it should apply to, then try again."
         }
 
-        ActionUtil.performActionDumbAwareWithCallbacks(action, event)
+        ActionUtil.performAction(action, event)
         return "Ran \"${event.presentation.text ?: actionId}\" ($actionId)."
     }
 

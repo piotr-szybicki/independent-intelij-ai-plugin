@@ -36,7 +36,7 @@ class AddImportTool(private val project: Project) : AICodingAgentTool {
         val vf = PsiTargets.resolveProjectFile(project, path)
             ?: return "Error: file not found or outside project: $path"
 
-        val oldText = ReadAction.compute<String?, RuntimeException> {
+        val oldText = ReadAction.computeBlocking<String?, RuntimeException> {
             FileDocumentManager.getInstance().getDocument(vf)?.text
         } ?: return "Error: cannot read $path"
 
@@ -56,7 +56,7 @@ class AddImportTool(private val project: Project) : AICodingAgentTool {
                 doc.setText(newText)
             })
         }
-        if (error != null) return error!!
+        if (error != null) return error
 
         return "Added import '$importPath' to $path."
     }

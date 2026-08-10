@@ -84,7 +84,7 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
         // Which kinds of breakpoint are legal here is a language question -- canPutAt is what the
         // gutter itself consults, so a line it rejects is one the debugger could not stop on.
         val type = try {
-            ReadAction.compute<XLineBreakpointType<*>?, RuntimeException> {
+            ReadAction.computeBlocking<XLineBreakpointType<*>?, RuntimeException> {
                 XDebuggerUtil.getInstance().lineBreakpointTypes.firstOrNull { it.canPutAt(vf, line0, project) }
             }
         } catch (e: IndexNotReadyException) {
@@ -137,7 +137,7 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
      * kinds this call has no reason to know about, and removal should take all of them.
      */
     private fun existingAt(manager: XBreakpointManager, vf: VirtualFile, line0: Int): List<XLineBreakpoint<*>> =
-        ReadAction.compute<List<XLineBreakpoint<*>>, RuntimeException> {
+        ReadAction.computeBlocking<List<XLineBreakpoint<*>>, RuntimeException> {
             manager.allBreakpoints
                 .filterIsInstance<XLineBreakpoint<*>>()
                 .filter { it.fileUrl == vf.url && it.line == line0 }

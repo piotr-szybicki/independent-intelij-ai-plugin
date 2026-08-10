@@ -80,7 +80,7 @@ class GetSymbolInfoTool(private val project: Project) : AICodingAgentTool {
                 "whole word against that line's text -- check it appears there exactly as spelled, " +
                 "and pass 'occurrence' if it appears more than once."
 
-        return ReadAction.compute<String, RuntimeException> { describe(target) }
+        return ReadAction.computeBlocking<String, RuntimeException> { describe(target) }
     }
 
     private fun describe(target: PsiElement): String {

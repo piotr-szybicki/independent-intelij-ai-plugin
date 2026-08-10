@@ -17,7 +17,7 @@ class ListOpenFilesTool(private val project: Project) : AICodingAgentTool {
 
     override fun execute(input: JsonObject): String {
         val basePath = project.basePath
-        val paths = ReadAction.compute<List<String>, RuntimeException> {
+        val paths = ReadAction.computeBlocking<List<String>, RuntimeException> {
             FileEditorManager.getInstance(project).openFiles.map { file ->
                 if (basePath != null && file.path.startsWith(basePath)) {
                     file.path.removePrefix(basePath).trimStart('/', '\\')

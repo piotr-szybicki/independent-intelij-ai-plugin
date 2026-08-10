@@ -25,7 +25,7 @@ object ProjectFiles {
      */
     fun isSkipped(project: Project, vf: VirtualFile): Boolean {
         if (vf.name in ALWAYS_SKIP) return true
-        return ReadAction.compute<Boolean, RuntimeException> {
+        return ReadAction.computeBlocking<Boolean, RuntimeException> {
             val index = ProjectRootManager.getInstance(project).fileIndex
             index.isExcluded(vf) || index.isUnderIgnored(vf)
         }
@@ -56,7 +56,7 @@ object ProjectFiles {
     ): Boolean {
         if (depth > maxDepth) return true
 
-        val children = ReadAction.compute<List<VirtualFile>, RuntimeException> {
+        val children = ReadAction.computeBlocking<List<VirtualFile>, RuntimeException> {
             dir.children?.toList().orEmpty()
         }.sortedWith(compareByDescending<VirtualFile> { it.isDirectory }.thenBy { it.name.lowercase() })
 

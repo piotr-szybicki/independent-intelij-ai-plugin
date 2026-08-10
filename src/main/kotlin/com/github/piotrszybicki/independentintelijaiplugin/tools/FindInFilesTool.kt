@@ -149,7 +149,7 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
     private fun render(query: String, usages: List<UsageInfo>, truncated: Boolean): String {
         if (usages.isEmpty()) return "No matches for \"$query\"."
 
-        val lines = ReadAction.compute<List<String>, RuntimeException> {
+        val lines = ReadAction.computeBlocking<List<String>, RuntimeException> {
             usages.mapNotNull { usage ->
                 val file = usage.virtualFile ?: return@mapNotNull null
                 val document = FileDocumentManager.getInstance().getDocument(file) ?: return@mapNotNull null

@@ -67,7 +67,7 @@ internal object LibraryClasses {
             // One unhealthy contributor -- a language plugin mid-reload, an index still building --
             // must not take the search down; another may hold the answer.
             val items = runCatching {
-                ReadAction.compute<Array<NavigationItem>, RuntimeException> {
+                ReadAction.computeBlocking<Array<NavigationItem>, RuntimeException> {
                     contributor.getItemsByName(simpleName, simpleName, project, true)
                 }
             }.getOrDefault(emptyArray())
@@ -95,20 +95,20 @@ internal object LibraryClasses {
         qualifiedName == requested || qualifiedName.endsWith(".$requested")
 
     private fun describe(project: Project, index: ProjectFileIndex, item: NavigationItem): Candidate? =
-        ReadAction.compute<Candidate?, RuntimeException> {
-            val element = item as? PsiElement ?: return@compute null
+        ReadAction.computeBlocking<Candidate?, RuntimeException> {
+            val element = item as? PsiElement ?: return@computeBlocking null
 
             // The index holds the .class file even for a library whose sources are attached, so
             // resolving straight through `containingFile` would decompile source we already have.
             // The navigation element is where Go to Declaration would land: the real .java or .kt.
             val target = element.navigationElement ?: element
-            val file = target.containingFile ?: element.containingFile ?: return@compute null
-            val vf = file.virtualFile ?: return@compute null
+            val file = target.containingFile ?: element.containingFile ?: return@computeBlocking null
+            val vf = file.virtualFile ?: return@computeBlocking null
 
             // The boundary that keeps this from becoming "read any file on disk": the file has to be
             // somewhere the project model already knows about.
             val inProject = PsiTargets.isInProject(project, element)
-            if (!inProject && !index.isInLibrary(vf)) return@compute null
+            if (!inProject && !index.isInLibrary(vf)) return@computeBlocking null
 
             val qualifiedName = ElementDescriptionUtil
                 .getElementDescription(element, UsageViewLongNameLocation.INSTANCE)

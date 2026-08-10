@@ -38,7 +38,7 @@ class FileExistsTool(private val project: Project) : AICodingAgentTool {
 
         // Prefer the VFS answer, which knows about files created this session before any disk refresh
         // has run; fall back to the disk for paths the VFS has not loaded.
-        val fromVfs = ReadAction.compute<Boolean?, RuntimeException> {
+        val fromVfs = ReadAction.computeBlocking<Boolean?, RuntimeException> {
             PsiTargets.resolveProjectFile(project, relativePath)?.takeIf { it.isValid }?.isDirectory
         }
 

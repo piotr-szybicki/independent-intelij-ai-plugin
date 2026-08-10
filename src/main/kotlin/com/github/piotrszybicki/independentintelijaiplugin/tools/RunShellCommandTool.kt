@@ -198,8 +198,13 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         var failure: Exception? = null
         ApplicationManager.getApplication().invokeAndWait {
             try {
-                created = TerminalToolWindowManager.getInstance(project)
+                // Deprecated in 2026.2 with no documented replacement that preserves these
+                // arguments; createNewSession(dir, name, command, ...) takes a shell command line
+                // instead, so switching needs the terminal API pinned down first.
+                @Suppress("DEPRECATION")
+                val shellWidget = TerminalToolWindowManager.getInstance(project)
                     .createShellWidget(workDir.path, TAB_NAME, false, false)
+                created = shellWidget
             } catch (e: Exception) {
                 failure = e
             }
