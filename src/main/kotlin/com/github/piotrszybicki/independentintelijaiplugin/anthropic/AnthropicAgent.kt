@@ -33,7 +33,6 @@ class AnthropicAgent(
      * turn after turn the prefix is byte-identical.
      */
     private val skills: () -> String = { "" },
-    private val maxIterations: Int = 10,
 ) {
 
     interface Listener {
@@ -51,6 +50,13 @@ class AnthropicAgent(
          * loop with a request to continue; returning false ends it, leaving the partial answer.
          */
         fun onMaxTokens(): Boolean
+
+        /**
+         * Called when the loop has used its whole tool-call budget with the model still asking for
+         * tools. [used] is how many iterations have gone by. Returning true grants another budget's
+         * worth of them; returning false ends the turn where it stands.
+         */
+        fun onMaxIterations(used: Int): Boolean = false
     }
 
     companion object {
@@ -171,11 +177,16 @@ class AnthropicAgent(
      * [isCancelled] is polled at every point where the loop is about to spend something -- a request
      * or a tool call. Cancelling never leaves [history] malformed: a turn that asked for tools is
      * always answered with a result for each of them, so the conversation can be continued.
+     *
+     * [maxIterations] is how many request/tool-call rounds the turn gets before the loop stops and
+     * asks the user whether to go on. Not a hard ceiling: every yes to [Listener.onMaxIterations]
+     * buys that many more.
      */
     fun run(
         endpoint: AnthropicEndpoint,
         model: String,
         maxTokens: Int,
+        maxIterations: Int,
         history: MutableList<ChatMessage>,
         listener: Listener,
         isCancelled: () -> Boolean = { false },
@@ -190,7 +201,20 @@ class AnthropicAgent(
         // cannot change underneath the loop between one iteration and the next.
         val system = systemPrompt()
 
-        repeat(maxIterations) {
+        // A budget rather than a fixed count: the cap is there to stop a runaway loop, not to end a
+        // long piece of work, and only the user can tell the two apart. When it runs out the loop
+        // stops and asks, and an answer of yes buys another [maxIterations].
+        var budget = maxIterations
+        var used = 0
+
+        while (true) {
+            if (used >= budget) {
+                log.info("AnthropicAgent reached the $budget tool-call iteration cap")
+                if (!listener.onMaxIterations(used)) return
+                budget += maxIterations
+            }
+            used++
+
             if (isCancelled()) return
             val turn =
                 AnthropicClient.sendMessage(endpoint, model, maxTokens, history, toolDefinitions, system)
@@ -214,7 +238,7 @@ class AnthropicAgent(
                 // another round trip, so ask before spending one.
                 if (!listener.onMaxTokens()) return
                 history.add(ChatMessage.text("user", CONTINUE_PROMPT))
-                return@repeat
+                continue
             }
 
             val toolResults = JsonArray()
@@ -250,8 +274,6 @@ class AnthropicAgent(
 
             history.add(ChatMessage("user", toolResults))
         }
-
-        log.info("AnthropicAgent stopped after reaching the $maxIterations tool-call iteration cap")
     }
 
     /**

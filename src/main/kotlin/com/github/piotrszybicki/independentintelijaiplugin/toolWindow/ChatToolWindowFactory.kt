@@ -585,6 +585,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val settings = AnthropicSettingsState.getInstance().state
             val model = settings.model
             val maxTokens = settings.maxTokens
+            val maxIterations = settings.maxIterations
 
             cancelled.set(false)
 
@@ -601,7 +602,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 }
 
                 try {
-                    agent.run(endpoint, model, maxTokens, history, object : AnthropicAgent.Listener {
+                    agent.run(endpoint, model, maxTokens, maxIterations, history, object : AnthropicAgent.Listener {
                         override fun onAssistantText(text: String) {
                             if (text.isBlank()) return
                             ApplicationManager.getApplication().invokeLater { showAssistantMessage(text) }
@@ -626,6 +627,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
                                 resume = askToContinue()
                             }
                             return resume
+                        }
+
+                        // Same bargain as onMaxTokens: block here until the user says whether the
+                        // agent should keep going.
+                        override fun onMaxIterations(used: Int): Boolean {
+                            if (cancelled.get()) return false
+                            var extend = false
+                            ApplicationManager.getApplication().invokeAndWait {
+                                extend = askToExtendIterations(used)
+                            }
+                            return extend
                         }
                     }, isCancelled = cancelled::get)
                     ApplicationManager.getApplication().invokeLater { endTurn() }
@@ -833,6 +845,31 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 else "Response hit the max_tokens limit and is incomplete."
             )
             return resume
+        }
+
+        /**
+         * Runs on the EDT, called from the agent thread when a turn has used up its tool-call
+         * budget while the model is still working. The cap only exists to catch a loop that has run
+         * away, and from here the user can see the tool calls it spent -- so let them decide.
+         */
+        private fun askToExtendIterations(used: Int): Boolean {
+            val answer = Messages.showYesNoDialog(
+                project,
+                "The assistant has made $used rounds of tool calls on this message and is still " +
+                    "going.\n\nKeep going? It carries on from where it is, so nothing done so far " +
+                    "is lost, and you will be asked again if it runs on. You can also raise Tool " +
+                    "calls per message in Settings.",
+                "Tool-Call Limit Reached",
+                "Keep Going",
+                "Stop Here",
+                Messages.getQuestionIcon(),
+            )
+            val extend = answer == Messages.YES
+            showError(
+                if (extend) "Tool-call limit reached — continuing."
+                else "Stopped after $used rounds of tool calls. The reply is incomplete."
+            )
+            return extend
         }
 
         private companion object {

@@ -32,6 +32,14 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         var maxTokens: Int = 1024,
 
         /**
+         * How many request/tool-call rounds one message gets before the agent stops and asks whether
+         * to carry on. A stop, not a ceiling -- saying yes buys another run of that many -- so this
+         * is really "how long before I get asked", and it is only here to catch a loop that has run
+         * away with itself.
+         */
+        var maxIterations: Int = 10,
+
+        /**
          * The full URL of the messages endpoint, path included, rather than a base URL with the path
          * appended: provider paths do not agree (Foundry's base already ends in `/v1`, gateways add
          * prefixes of their own), so guessing at it would break more setups than it saves typing on.

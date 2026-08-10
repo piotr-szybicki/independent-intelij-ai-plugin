@@ -14,6 +14,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.components.JBTextField
 import com.intellij.ui.dsl.builder.AlignX
+import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpConfigException
@@ -29,6 +30,8 @@ class AnthropicSettingsConfigurable : Configurable {
 
     private val apiKeyStatusLabel = JBLabel()
     private val modelField = JBTextField()
+    private val maxTokensField = JBTextField()
+    private val maxIterationsField = JBTextField()
     private val endpointField = JBTextField()
     private val anthropicVersionField = JBTextField()
 
@@ -88,6 +91,19 @@ class AnthropicSettingsConfigurable : Configurable {
             row("Model:") {
                 cell(modelField).align(AlignX.FILL)
             }
+            row("Max tokens:") {
+                cell(maxTokensField).columns(10)
+            }.rowComment(
+                "The longest single reply the model may write. Past it the answer is cut off " +
+                    "mid-sentence and you are asked whether to spend another request continuing it.",
+            )
+            row("Tool calls per message:") {
+                cell(maxIterationsField).columns(10)
+            }.rowComment(
+                "How many rounds of tool calls one message gets before the assistant stops and asks " +
+                    "whether to keep going. Answering yes buys another such run, so this is not a " +
+                    "ceiling &mdash; it is the check that stops a loop running away unnoticed.",
+            )
         }
         group("MCP servers") {
             row {
@@ -134,6 +150,8 @@ class AnthropicSettingsConfigurable : Configurable {
     override fun isModified(): Boolean {
         val settings = AnthropicSettingsState.getInstance().state
         return modelField.text != settings.model ||
+            maxTokensField.positiveIntOr(settings.maxTokens) != settings.maxTokens ||
+            maxIterationsField.positiveIntOr(settings.maxIterations) != settings.maxIterations ||
             endpointField.text != settings.endpointUrl ||
             anthropicVersionField.text != settings.anthropicVersion ||
             extraHeadersArea.text != settings.extraHeaders ||
@@ -146,6 +164,12 @@ class AnthropicSettingsConfigurable : Configurable {
     override fun apply() {
         val settings = AnthropicSettingsState.getInstance().state
         settings.model = modelField.text.trim().ifBlank { "claude-sonnet-5" }
+        settings.maxTokens = maxTokensField.positiveIntOr(settings.maxTokens)
+        settings.maxIterations = maxIterationsField.positiveIntOr(settings.maxIterations)
+        // Put the accepted numbers back, so a field that was left with something unusable in it
+        // shows what actually got saved rather than the text that was ignored.
+        maxTokensField.text = settings.maxTokens.toString()
+        maxIterationsField.text = settings.maxIterations.toString()
         // Blanking the endpoint means "back to Anthropic" rather than an unusable configuration.
         settings.endpointUrl = endpointField.text.trim()
             .ifBlank { AnthropicSettingsState.DEFAULT_ENDPOINT_URL }
@@ -174,6 +198,8 @@ class AnthropicSettingsConfigurable : Configurable {
             "Set from ${AnthropicCredentials.ENV_VAR}."
         }
         modelField.text = settings.model
+        maxTokensField.text = settings.maxTokens.toString()
+        maxIterationsField.text = settings.maxIterations.toString()
         endpointField.text = settings.endpointUrl
         anthropicVersionField.text = settings.anthropicVersion
         extraHeadersArea.text = settings.extraHeaders
@@ -182,6 +208,14 @@ class AnthropicSettingsConfigurable : Configurable {
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths
     }
+
+    /**
+     * The number typed into a field, or [fallback] when it is not a usable one. Both numbers here
+     * are budgets the code counts down, so anything but a positive integer -- empty, a word, a zero
+     * -- is treated as "leave it alone" rather than saved and acted on.
+     */
+    private fun JBTextField.positiveIntOr(fallback: Int): Int =
+        text.trim().toIntOrNull()?.takeIf { it > 0 } ?: fallback
 
     /**
      * Scans the directories in the field and reports what was found in each.
