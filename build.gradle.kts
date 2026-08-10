@@ -8,29 +8,30 @@ plugins {
     id("org.jetbrains.changelog")
 }
 
-// Pin the compilation target to Java 21 -- the JVM used by IntelliJ Platform 2025.2.
+// Pin the compilation target to Java 25 -- the JVM that IntelliJ Platform 2026.2 runs on.
 // The toolchain fixes which JDK compiles the sources, independent of the JDK running Gradle.
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
 kotlin {
     compilerOptions {
-        jvmTarget = JvmTarget.JVM_21
+        jvmTarget = JvmTarget.JVM_25
 
-        // The Kotlin compiler is pinned to 2.1.20 in settings.gradle.kts, but the language and API
+        // The Kotlin compiler is pinned to 2.4.0 in settings.gradle.kts, but the language and API
         // levels would otherwise just follow it on every upgrade. Pinning them here decouples the two:
         // apiVersion caps the stdlib surface we may call, which matters because
-        // kotlin.stdlib.default.dependency=false means we run against the IDE's bundled stdlib.
-        languageVersion = KotlinVersion.KOTLIN_2_1
-        apiVersion = KotlinVersion.KOTLIN_2_1
+        // kotlin.stdlib.default.dependency=false means we run against the IDE's bundled stdlib --
+        // 2.4.0 in IntelliJ 2026.2.
+        languageVersion = KotlinVersion.KOTLIN_2_4
+        apiVersion = KotlinVersion.KOTLIN_2_4
     }
 }
 
 tasks.withType<JavaCompile>().configureEach {
-    options.release = 21
+    options.release = 25
 }
 
 dependencies {
@@ -40,7 +41,7 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdea("2025.2.6.2")
+        intellijIdea("2026.2.1")
         // run_shell_command drives the IDE's own terminal so the user can watch and Ctrl+C.
         bundledPlugin("org.jetbrains.plugins.terminal")
         // get_file_problems uses CodeSmellDetector, which lives here because VCS is what runs
