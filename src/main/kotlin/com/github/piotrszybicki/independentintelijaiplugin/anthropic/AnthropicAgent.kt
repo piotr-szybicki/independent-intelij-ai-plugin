@@ -35,15 +35,27 @@ class AnthropicAgent(
     private val skills: () -> String = { "" },
 ) {
 
+    /** How a tool call ended, so the caller can mark it as more than "it happened". */
+    enum class ToolOutcome { OK, FAILED, CANCELLED }
+
     interface Listener {
         fun onAssistantText(text: String)
-        fun onToolCall(name: String, input: JsonObject, result: String)
+
+        /**
+         * A tool has finished, whatever [outcome] it finished with. Paired with [onToolStarted] for
+         * every tool the loop actually ran -- but not only those: a tool skipped by a cancel is
+         * reported here without ever having been started.
+         */
+        fun onToolCall(name: String, input: JsonObject, result: String, outcome: ToolOutcome)
 
         /**
          * A tool is about to run. [interruptible] is false when stopping the turn would only stop
          * the waiting, leaving the work itself running.
+         *
+         * [onToolCall] follows for the same tool unless the turn dies on the way there, which
+         * leaves anything the callback drew for it hanging -- the caller's to settle.
          */
-        fun onToolStarted(name: String, interruptible: Boolean) {}
+        fun onToolStarted(name: String, input: JsonObject, interruptible: Boolean) {}
 
         /**
          * Called when a turn was cut off by the model's output limit. [limit] is the cap that was
@@ -293,20 +305,31 @@ class AnthropicAgent(
 
                     // Cancelling stops the work but still answers the block: an assistant turn whose
                     // tool_use has no matching tool_result is rejected by the API on the next message.
+                    var outcome = ToolOutcome.OK
                     val resultText = if (isCancelled()) {
+                        outcome = ToolOutcome.CANCELLED
                         CANCELLED_RESULT
                     } else {
-                        listener.onToolStarted(toolName, toolsByName[toolName]?.interruptible ?: true)
+                        listener.onToolStarted(toolName, input, toolsByName[toolName]?.interruptible ?: true)
                         runCatching {
                             val tool = toolsByName[toolName] ?: throw AnthropicApiException("Unknown tool: $toolName")
                             tool.execute(input)
                         }.getOrElse { e ->
                             log.info("Tool '$toolName' failed: ${e.message}")
-                            if (isCancelled()) CANCELLED_RESULT else "Error: ${e.message}"
+                            // A cancel usually reaches a running tool as an interrupt, so the throw
+                            // is how it fails -- reporting that as a failure would blame the user's
+                            // Stop on the tool.
+                            if (isCancelled()) {
+                                outcome = ToolOutcome.CANCELLED
+                                CANCELLED_RESULT
+                            } else {
+                                outcome = ToolOutcome.FAILED
+                                "Error: ${e.message}"
+                            }
                         }
                     }
 
-                    listener.onToolCall(toolName, input, resultText)
+                    listener.onToolCall(toolName, input, resultText, outcome)
 
                     toolResults.add(JsonObject().apply {
                         addProperty("type", "tool_result")

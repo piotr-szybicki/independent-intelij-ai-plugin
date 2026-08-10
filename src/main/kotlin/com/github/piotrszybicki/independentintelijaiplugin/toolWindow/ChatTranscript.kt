@@ -38,6 +38,9 @@ internal class ChatTranscript(onCancel: () -> Unit) {
     private val thinkingRow = ThinkingRow(onCancel)
     private var lastAppliedWidth = -1
 
+    /** The bubble the AI is currently filling, or null between turns. */
+    private var currentTurn: AiTurnRow? = null
+
     private val content = TranscriptPanel().apply {
         isOpaque = true
         background = ChatColors.background
@@ -72,13 +75,57 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         })
     }
 
-    fun addUserMessage(markdown: String) = addRow(UserRow(markdown))
+    /** Where a tool call has got to, as its row draws it. */
+    enum class ToolStatus { RUNNING, DONE, FAILED, CANCELLED }
 
-    fun addAssistantMessage(markdown: String) = addRow(AssistantRow(markdown))
+    /** A tool row drawn before its tool has finished. [finish] settles it. */
+    interface RunningTool {
+        fun finish(details: String, status: ToolStatus)
+    }
 
-    fun addToolCall(name: String, summary: String, details: String) = addRow(ToolRow(name, summary, details))
+    fun addUserMessage(markdown: String) {
+        endAiTurn()
+        addRow(UserRow(markdown))
+    }
+
+    fun addAssistantMessage(markdown: String) = intoAiTurn(AssistantRow(markdown))
+
+    fun addToolCall(name: String, summary: String, details: String, status: ToolStatus = ToolStatus.DONE) =
+        intoAiTurn(ToolRow(name, summary, details, status))
+
+    /**
+     * Draws a tool call that is still running, spinner and all. The row is the same one [finish]
+     * later fills in, so the transcript shows what the model is doing while it does it rather than
+     * only once it is over.
+     */
+    fun startToolCall(name: String, summary: String, details: String): RunningTool =
+        ToolRow(name, summary, details, ToolStatus.RUNNING).also { intoAiTurn(it) }
+
+    /**
+     * Closes the AI's bubble, so whatever it says next opens a new one. Called when the model is
+     * done -- one turn is one bubble, however many messages and tool calls went into it.
+     */
+    fun endAiTurn() {
+        currentTurn = null
+    }
 
     fun addError(message: String) = addRow(ErrorRow(message))
+
+    /** Puts [row] in the AI's open bubble, opening one if the model has not spoken since the last turn ended. */
+    private fun intoAiTurn(row: ChatRow) {
+        val turn = currentTurn
+        if (turn == null) {
+            // A new bubble is a row like any other -- addRow gives it its width and scrolls to it.
+            addRow(AiTurnRow(row).also { currentTurn = it })
+            return
+        }
+        turn.addContent(row)
+        // The row arrived after the turn was laid out, so it has never been given a width.
+        contentWidth().takeIf { it > 0 }?.let { turn.applyAvailableWidth(it) }
+        content.revalidate()
+        content.repaint()
+        scrollToBottom()
+    }
 
     /** Greys out the stop button for work that pressing it would not actually stop. */
     fun setCancellable(cancellable: Boolean) = thinkingRow.setCancellable(cancellable)
@@ -98,6 +145,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
 
     fun clear() {
         rows.clear()
+        currentTurn = null
         content.removeAll()
         content.add(placeholder)
         content.revalidate()
@@ -179,7 +227,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         private val body = HtmlTextPane()
 
         init {
-            border = JBUI.Borders.emptyLeft(ChatMetrics.userIndent)
+            border = JBUI.Borders.emptyLeft(ChatMetrics.bubbleIndent)
             body.setHtml(MarkdownRenderer.toHtml(MarkdownRenderer.normalizeQuoteFences(markdown)))
             add(
                 RoundedPanel(
@@ -195,22 +243,64 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         }
 
         override fun applyAvailableWidth(width: Int) {
-            body.applyWidth(width - ChatMetrics.userIndent - 2 * ChatMetrics.bubblePadding)
+            body.applyWidth(width - ChatMetrics.bubbleIndent - 2 * ChatMetrics.bubblePadding)
         }
     }
 
-    private class AssistantRow(markdown: String) : ChatRow(BorderLayout(0, JBUI.scale(3))) {
+    /**
+     * One AI turn: every message it wrote and every tool it called, from the model's first word to
+     * the point it had nothing left to do, inside a single bubble. The mirror of [UserRow] -- same
+     * shape, held off the opposite edge, and neutral rather than accent-tinted.
+     */
+    private class AiTurnRow(first: ChatRow) : ChatRow(BorderLayout()) {
+
+        private val contents = mutableListOf<ChatRow>()
+
+        /** Vertical stack, so the turn's messages and tool cards keep the transcript's own rhythm. */
+        private val stack = JPanel(VerticalLayout(ChatMetrics.rowGap, VerticalLayout.FILL)).apply {
+            isOpaque = false
+        }
+
+        init {
+            border = JBUI.Borders.emptyRight(ChatMetrics.bubbleIndent)
+            add(
+                RoundedPanel(
+                    BorderLayout(0, JBUI.scale(3)),
+                    fill = { ChatColors.aiBubble },
+                    stroke = { ChatColors.aiBubbleBorder },
+                ).apply {
+                    border = JBUI.Borders.empty(ChatMetrics.bubblePadding)
+                    // One label for the whole turn, where each message used to carry its own.
+                    add(
+                        JBLabel("AI").apply {
+                            font = JBFont.small().asBold()
+                            foreground = ChatColors.accent
+                        },
+                        BorderLayout.NORTH,
+                    )
+                    add(stack, BorderLayout.CENTER)
+                },
+                BorderLayout.CENTER,
+            )
+            addContent(first)
+        }
+
+        fun addContent(row: ChatRow) {
+            contents += row
+            stack.add(row)
+        }
+
+        override fun applyAvailableWidth(width: Int) {
+            val inner = width - ChatMetrics.bubbleIndent - 2 * ChatMetrics.bubblePadding
+            contents.forEach { it.applyAvailableWidth(inner) }
+        }
+    }
+
+    private class AssistantRow(markdown: String) : ChatRow(BorderLayout()) {
 
         private val body = HtmlTextPane()
 
         init {
-            add(
-                JBLabel("AI").apply {
-                    font = JBFont.small().asBold()
-                    foreground = ChatColors.accent
-                },
-                BorderLayout.NORTH,
-            )
             body.setHtml(MarkdownRenderer.toHtml(markdown))
             add(body, BorderLayout.CENTER)
         }
@@ -219,9 +309,17 @@ internal class ChatTranscript(onCancel: () -> Unit) {
     }
 
     /** One tool invocation, collapsed to a single line until clicked. */
-    private class ToolRow(name: String, summary: String, private val details: String) : ChatRow(BorderLayout()) {
+    private class ToolRow(
+        name: String,
+        summary: String,
+        private var details: String,
+        status: ToolStatus,
+    ) : ChatRow(BorderLayout()), RunningTool {
 
         private val chevron = JBLabel(AllIcons.General.ChevronRight)
+
+        /** Spinner while the tool runs, then how it went. */
+        private val statusIcon = JBLabel()
 
         // Selectable so the output can be copied: the card's own click-to-toggle listener is kept
         // off this pane, and it gets a text cursor instead of the card's hand cursor.
@@ -240,18 +338,30 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         private var detailsLoaded = false
         private var availableWidth = -1
 
+        // Outlined, because a tool card now sits inside the AI's bubble, and fill alone is too
+        // close to the bubble's own to tell them apart.
         private val card = RoundedPanel(
             BorderLayout(0, JBUI.scale(2)),
             arc = { ChatMetrics.smallArc },
             fill = { if (hovered) ChatColors.cardHover else ChatColors.card },
+            stroke = { ChatColors.cardBorder },
         ).apply {
             border = JBUI.Borders.empty(JBUI.scale(5), JBUI.scale(7))
         }
 
         init {
+            setStatus(status)
+
             val header = JPanel(BorderLayout(JBUI.scale(5), 0)).apply {
                 isOpaque = false
-                add(chevron, BorderLayout.WEST)
+                add(
+                    JPanel(BorderLayout(JBUI.scale(4), 0)).apply {
+                        isOpaque = false
+                        add(chevron, BorderLayout.WEST)
+                        add(statusIcon, BorderLayout.EAST)
+                    },
+                    BorderLayout.WEST,
+                )
                 add(
                     JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
                         isOpaque = false
@@ -305,18 +415,51 @@ internal class ChatTranscript(onCancel: () -> Unit) {
             component.components.filterIsInstance<JComponent>().forEach { installRecursively(it, listener) }
         }
 
+        /**
+         * The tool has returned: its output joins the card and the spinner gives way to [status].
+         *
+         * The details are reloaded rather than appended to, because until now they held the call's
+         * arguments alone -- an expanded row was showing what the tool was asked to do, and this is
+         * where what it did arrives.
+         */
+        override fun finish(details: String, status: ToolStatus) {
+            this.details = details
+            detailsLoaded = false
+            if (expanded) loadDetails()
+            setStatus(status)
+            revalidate()
+            repaint()
+        }
+
+        private fun setStatus(status: ToolStatus) {
+            statusIcon.icon = when (status) {
+                ToolStatus.RUNNING -> AnimatedIcon.Default.INSTANCE
+                ToolStatus.DONE -> AllIcons.General.InspectionsOK
+                ToolStatus.FAILED -> AllIcons.General.BalloonError
+                ToolStatus.CANCELLED -> AllIcons.General.BalloonWarning
+            }
+            statusIcon.toolTipText = when (status) {
+                ToolStatus.RUNNING -> "Running"
+                ToolStatus.DONE -> "Finished"
+                ToolStatus.FAILED -> "Failed — open the card for the error"
+                ToolStatus.CANCELLED -> "Cancelled"
+            }
+        }
+
         private fun toggle() {
             expanded = !expanded
             chevron.icon = if (expanded) AllIcons.General.ChevronDown else AllIcons.General.ChevronRight
-            if (expanded && !detailsLoaded) {
-                detailsLoaded = true
-                detailPane.setHtml("<pre>${escapeHtml(details)}</pre>")
-                if (availableWidth > 0) detailPane.applyWidth(detailWidth(availableWidth))
-            }
+            if (expanded && !detailsLoaded) loadDetails()
             detailPane.isVisible = expanded
             copyButton.isVisible = expanded
             revalidate()
             repaint()
+        }
+
+        private fun loadDetails() {
+            detailsLoaded = true
+            detailPane.setHtml("<pre>${escapeHtml(details)}</pre>")
+            if (availableWidth > 0) detailPane.applyWidth(detailWidth(availableWidth))
         }
 
         override fun applyAvailableWidth(width: Int) {

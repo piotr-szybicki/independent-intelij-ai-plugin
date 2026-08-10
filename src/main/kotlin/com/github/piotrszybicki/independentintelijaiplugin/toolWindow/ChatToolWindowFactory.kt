@@ -126,6 +126,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private val rows = mutableListOf<StoredRow>()
 
+        /** The tool row drawn but not yet settled, and its place in [rows]. Null between tool calls. */
+        private var runningTool: ChatTranscript.RunningTool? = null
+        private var runningToolIndex = -1
+
         /**
          * Lazy on purpose. A tool window that was open when the IDE last closed is rebuilt during
          * frame init, and pulling a service out of the container that early -- from the EDT here,
@@ -488,6 +492,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatCreatedAt = createdAt
             history.clear()
             rows.clear()
+            runningTool = null
+            runningToolIndex = -1
             // Shell and MCP approvals are given for a conversation, not for the project. So is the
             // raised output cap: a new chat starts back at the configured one.
             shellTool.forgetApprovals()
@@ -547,9 +553,43 @@ class ChatToolWindowFactory : ToolWindowFactory {
             transcript.addAssistantMessage(markdown)
         }
 
-        private fun showToolCall(name: String, summary: String, details: String) {
+        private fun showToolCall(name: String, summary: String, details: String, status: ChatTranscript.ToolStatus) {
+            rows += StoredRow(StoredRow.TOOL, name = name, summary = summary, details = details, status = stored(status))
+            transcript.addToolCall(name, summary, details, status)
+        }
+
+        /**
+         * Draws a tool call the moment it starts, spinning, and remembers the row so
+         * [finishToolCall] can fill in its output. Only one is ever open at a time: the agent runs
+         * the model's tool calls one after another.
+         */
+        private fun startToolCall(name: String, summary: String, details: String) {
             rows += StoredRow(StoredRow.TOOL, name = name, summary = summary, details = details)
-            transcript.addToolCall(name, summary, details)
+            runningToolIndex = rows.lastIndex
+            runningTool = transcript.startToolCall(name, summary, details)
+        }
+
+        /** Settles the row [startToolCall] opened, on screen and in what gets saved. Does nothing if none is open. */
+        private fun finishToolCall(details: String, status: ChatTranscript.ToolStatus) {
+            val row = runningTool ?: return
+            runningTool = null
+            val index = runningToolIndex
+            runningToolIndex = -1
+
+            row.finish(details, status)
+            rows.getOrNull(index)?.let { rows[index] = it.copy(details = details, status = stored(status)) }
+        }
+
+        private fun stored(status: ChatTranscript.ToolStatus): String? = when (status) {
+            ChatTranscript.ToolStatus.FAILED -> StoredRow.FAILED
+            ChatTranscript.ToolStatus.CANCELLED -> StoredRow.CANCELLED
+            else -> null
+        }
+
+        private fun toolStatus(saved: String?): ChatTranscript.ToolStatus = when (saved) {
+            StoredRow.FAILED -> ChatTranscript.ToolStatus.FAILED
+            StoredRow.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
+            else -> ChatTranscript.ToolStatus.DONE
         }
 
         private fun showError(message: String) {
@@ -562,7 +602,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             when (row.kind) {
                 StoredRow.USER -> transcript.addUserMessage(row.text)
                 StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
-                StoredRow.TOOL -> transcript.addToolCall(row.name, row.summary, row.details)
+                StoredRow.TOOL -> transcript.addToolCall(row.name, row.summary, row.details, toolStatus(row.status))
                 else -> transcript.addError(row.text)
             }
         }
@@ -721,14 +761,36 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             ApplicationManager.getApplication().invokeLater { showAssistantMessage(text) }
                         }
 
-                        override fun onToolStarted(name: String, interruptible: Boolean) {
-                            ApplicationManager.getApplication().invokeLater { transcript.setCancellable(interruptible) }
+                        override fun onToolStarted(name: String, input: JsonObject, interruptible: Boolean) {
+                            ApplicationManager.getApplication().invokeLater {
+                                transcript.setCancellable(interruptible)
+                                // Details are the arguments alone for now; the output joins them in
+                                // onToolCall, which is also what stops the spinner.
+                                startToolCall(name, summarizeToolInput(input), toolCallDetails(input, ""))
+                            }
                         }
 
-                        override fun onToolCall(name: String, toolInput: JsonObject, result: String) {
+                        override fun onToolCall(
+                            name: String,
+                            toolInput: JsonObject,
+                            result: String,
+                            outcome: AnthropicAgent.ToolOutcome,
+                        ) {
                             ApplicationManager.getApplication().invokeLater {
                                 transcript.setCancellable(true)
-                                showToolCall(name, summarizeToolInput(toolInput), toolCallDetails(toolInput, result))
+                                val status = when (outcome) {
+                                    AnthropicAgent.ToolOutcome.OK -> ChatTranscript.ToolStatus.DONE
+                                    AnthropicAgent.ToolOutcome.FAILED -> ChatTranscript.ToolStatus.FAILED
+                                    AnthropicAgent.ToolOutcome.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
+                                }
+                                val details = toolCallDetails(toolInput, result)
+                                // A tool the cancel got to first was never started, so there is no
+                                // row waiting for it -- it is drawn here, settled, instead.
+                                if (runningTool != null) {
+                                    finishToolCall(details, status)
+                                } else {
+                                    showToolCall(name, summarizeToolInput(toolInput), details, status)
+                                }
                             }
                         }
 
@@ -816,6 +878,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         /** Ends a turn on the EDT: the composer goes back to idle and the conversation reaches disk. */
         private fun endTurn() {
+            // A turn that died between starting a tool and reporting it would otherwise leave that
+            // row spinning for the rest of the conversation -- and save it that way.
+            finishToolCall(rows.getOrNull(runningToolIndex)?.details.orEmpty(), ChatTranscript.ToolStatus.FAILED)
+            // The model has nothing left to do, so its bubble is closed: the next thing it says
+            // belongs to a new turn, not to this one.
+            transcript.endAiTurn()
             setBusy(false)
             saveCurrentChat(active = true)
         }

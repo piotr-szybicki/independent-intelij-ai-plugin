@@ -34,9 +34,18 @@ internal object ChatColors {
     val userBubble: Color get() = mix(background, accent, if (JBColor.isBright()) 0.10 else 0.22)
     val userBubbleBorder: Color get() = mix(background, accent, if (JBColor.isBright()) 0.28 else 0.38)
 
+    /**
+     * Bubble behind an AI turn. Deliberately neutral -- the accent is what marks a message as the
+     * user's, and tinting both sides with it would take that away -- and fainter than [card], so the
+     * tool cards sitting inside a turn still read as raised off it.
+     */
+    val aiBubble: Color get() = mix(background, foreground, 0.03)
+    val aiBubbleBorder: Color get() = mix(background, foreground, 0.16)
+
     /** Neutral card, used for tool calls and the pending-changes bar. */
     val card: Color get() = mix(background, foreground, 0.05)
     val cardHover: Color get() = mix(background, foreground, 0.10)
+    val cardBorder: Color get() = mix(background, foreground, 0.14)
 
     val codeBackground: Color get() = mix(background, foreground, 0.07)
 
@@ -52,7 +61,8 @@ internal object ChatColors {
 internal object ChatMetrics {
     val rowGap: Int get() = JBUI.scale(10)
     val bubblePadding: Int get() = JBUI.scale(9)
-    val userIndent: Int get() = JBUI.scale(28)
+    /** How far a bubble is held off the far edge, so the two speakers read as opposite sides. */
+    val bubbleIndent: Int get() = JBUI.scale(28)
     val arc: Int get() = JBUI.scale(12)
     val smallArc: Int get() = JBUI.scale(8)
 }

@@ -25,12 +25,22 @@ data class StoredRow(
     val name: String = "",
     val summary: String = "",
     val details: String = "",
+    /**
+     * How a [TOOL] row ended, or null for one that ended well -- which is also what chats saved
+     * before this field existed come back as, since a tool call that was written to disk at all had
+     * already run.
+     */
+    val status: String? = null,
 ) {
     companion object {
         const val USER = "user"
         const val ASSISTANT = "assistant"
         const val TOOL = "tool"
         const val ERROR = "error"
+
+        /** Values for [status]. Success is the absent one. */
+        const val FAILED = "failed"
+        const val CANCELLED = "cancelled"
     }
 }
 
