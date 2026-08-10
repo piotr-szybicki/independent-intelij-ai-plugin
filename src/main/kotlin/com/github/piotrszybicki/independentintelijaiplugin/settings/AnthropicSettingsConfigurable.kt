@@ -19,6 +19,9 @@ import com.intellij.util.ui.JBUI
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpConfigException
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpServerConfig
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
+import java.io.File
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JComponent
 
@@ -44,6 +47,11 @@ class AnthropicSettingsConfigurable : Configurable {
     }
 
     private val confirmMcpCheckBox = JBCheckBox("Ask before each MCP tool call")
+
+    private val skillPathsArea = JBTextArea(5, 40).apply {
+        lineWrap = false
+        font = JBUI.Fonts.create("Monospaced", font.size)
+    }
 
     override fun getDisplayName(): String = "Anthropic Chat"
 
@@ -103,6 +111,24 @@ class AnthropicSettingsConfigurable : Configurable {
                 button("Test Servers") { testServers() }
             }
         }
+        group("Skills") {
+            row {
+                scrollCell(skillPathsArea).align(AlignX.FILL)
+            }.rowComment(
+                "Directories to look for skills in, one per line. A skill is a " +
+                    "<code>SKILL.md</code> in its own folder below one of these, and its " +
+                    "<code>name</code> and <code>description</code> are added to every request so " +
+                    "the model knows the skill exists &mdash; the instructions in it are only read " +
+                    "when it is actually used.<br/>" +
+                    "Relative paths are resolved against the project root, absolute ones are not, " +
+                    "so a directory outside the project works. <code>~</code> is your home " +
+                    "directory and <code>\${env:NAME}</code> reads a variable. Earlier lines win " +
+                    "when two skills share a name. Takes effect on the next message.",
+            )
+            row {
+                button("Scan for Skills") { scanSkills() }
+            }
+        }
     }.also { reset() }
 
     override fun isModified(): Boolean {
@@ -113,6 +139,7 @@ class AnthropicSettingsConfigurable : Configurable {
             extraHeadersArea.text != settings.extraHeaders ||
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
+            skillPathsArea.text != settings.skillPaths ||
             authSchemeCombo.selectedItem != settings.authScheme
     }
 
@@ -125,6 +152,9 @@ class AnthropicSettingsConfigurable : Configurable {
         settings.anthropicVersion = anthropicVersionField.text.trim()
         settings.extraHeaders = extraHeadersArea.text
         settings.authScheme = authSchemeCombo.selectedItem as? AuthScheme ?: AuthScheme.X_API_KEY
+        // Nothing to notify: the roots are rescanned on the next turn, so a path added here is read
+        // the next time the user sends a message.
+        settings.skillPaths = skillPathsArea.text
 
         val serversChanged = settings.mcpServers != mcpServersArea.text
         settings.mcpServers = mcpServersArea.text
@@ -150,6 +180,40 @@ class AnthropicSettingsConfigurable : Configurable {
         authSchemeCombo.selectedItem = settings.authScheme
         mcpServersArea.text = settings.mcpServers
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
+        skillPathsArea.text = settings.skillPaths
+    }
+
+    /**
+     * Scans the directories in the field and reports what was found in each.
+     *
+     * Like [testServers], it runs against the typed text rather than the saved settings -- a path
+     * outside the project is easy to get slightly wrong, and finding that out here beats finding it
+     * out as a skill that silently never gets used.
+     */
+    private fun scanSkills() {
+        val project: Project? = ProjectManager.getInstance().openProjects.firstOrNull()
+        val roots = SkillRoot.parseAll(skillPathsArea.text, project?.basePath?.let(::File))
+        if (roots.isEmpty()) {
+            Messages.showInfoMessage("No skill directories are configured.", "Skills")
+            return
+        }
+
+        val scan = SkillCatalog.scan(roots)
+        val report = buildString {
+            for (status in scan.statuses) {
+                val detail = when {
+                    status.error != null -> "${status.error} (${status.resolved.ifBlank { "unresolved" }})"
+                    status.skillCount == 0 -> "no skills in ${status.resolved}"
+                    else -> "${status.skillCount} skill(s) in ${status.resolved}"
+                }
+                appendLine("${status.configured}: $detail")
+            }
+            if (scan.skills.isNotEmpty()) {
+                appendLine()
+                appendLine("Found: " + scan.skills.joinToString(", ") { it.name })
+            }
+        }
+        Messages.showInfoMessage(report.trim(), "Skills")
     }
 
     /**

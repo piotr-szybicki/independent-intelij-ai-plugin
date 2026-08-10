@@ -38,6 +38,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicCredentials
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.tools.AddImportTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ApplyQuickFixTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.AttachLibrarySourcesTool
@@ -182,6 +183,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 ChangeTrackingTool.wrapAll(builtInTools + mcp.tools(), session)
             },
             environment = { ProjectEnvironment.describe(project) },
+            // Reads the skill directories off disk, so this runs on the agent's pooled thread with
+            // everything else that must not happen on the EDT.
+            skills = { SkillCatalog.describe(project) },
         )
 
         private val transcript = ChatTranscript(onCancel = { cancelTurn() })

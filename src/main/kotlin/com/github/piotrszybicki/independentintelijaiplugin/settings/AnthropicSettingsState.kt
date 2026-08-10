@@ -5,6 +5,7 @@ import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
 
 /**
  * Which header carries the token.
@@ -57,6 +58,14 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
 
         /** Whether each MCP tool call is shown for approval, as shell commands are. */
         var confirmMcpToolCalls: Boolean = true,
+
+        /**
+         * Directories to look for skills in, one path per line. Relative paths are resolved against
+         * the project root; absolute ones are taken as they are, so a root can live anywhere --
+         * which is the point, since the skills worth carrying between projects are not in any of
+         * them. Parsing is [com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot]'s job.
+         */
+        var skillPaths: String = SkillRoot.DEFAULT_PATHS,
     )
 
     private var state = State()

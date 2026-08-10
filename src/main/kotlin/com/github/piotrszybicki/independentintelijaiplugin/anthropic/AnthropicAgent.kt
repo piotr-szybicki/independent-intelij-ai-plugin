@@ -21,9 +21,18 @@ class AnthropicAgent(
     /**
      * Machine-specific facts appended to the system prompt. A lambda rather than a string because
      * describing the environment reads IDE settings, which must not happen on the EDT -- the agent
-     * is constructed there, but [systemPrompt] is not resolved until the first request.
+     * is constructed there, but [basePrompt] is not resolved until the first request.
      */
     private val environment: () -> String = { "" },
+    /**
+     * The skill listing to append to the system prompt, resolved once per [run] like [tools].
+     *
+     * Per turn rather than once, because a skill is a file the user edits while the conversation is
+     * open, and one added mid-chat should be usable on the next message. It stays out of the
+     * cacheable prefix's way regardless: the text only differs when the skills themselves do, so
+     * turn after turn the prefix is byte-identical.
+     */
+    private val skills: () -> String = { "" },
     private val maxIterations: Int = 10,
 ) {
 
@@ -143,9 +152,15 @@ class AnthropicAgent(
      * Resolved once, off the EDT, on the first request -- and stable for the rest of the
      * conversation, which keeps it inside the cacheable prefix of every subsequent turn.
      */
-    private val systemPrompt: String by lazy {
+    private val basePrompt: String by lazy {
         val facts = runCatching { environment() }.getOrDefault("").trim()
         if (facts.isEmpty()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$facts"
+    }
+
+    /** [basePrompt] with this turn's skill listing on the end. */
+    private fun systemPrompt(): String {
+        val listing = runCatching { skills() }.getOrDefault("").trim()
+        return if (listing.isEmpty()) basePrompt else "$basePrompt\n\n$listing"
     }
 
     private val log = Logger.getInstance(AnthropicAgent::class.java)
@@ -171,11 +186,14 @@ class AnthropicAgent(
         val available = tools()
         val toolsByName = available.associateBy { it.name }
         val toolDefinitions = available.map { it.toDefinition() }
+        // Same reasoning as the tool list: resolved once for the whole turn, so the system prompt
+        // cannot change underneath the loop between one iteration and the next.
+        val system = systemPrompt()
 
         repeat(maxIterations) {
             if (isCancelled()) return
             val turn =
-                AnthropicClient.sendMessage(endpoint, model, maxTokens, history, toolDefinitions, systemPrompt)
+                AnthropicClient.sendMessage(endpoint, model, maxTokens, history, toolDefinitions, system)
             val truncated = turn.stopReason == "max_tokens"
             val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
             if (content.size() > 0) {
