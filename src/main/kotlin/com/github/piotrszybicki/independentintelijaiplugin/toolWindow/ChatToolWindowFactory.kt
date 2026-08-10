@@ -30,7 +30,9 @@ import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicAgent
 import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicEndpoint
+import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicUsage
 import com.github.piotrszybicki.independentintelijaiplugin.anthropic.ChatMessage
+import com.github.piotrszybicki.independentintelijaiplugin.anthropic.SessionUsage
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeTrackingTool
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryService
@@ -94,6 +96,7 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ScrollPaneConstants
 import javax.swing.SwingConstants
+import kotlin.math.roundToInt
 
 class ChatToolWindowFactory : ToolWindowFactory {
 
@@ -148,6 +151,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
          * the user's preference, and it resets with [resetConversation] like the tool approvals do.
          */
         private var raisedMaxTokens = 0
+
+        /**
+         * What this conversation has spent. Scoped to the chat rather than to the IDE, like the
+         * approvals and the raised cap either side of it -- the numbers are only meaningful next to
+         * the conversation that ran them up, and it is saved with it so switching chats or
+         * restarting does not reset the count to zero.
+         *
+         * Touched from the EDT only: the agent reports usage from its pooled thread and the callback
+         * hands it over before adding it in.
+         */
+        private var usage = SessionUsage()
 
         private val session = ChangeSessionService.getInstance(project)
 
@@ -238,6 +252,23 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val statusLabel = JBLabel(" ").apply {
             font = JBFont.small()
             foreground = ChatColors.muted
+        }
+
+        /** Running token count for this chat. Empty until the first reply comes back. */
+        private val usageLabel = JBLabel().apply {
+            font = JBFont.small()
+            foreground = ChatColors.muted
+        }
+
+        /**
+         * The two share the strip under the composer. A row rather than one label, because
+         * [statusLabel] is cleared and rewritten by everything that has something to say -- [setBusy]
+         * most of all -- and the count has to survive that.
+         */
+        private val statusRow = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+            isOpaque = false
+            add(statusLabel, BorderLayout.CENTER)
+            add(usageLabel, BorderLayout.EAST)
         }
 
         private var pendingAttachment: String? = null
@@ -370,7 +401,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
             add(composerTop, BorderLayout.NORTH)
             add(inputCard, BorderLayout.CENTER)
-            add(statusLabel, BorderLayout.SOUTH)
+            add(statusRow, BorderLayout.SOUTH)
         }
 
         val component: JComponent = JPanel(BorderLayout()).apply {
@@ -480,6 +511,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             resetConversation(chat.id, chat.createdAt)
             history.addAll(chat.messages)
             rows.addAll(chat.transcript)
+            // After the reset, which has just zeroed it.
+            setUsage(chat.usage ?: SessionUsage())
             chat.transcript.forEach { render(it) }
             ApplicationManager.getApplication().executeOnPooledThread { chatHistory.setActiveId(chat.id) }
         }
@@ -499,6 +532,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             shellTool.forgetApprovals()
             mcp.forgetApprovals()
             raisedMaxTokens = 0
+            setUsage(SessionUsage())
             transcript.clear()
             clearAttachment()
         }
@@ -513,6 +547,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 updatedAt = System.currentTimeMillis(),
                 messages = history.toList(),
                 transcript = rows.toList(),
+                usage = usage,
             )
         }
 
@@ -761,6 +796,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             ApplicationManager.getApplication().invokeLater { showAssistantMessage(text) }
                         }
 
+                        // Per request, so the count climbs while a long tool loop is still running
+                        // rather than jumping once at the end of the turn.
+                        override fun onUsage(usage: AnthropicUsage) {
+                            ApplicationManager.getApplication().invokeLater { addUsage(usage) }
+                        }
+
                         override fun onToolStarted(name: String, input: JsonObject, interruptible: Boolean) {
                             ApplicationManager.getApplication().invokeLater {
                                 transcript.setCancellable(interruptible)
@@ -886,6 +927,35 @@ class ChatToolWindowFactory : ToolWindowFactory {
             transcript.endAiTurn()
             setBusy(false)
             saveCurrentChat(active = true)
+        }
+
+        // --- token usage -------------------------------------------------------------------------
+
+        /** Adds what one request cost to the running total. EDT only. */
+        private fun addUsage(reported: AnthropicUsage) = setUsage(usage + reported)
+
+        private fun setUsage(total: SessionUsage) {
+            usage = total
+            usageLabel.text = if (total.isEmpty) "" else buildString {
+                append("↑ ${formatTokens(total.totalInputTokens)}   ↓ ${formatTokens(total.outputTokens)}")
+                total.cacheHitRate?.let { append("   ⚡ ${(it * 100).roundToInt()}%") }
+            }
+            usageLabel.toolTipText = if (total.isEmpty) null else buildString {
+                append("<html>Tokens used in this chat, over ${total.requests} request(s):<br><br>")
+                append("Input, billed in full: ${"%,d".format(total.inputTokens)}<br>")
+                append("Written to the cache: ${"%,d".format(total.cacheWriteTokens)}<br>")
+                append("Read from the cache: ${"%,d".format(total.cacheReadTokens)}<br>")
+                append("Input in total: ${"%,d".format(total.totalInputTokens)}<br>")
+                append("Output: ${"%,d".format(total.outputTokens)}<br><br>")
+                append("A request that failed is not counted.</html>")
+            }
+        }
+
+        /** Compact enough for a narrow tool window: 128443 reads as 128.4k. */
+        private fun formatTokens(count: Int): String = when {
+            count < 1_000 -> count.toString()
+            count < 1_000_000 -> "%.1fk".format(count / 1_000.0)
+            else -> "%.2fM".format(count / 1_000_000.0)
         }
 
         /** Short one-liner shown next to a tool name, e.g. the file it touched. */

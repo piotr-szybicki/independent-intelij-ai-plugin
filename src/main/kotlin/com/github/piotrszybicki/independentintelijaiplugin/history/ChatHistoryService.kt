@@ -1,6 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.history
 
 import com.github.piotrszybicki.independentintelijaiplugin.anthropic.ChatMessage
+import com.github.piotrszybicki.independentintelijaiplugin.anthropic.SessionUsage
 import com.google.gson.Gson
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.Service
@@ -53,6 +54,11 @@ data class StoredChat(
     val messages: List<ChatMessage>,
     /** The conversation as the tool window drew it. */
     val transcript: List<StoredRow>,
+    /**
+     * What this chat has spent so far, or null for one saved before the counter existed -- there is
+     * no recovering it after the fact, so those come back at zero and count on from there.
+     */
+    val usage: SessionUsage? = null,
 )
 
 /** What the history popup lists, so opening it does not have to parse every transcript. */

@@ -58,6 +58,16 @@ class AnthropicAgent(
         fun onToolStarted(name: String, input: JsonObject, interruptible: Boolean) {}
 
         /**
+         * What the request that just came back cost.
+         *
+         * Once per request, not once per turn: the loop sends a fresh one for every round of tool
+         * calls and each is billed on its own, so anything that adds these up has to see them all.
+         * A request that failed reports nothing -- the usage block comes with the response, and an
+         * error does not carry one.
+         */
+        fun onUsage(usage: AnthropicUsage) {}
+
+        /**
          * Called when a turn was cut off by the model's output limit. [limit] is the cap that was
          * hit; [suggested] is what the loop proposes continuing at -- twice [limit], because a reply
          * that needed more room once will usually need it again, and asking the same question every
@@ -162,11 +172,6 @@ class AnthropicAgent(
         """.trimIndent()
 
         /**
-         * Sent as a user turn to pick up a cut-off answer. It has to be a *user* message: the
-         * current models reject a request whose final message is an assistant one (prefilling),
-         * so the truncated turn cannot simply be left at the end of the history to be continued.
-         */
-        /**
          * How far doubling the output cap will go on its own. The models themselves allow far more,
          * but [AnthropicClient] waits 60 seconds for a response and does not stream: past roughly
          * this many tokens the reply stops arriving in time, and a timeout is a worse answer than a
@@ -182,10 +187,27 @@ class AnthropicAgent(
         /** Stands in for a tool the loop never reached, because the turn failed on its way there. */
         private const val ABANDONED_RESULT = "This tool never ran: the turn ended with an error before it started."
 
+        /**
+         * Sent as a user turn to pick up a cut-off answer. It has to be a *user* message: the
+         * current models reject a request whose final message is an assistant one (prefilling),
+         * so the truncated turn cannot simply be left at the end of the history to be continued.
+         */
         private const val CONTINUE_PROMPT =
             "Your previous response was cut off because it hit the output token limit. " +
                 "Continue from exactly where you stopped -- do not repeat what you already wrote " +
                 "and do not start over."
+
+        /**
+         * The same job as [CONTINUE_PROMPT] for the turn that ran out mid-tool-call. It needs its
+         * own wording because [withoutTrailingToolUse] has already dropped that block: telling the
+         * model to continue where it stopped would point it at something no longer in the history,
+         * and often at nothing at all, since a turn that went straight to a tool call leaves no text
+         * behind. What it has to be told is that the call never ran.
+         */
+        private const val RETRY_TOOL_CALL_PROMPT =
+            "Your previous response was cut off because it hit the output token limit, part-way " +
+                "through a tool call. The call was discarded and never ran. Make it again, picking " +
+                "up from any text you had already written -- do not repeat that text."
     }
 
     /**
@@ -266,8 +288,12 @@ class AnthropicAgent(
                 if (isCancelled()) return
                 val turn =
                     AnthropicClient.sendMessage(endpoint, model, tokenCap, history, toolDefinitions, system)
+                turn.usage?.let(listener::onUsage)
                 val truncated = turn.stopReason == "max_tokens"
                 val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
+                // Whether the limit landed mid-tool-call rather than mid-sentence, which is the
+                // difference between a reply to be continued and a call to be made again.
+                val droppedToolUse = content.size() < turn.content.size()
                 if (content.size() > 0) {
                     history.add(ChatMessage("assistant", content))
                 }
@@ -292,7 +318,9 @@ class AnthropicAgent(
                     // stop rather than sent.
                     val next = listener.onMaxTokens(tokenCap, suggested)?.takeIf { it > 0 } ?: return
                     tokenCap = next
-                    history.add(ChatMessage.text("user", CONTINUE_PROMPT))
+                    history.add(
+                        ChatMessage.text("user", if (droppedToolUse) RETRY_TOOL_CALL_PROMPT else CONTINUE_PROMPT)
+                    )
                     continue
                 }
 

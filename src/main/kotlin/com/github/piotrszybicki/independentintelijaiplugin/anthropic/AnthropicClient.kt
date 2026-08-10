@@ -40,6 +40,46 @@ data class AnthropicUsage(
     val cache_read_input_tokens: Int = 0,
 )
 
+/**
+ * What a conversation has spent, summed over every request made in it.
+ *
+ * Counted per request rather than per message the user sends: a single turn is as many requests as
+ * it takes tool calls, and the whole history goes out with each one, so the totals climb a good deal
+ * faster than the transcript suggests. That is most of the reason for showing them at all.
+ */
+data class SessionUsage(
+    val inputTokens: Int = 0,
+    val outputTokens: Int = 0,
+    val cacheWriteTokens: Int = 0,
+    val cacheReadTokens: Int = 0,
+    /** How many requests went into the totals. */
+    val requests: Int = 0,
+) {
+
+    /**
+     * Everything the requests read, cached or not.
+     *
+     * The three add rather than overlap: `input_tokens` is what was billed at full price, and what
+     * came from the cache is reported separately and left out of it. Summing them is the only way to
+     * get the figure that would have been charged without caching.
+     */
+    val totalInputTokens: Int get() = inputTokens + cacheWriteTokens + cacheReadTokens
+
+    /** The share of input served from the cache, or null before anything has been read. */
+    val cacheHitRate: Double?
+        get() = totalInputTokens.takeIf { it > 0 }?.let { cacheReadTokens.toDouble() / it }
+
+    val isEmpty: Boolean get() = requests == 0
+
+    operator fun plus(usage: AnthropicUsage): SessionUsage = SessionUsage(
+        inputTokens + usage.input_tokens,
+        outputTokens + usage.output_tokens,
+        cacheWriteTokens + usage.cache_creation_input_tokens,
+        cacheReadTokens + usage.cache_read_input_tokens,
+        requests + 1,
+    )
+}
+
 data class AnthropicTurn(val content: JsonArray, val stopReason: String?, val usage: AnthropicUsage? = null)
 
 class AnthropicApiException(message: String) : Exception(message)
