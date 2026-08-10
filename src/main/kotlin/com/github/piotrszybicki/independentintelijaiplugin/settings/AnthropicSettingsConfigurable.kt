@@ -95,7 +95,9 @@ class AnthropicSettingsConfigurable : Configurable {
                 cell(maxTokensField).columns(10)
             }.rowComment(
                 "The longest single reply the model may write. Past it the answer is cut off " +
-                    "mid-sentence and you are asked whether to spend another request continuing it.",
+                    "mid-sentence and you are asked whether to spend another request continuing it " +
+                    "&mdash; saying yes doubles the limit for the rest of that chat, so this is " +
+                    "where a conversation starts rather than a fixed ceiling.",
             )
             row("Tool calls per message:") {
                 cell(maxIterationsField).columns(10)

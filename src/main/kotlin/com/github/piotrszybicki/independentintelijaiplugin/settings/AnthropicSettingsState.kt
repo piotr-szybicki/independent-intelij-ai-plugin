@@ -29,7 +29,12 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
 
     data class State(
         var model: String = "claude-sonnet-5",
-        var maxTokens: Int = 1024,
+        /**
+         * The starting cap on a single reply. A starting point rather than a fixed one: saying yes
+         * to continuing a cut-off reply doubles it for the rest of that chat, so a conversation that
+         * needs longer answers finds its own level without the user editing this.
+         */
+        var maxTokens: Int = 3000,
 
         /**
          * How many request/tool-call rounds one message gets before the agent stops and asks whether

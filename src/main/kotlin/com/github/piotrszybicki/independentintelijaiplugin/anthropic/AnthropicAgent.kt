@@ -46,10 +46,19 @@ class AnthropicAgent(
         fun onToolStarted(name: String, interruptible: Boolean) {}
 
         /**
-         * Called when a turn was cut off by the model's output limit. Returning true resumes the
-         * loop with a request to continue; returning false ends it, leaving the partial answer.
+         * Called when a turn was cut off by the model's output limit. [limit] is the cap that was
+         * hit; [suggested] is what the loop proposes continuing at -- twice [limit], because a reply
+         * that needed more room once will usually need it again, and asking the same question every
+         * thousand tokens is worse than spending them. The two are equal once doubling has run into
+         * [MAX_TOKENS_CEILING], which is the signal to stop suggesting and let the user say what the
+         * cap should be.
+         *
+         * Return the cap to continue at -- [suggested], or whatever the user chose instead -- or
+         * null to end the turn and leave the partial answer. A returned cap is honoured as given,
+         * ceiling included: past that point it is an explicit choice, not a default. The caller is
+         * what makes it outlast the turn: keep the value and pass it back to the next [run].
          */
-        fun onMaxTokens(): Boolean
+        fun onMaxTokens(limit: Int, suggested: Int): Int?
 
         /**
          * Called when the loop has used its whole tool-call budget with the model still asking for
@@ -145,6 +154,16 @@ class AnthropicAgent(
          * current models reject a request whose final message is an assistant one (prefilling),
          * so the truncated turn cannot simply be left at the end of the history to be continued.
          */
+        /**
+         * How far doubling the output cap will go on its own. The models themselves allow far more,
+         * but [AnthropicClient] waits 60 seconds for a response and does not stream: past roughly
+         * this many tokens the reply stops arriving in time, and a timeout is a worse answer than a
+         * truncated one. Not a hard limit -- it is where the automatic raises stop and the user is
+         * asked for a number instead, which is a judgement about their connection and patience that
+         * this constant cannot make.
+         */
+        const val MAX_TOKENS_CEILING = 12_000
+
         /** Stands in for a tool that was skipped or interrupted when the user pressed Stop. */
         private const val CANCELLED_RESULT = "The user cancelled this turn before the tool finished."
 
@@ -184,6 +203,11 @@ class AnthropicAgent(
      * [maxIterations] is how many request/tool-call rounds the turn gets before the loop stops and
      * asks the user whether to go on. Not a hard ceiling: every yes to [Listener.onMaxIterations]
      * buys that many more.
+     *
+     * [maxTokens] is where the reply-length cap starts, not where it stays: continuing a cut-off
+     * reply doubles it up to [MAX_TOKENS_CEILING], and past that [Listener.onMaxTokens] chooses the
+     * cap outright. The raise lasts as long as the turn does -- carrying it into the next one is the
+     * caller's to do, from the value it returned there.
      */
     fun run(
         endpoint: AnthropicEndpoint,
@@ -210,6 +234,12 @@ class AnthropicAgent(
         var budget = maxIterations
         var used = 0
 
+        // Climbs rather than staying put: each yes to [Listener.onMaxTokens] doubles it, so a
+        // conversation that keeps overrunning stops being interrupted every thousand tokens.
+        // [maxTokens] itself is taken as given -- the ceiling bounds what doubling adds, not what
+        // the user asked for.
+        var tokenCap = maxTokens
+
         // The finally is what keeps a failed turn from costing the whole conversation: see
         // [answerDanglingToolUse].
         try {
@@ -223,7 +253,7 @@ class AnthropicAgent(
 
                 if (isCancelled()) return
                 val turn =
-                    AnthropicClient.sendMessage(endpoint, model, maxTokens, history, toolDefinitions, system)
+                    AnthropicClient.sendMessage(endpoint, model, tokenCap, history, toolDefinitions, system)
                 val truncated = turn.stopReason == "max_tokens"
                 val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
                 if (content.size() > 0) {
@@ -241,8 +271,15 @@ class AnthropicAgent(
                 if (toolUseBlocks.isEmpty()) {
                     if (!truncated) return
                     // The answer stopped mid-sentence. Only the user can say whether it is worth
-                    // another round trip, so ask before spending one.
-                    if (!listener.onMaxTokens()) return
+                    // another round trip, so ask before spending one -- and offer the continuation
+                    // twice the room, since one cut-off reply predicts the next.
+                    val suggested =
+                        if (tokenCap >= MAX_TOKENS_CEILING) tokenCap
+                        else (tokenCap * 2).coerceAtMost(MAX_TOKENS_CEILING)
+                    // A cap of zero or less would be a request the API rejects, so it is read as a
+                    // stop rather than sent.
+                    val next = listener.onMaxTokens(tokenCap, suggested)?.takeIf { it > 0 } ?: return
+                    tokenCap = next
                     history.add(ChatMessage.text("user", CONTINUE_PROMPT))
                     continue
                 }

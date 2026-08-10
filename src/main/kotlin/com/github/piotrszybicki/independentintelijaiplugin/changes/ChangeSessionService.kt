@@ -180,9 +180,11 @@ class ChangeSessionService(private val project: Project) : Disposable {
     val changedFileCount: Int
         get() = synchronized(lock) { baselines.size }
 
+    /** The files changed this session, in the order they were touched. */
+    fun changedFiles(): List<VirtualFile> = synchronized(lock) { baselines.keys.toList() }
+
     /** Project-relative paths of the files changed this session, in the order they were touched. */
-    fun changedPaths(): List<String> =
-        synchronized(lock) { baselines.keys.toList() }.map { PsiTargets.relativePath(project, it) }
+    fun changedPaths(): List<String> = changedFiles().map { PsiTargets.relativePath(project, it) }
 
     fun addListener(listener: Listener) {
         listeners.add(listener)

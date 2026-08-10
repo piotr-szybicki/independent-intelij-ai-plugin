@@ -14,6 +14,7 @@ import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.StartupManager
+import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.util.Disposer
@@ -63,6 +64,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.ListDirectoryTo
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ListOpenFilesTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.MoveFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
+import com.github.piotrszybicki.independentintelijaiplugin.tools.PsiTargets
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ReadLibraryClassTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ReadProjectFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RenameSymbolTool
@@ -74,11 +76,16 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.SafeDeleteTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.StartDebugConfigurationTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToggleBreakpointTool
 import java.awt.BorderLayout
+import java.awt.Cursor
+import java.awt.Dimension
 import java.awt.FlowLayout
+import java.awt.GridLayout
 import java.awt.event.FocusAdapter
 import java.awt.event.FocusEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
+import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.BorderFactory
@@ -86,6 +93,7 @@ import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ScrollPaneConstants
+import javax.swing.SwingConstants
 
 class ChatToolWindowFactory : ToolWindowFactory {
 
@@ -127,6 +135,15 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val chatHistory by lazy { ChatHistoryService.getInstance(project) }
         private var chatId = ChatHistoryService.newChatId()
         private var chatCreatedAt = System.currentTimeMillis()
+
+        /**
+         * The output cap this conversation has earned above the configured one, or 0 while it has
+         * earned none. Continuing a cut-off reply doubles the cap, and it would be a poor bargain if
+         * that only held until the next message -- a chat producing long answers goes on producing
+         * them. Kept here rather than written back to settings: it is this conversation's shape, not
+         * the user's preference, and it resets with [resetConversation] like the tool approvals do.
+         */
+        private var raisedMaxTokens = 0
 
         private val session = ChangeSessionService.getInstance(project)
 
@@ -256,18 +273,41 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val revertButton = JButton("Revert").apply { toolTipText = "Restore all touched files" }
         private val sessionListener = ChangeSessionService.Listener { count -> updateChangesBar(count) }
 
-        private val changesBar = JPanel(BorderLayout()).apply {
+        /** One clickable row per changed file. Rebuilt whenever the session changes. */
+        private val changedFilesList = JPanel(GridLayout(0, 1, 0, JBUI.scale(1))).apply { isOpaque = false }
+
+        /**
+         * Caps the list at a few rows: the bar sits on top of the composer, and a refactoring that
+         * touched thirty files must not push the input off the bottom of the tool window.
+         */
+        private val changedFilesScroll = object : JBScrollPane(changedFilesList) {
+            override fun getPreferredSize(): Dimension {
+                val preferred = super.getPreferredSize()
+                return Dimension(preferred.width, minOf(preferred.height, JBUI.scale(132)))
+            }
+
+            // Long paths must not set a floor on how narrow the tool window can be dragged; the
+            // labels ellipsize instead.
+            override fun getMinimumSize(): Dimension = Dimension(0, preferredSize.height)
+        }.apply {
+            border = JBUI.Borders.emptyTop(JBUI.scale(4))
             isOpaque = false
+            viewport.isOpaque = false
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+        }
+
+        private val changesBar = RoundedPanel(
+            BorderLayout(),
+            arc = { ChatMetrics.smallArc },
+            fill = { ChatColors.card },
+            stroke = { ChatColors.separator },
+        ).apply {
             isVisible = false
-            border = JBUI.Borders.empty(10, 12, 0, 12)
+            border = JBUI.Borders.empty(JBUI.scale(5), JBUI.scale(9))
             add(
-                RoundedPanel(
-                    BorderLayout(JBUI.scale(8), 0),
-                    arc = { ChatMetrics.smallArc },
-                    fill = { ChatColors.card },
-                    stroke = { ChatColors.separator },
-                ).apply {
-                    border = JBUI.Borders.empty(JBUI.scale(5), JBUI.scale(9))
+                JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+                    isOpaque = false
                     add(changesLabel, BorderLayout.CENTER)
                     add(
                         JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(5), 0)).apply {
@@ -278,8 +318,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
                         BorderLayout.EAST,
                     )
                 },
-                BorderLayout.CENTER,
+                BorderLayout.NORTH,
             )
+            add(changedFilesScroll, BorderLayout.CENTER)
         }
 
         /** Rounded input card: text area on top, action buttons tucked into its bottom-right corner. */
@@ -310,13 +351,20 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
         }
 
+        /** Everything stacked between the transcript and the input: pending changes, then the attachment chip. */
+        private val composerTop = JPanel(BorderLayout(0, JBUI.scale(5))).apply {
+            isOpaque = false
+            add(changesBar, BorderLayout.NORTH)
+            add(attachmentRow, BorderLayout.CENTER)
+        }
+
         private val composer = JPanel(BorderLayout(0, JBUI.scale(5))).apply {
             isOpaque = false
             border = BorderFactory.createCompoundBorder(
                 JBUI.Borders.customLineTop(ChatColors.separator),
                 JBUI.Borders.empty(9, 12, 10, 12),
             )
-            add(attachmentRow, BorderLayout.NORTH)
+            add(composerTop, BorderLayout.NORTH)
             add(inputCard, BorderLayout.CENTER)
             add(statusLabel, BorderLayout.SOUTH)
         }
@@ -324,7 +372,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
         val component: JComponent = JPanel(BorderLayout()).apply {
             isOpaque = true
             background = ChatColors.background
-            add(changesBar, BorderLayout.NORTH)
             add(transcript.component, BorderLayout.CENTER)
             add(composer, BorderLayout.SOUTH)
         }
@@ -441,9 +488,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatCreatedAt = createdAt
             history.clear()
             rows.clear()
-            // Shell and MCP approvals are given for a conversation, not for the project.
+            // Shell and MCP approvals are given for a conversation, not for the project. So is the
+            // raised output cap: a new chat starts back at the configured one.
             shellTool.forgetApprovals()
             mcp.forgetApprovals()
+            raisedMaxTokens = 0
             transcript.clear()
             clearAttachment()
         }
@@ -520,11 +569,70 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         private fun updateChangesBar(count: Int) {
             changesBar.isVisible = count > 0
-            changesLabel.text = if (count == 1) "1 file changed in this session" else "$count files changed in this session"
+            changesLabel.text = if (count == 1) "1 file changed" else "$count files changed"
             approveButton.isEnabled = count > 0
             revertButton.isEnabled = count > 0
-            changesBar.revalidate()
-            changesBar.repaint()
+
+            changedFilesList.removeAll()
+            if (count > 0) session.changedFiles().forEach { changedFilesList.add(changedFileRow(it)) }
+            // The whole composer moves when the bar appears or grows a row, so revalidating the bar
+            // alone leaves the input where it was.
+            composer.revalidate()
+            composer.repaint()
+        }
+
+        /** A row in the pending-changes list: file name, its folder, and a click that opens it. */
+        private fun changedFileRow(file: VirtualFile): JComponent {
+            var hovered = false
+            val row = RoundedPanel(
+                BorderLayout(JBUI.scale(6), 0),
+                arc = { ChatMetrics.smallArc },
+                fill = { if (hovered) ChatColors.cardHover else null },
+            ).apply {
+                border = JBUI.Borders.empty(JBUI.scale(2), JBUI.scale(4))
+                cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                toolTipText = "Open ${PsiTargets.relativePath(project, file)}"
+            }
+
+            // Plain labels, so the click lands on the row rather than on whichever label it hit.
+            row.add(
+                JBLabel(file.name, file.fileType.icon, SwingConstants.LEFT).apply { font = JBFont.small() },
+                BorderLayout.WEST,
+            )
+            val folder = PsiTargets.relativePath(project, file).substringBeforeLast('/', "")
+            if (folder.isNotEmpty()) {
+                row.add(
+                    JBLabel(folder).apply {
+                        font = JBFont.small()
+                        foreground = ChatColors.muted
+                    },
+                    BorderLayout.CENTER,
+                )
+            }
+
+            row.addMouseListener(object : MouseAdapter() {
+                override fun mouseClicked(e: MouseEvent) = openChangedFile(file)
+                override fun mouseEntered(e: MouseEvent) {
+                    hovered = true
+                    row.repaint()
+                }
+
+                override fun mouseExited(e: MouseEvent) {
+                    hovered = false
+                    row.repaint()
+                }
+            })
+            return row
+        }
+
+        private fun openChangedFile(file: VirtualFile) {
+            // A file the model deleted, or one moved out from under us, is still listed until the
+            // session is settled -- there is nothing to open in that case.
+            if (!file.isValid) {
+                statusLabel.text = "${file.name} is no longer there."
+                return
+            }
+            FileEditorManager.getInstance(project).openFile(file, true)
         }
 
         private fun approveChanges() {
@@ -587,7 +695,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             val settings = AnthropicSettingsState.getInstance().state
             val model = settings.model
-            val maxTokens = settings.maxTokens
+            // maxOf rather than the raised value alone, so raising the setting mid-conversation
+            // still takes effect -- the raise is a floor this chat has earned, not a replacement.
+            val maxTokens = maxOf(settings.maxTokens, raisedMaxTokens)
             val maxIterations = settings.maxIterations
 
             cancelled.set(false)
@@ -624,12 +734,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
                         // Blocks the agent thread until the user answers: the loop cannot go on
                         // until it knows whether to resume, and the pooled thread is ours to hold.
-                        override fun onMaxTokens(): Boolean {
-                            var resume = false
+                        override fun onMaxTokens(limit: Int, suggested: Int): Int? {
+                            var next: Int? = null
                             ApplicationManager.getApplication().invokeAndWait {
-                                resume = askToContinue()
+                                next = askToContinue(limit, suggested)
                             }
-                            return resume
+                            return next
                         }
 
                         // Same bargain as onMaxTokens: block here until the user says whether the
@@ -850,24 +960,70 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
         }
 
-        /** Runs on the EDT, called from the agent thread when a reply hit the output token limit. */
-        private fun askToContinue(): Boolean {
+        /**
+         * Runs on the EDT, called from the agent thread when a reply hit the output token limit.
+         * [limit] is the cap that was hit and [suggested] the one to continue at; they are equal once
+         * doubling has run into [AnthropicAgent.MAX_TOKENS_CEILING], and that is the case that asks
+         * for a number rather than a yes. Returns the cap to continue at, or null to stop.
+         *
+         * Recording the raise happens here rather than at the call site so that [raisedMaxTokens] is
+         * only ever touched from the EDT.
+         */
+        private fun askToContinue(limit: Int, suggested: Int): Int? {
+            val next = if (suggested > limit) confirmContinue(limit, suggested) else askForMaxTokens(limit)
+            if (next != null) raisedMaxTokens = next
+            showError(
+                when {
+                    next == null -> "Response hit the max_tokens limit and is incomplete."
+                    next != limit -> "Response hit the $limit-token limit — continuing at $next."
+                    else -> "Response hit the max_tokens limit — continuing."
+                }
+            )
+            return next
+        }
+
+        /** The ordinary case: offer the doubled cap and take a yes or a no. */
+        private fun confirmContinue(limit: Int, suggested: Int): Int? {
             val answer = Messages.showYesNoDialog(
                 project,
-                "The reply was cut off at the ${AnthropicSettingsState.getInstance().state.maxTokens}-token " +
-                    "output limit.\n\nContinue the reply where it stopped? This sends another request, so it " +
-                    "costs an extra turn. You can also raise Max Tokens in Settings.",
+                "The reply was cut off at the $limit-token output limit.\n\nContinue the reply where " +
+                    "it stopped? The rest of this chat gets $suggested tokens a reply, so it is less " +
+                    "likely to happen again. This sends another request, so it costs an extra turn.",
                 "Response Cut Off",
                 "Continue",
                 "Stop Here",
                 Messages.getQuestionIcon(),
             )
-            val resume = answer == Messages.YES
-            showError(
-                if (resume) "Response hit the max_tokens limit — continuing."
-                else "Response hit the max_tokens limit and is incomplete."
+            return if (answer == Messages.YES) suggested else null
+        }
+
+        /**
+         * Asks outright once the automatic doubling has stopped at
+         * [AnthropicAgent.MAX_TOKENS_CEILING]. It stops there because replies much longer than that
+         * do not finish inside the client's 60-second timeout on a typical connection -- a guess
+         * that may be wrong about this one, so from here the number is the user's to pick. Cancel
+         * leaves the answer where it stopped.
+         */
+        private fun askForMaxTokens(limit: Int): Int? {
+            val typed = Messages.showInputDialog(
+                project,
+                "The reply was cut off at the $limit-token output limit, which is as far as this chat " +
+                    "raises it on its own.\n\nSet the limit for the rest of this chat and continue, or " +
+                    "cancel to keep the answer as it is. Replies much past this size risk timing out " +
+                    "before they arrive.",
+                "Response Cut Off",
+                Messages.getQuestionIcon(),
+                limit.toString(),
+                object : InputValidator {
+                    override fun checkInput(inputString: String): Boolean =
+                        inputString.trim().toIntOrNull()?.let { it > 0 } == true
+
+                    override fun canClose(inputString: String): Boolean = checkInput(inputString)
+                },
             )
-            return resume
+            // Null is Cancel. The validator has already refused anything but a positive integer, so
+            // a value that fails to parse here is not a case worth a second message.
+            return typed?.trim()?.toIntOrNull()?.takeIf { it > 0 }
         }
 
         /**
