@@ -39,6 +39,10 @@ class AnthropicSettingsConfigurable : Configurable {
         renderer = SimpleListCellRenderer.create("") { scheme -> scheme.displayName }
     }
 
+    private val protocolCombo = ComboBox(DefaultComboBoxModel(WireProtocol.entries.toTypedArray())).apply {
+        renderer = SimpleListCellRenderer.create("") { protocol -> protocol.displayName }
+    }
+
     private val extraHeadersArea = JBTextArea(4, 40).apply {
         lineWrap = false
         font = JBUI.Fonts.create("Monospaced", font.size)
@@ -60,12 +64,23 @@ class AnthropicSettingsConfigurable : Configurable {
 
     override fun createComponent(): JComponent = panel {
         group("Connection") {
+            row("API protocol:") {
+                cell(protocolCombo).align(AlignX.FILL)
+            }.rowComment(
+                "Which API the endpoint speaks. The request body differs between them, not just the " +
+                    "headers &mdash; a Foundry or Azure deployment answers a Messages-API request " +
+                    "with <i>Unsupported parameter: 'messages'</i>, which is this setting rather " +
+                    "than anything wrong with the request. Pick the one matching the URL's path: " +
+                    "<code>/messages</code>, <code>/chat/completions</code> or <code>/responses</code>.",
+            )
             row("Endpoint URL:") {
                 cell(endpointField).align(AlignX.FILL)
             }.rowComment(
-                "The full messages endpoint, path included. Anthropic's own is " +
-                    "<code>${AnthropicSettingsState.DEFAULT_ENDPOINT_URL}</code>. Point this at a " +
-                    "gateway or proxy to route through it, as long as it speaks the Messages API.",
+                "The full endpoint, path included. Anthropic's own is " +
+                    "<code>${AnthropicSettingsState.DEFAULT_ENDPOINT_URL}</code>; an Azure or " +
+                    "Foundry one looks like " +
+                    "<code>https://&lt;resource&gt;.services.ai.azure.com/openai/v1/responses</code>. " +
+                    "Point this at a gateway or proxy to route through it.",
             )
             row("API token:") {
                 cell(apiKeyStatusLabel).align(AlignX.FILL)
@@ -79,7 +94,10 @@ class AnthropicSettingsConfigurable : Configurable {
             }
             row("anthropic-version:") {
                 cell(anthropicVersionField).align(AlignX.FILL)
-            }.rowComment("Leave empty to omit the header, which some gateways require.")
+            }.rowComment(
+                "Leave empty to omit the header, which some gateways require. Sent only when the " +
+                    "protocol above is the Messages API &mdash; no other provider knows it.",
+            )
             row("Extra headers:") {
                 cell(extraHeadersArea).align(AlignX.FILL)
             }.rowComment(
@@ -160,7 +178,8 @@ class AnthropicSettingsConfigurable : Configurable {
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
             skillPathsArea.text != settings.skillPaths ||
-            authSchemeCombo.selectedItem != settings.authScheme
+            authSchemeCombo.selectedItem != settings.authScheme ||
+            protocolCombo.selectedItem != settings.wireProtocol
     }
 
     override fun apply() {
@@ -178,6 +197,7 @@ class AnthropicSettingsConfigurable : Configurable {
         settings.anthropicVersion = anthropicVersionField.text.trim()
         settings.extraHeaders = extraHeadersArea.text
         settings.authScheme = authSchemeCombo.selectedItem as? AuthScheme ?: AuthScheme.X_API_KEY
+        settings.wireProtocol = protocolCombo.selectedItem as? WireProtocol ?: WireProtocol.ANTHROPIC_MESSAGES
         // Nothing to notify: the roots are rescanned on the next turn, so a path added here is read
         // the next time the user sends a message.
         settings.skillPaths = skillPathsArea.text
@@ -206,6 +226,7 @@ class AnthropicSettingsConfigurable : Configurable {
         anthropicVersionField.text = settings.anthropicVersion
         extraHeadersArea.text = settings.extraHeaders
         authSchemeCombo.selectedItem = settings.authScheme
+        protocolCombo.selectedItem = settings.wireProtocol
         mcpServersArea.text = settings.mcpServers
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths

@@ -3,19 +3,21 @@ package com.github.piotrszybicki.independentintelijaiplugin.anthropic
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicCredentials
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AuthScheme
+import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
 import java.net.URI
 
 /**
- * Where requests go and how they authenticate -- everything about the transport that the user can
- * configure, resolved once per turn and carried down to [AnthropicClient].
+ * Where requests go, what they speak and how they authenticate -- everything about the transport
+ * that the user can configure, resolved once per turn and carried down to [AnthropicClient].
  *
- * Exists so that pointing the plugin at a gateway or another provider does not mean threading four
+ * Exists so that pointing the plugin at a gateway or another provider does not mean threading five
  * more arguments through the agent loop.
  */
 data class AnthropicEndpoint(
     val url: String,
     val token: String,
     val authScheme: AuthScheme,
+    val protocol: WireProtocol,
     val anthropicVersion: String,
     val extraHeaders: Map<String, String>,
 ) {
@@ -23,7 +25,11 @@ data class AnthropicEndpoint(
     /** The headers to send, with the token's header last so a stray extra header cannot shadow it. */
     fun headers(): Map<String, String> = buildMap {
         put("content-type", "application/json")
-        if (anthropicVersion.isNotBlank()) put("anthropic-version", anthropicVersion)
+        // Only Anthropic's own API knows this header; OpenAI's rejects nothing but ignores it, and
+        // some gateways in front of it are stricter than that. Send it where it means something.
+        if (protocol == WireProtocol.ANTHROPIC_MESSAGES && anthropicVersion.isNotBlank()) {
+            put("anthropic-version", anthropicVersion)
+        }
         putAll(extraHeaders)
         put(authScheme.headerName, authScheme.headerValue(token))
     }
@@ -41,6 +47,16 @@ data class AnthropicEndpoint(
             return "the endpoint URL must start with http:// or https:// -- got: $url"
         }
         if (uri.host.isNullOrBlank()) return "the endpoint URL has no host: $url"
+
+        // Caught here rather than left to the provider, because the provider's answer to it is a
+        // 400 about a parameter that "has moved", which reads like a bug in the request rather than
+        // a setting one dropdown away.
+        val implied = WireProtocol.impliedBy(uri.path.orEmpty())
+        if (implied != null && implied != protocol) {
+            return "the endpoint URL looks like a ${implied.displayName.substringBefore(" (")} " +
+                "endpoint, but the API protocol is set to ${protocol.displayName.substringBefore(" (")}" +
+                " -- change one of the two in Settings | Tools | Anthropic Chat"
+        }
         return null
     }
 
@@ -53,6 +69,7 @@ data class AnthropicEndpoint(
                 url = settings.endpointUrl.trim().ifBlank { AnthropicSettingsState.DEFAULT_ENDPOINT_URL },
                 token = AnthropicCredentials.apiKey.orEmpty(),
                 authScheme = settings.authScheme,
+                protocol = settings.wireProtocol,
                 anthropicVersion = settings.anthropicVersion.trim(),
                 extraHeaders = parseHeaders(settings.extraHeaders),
             )

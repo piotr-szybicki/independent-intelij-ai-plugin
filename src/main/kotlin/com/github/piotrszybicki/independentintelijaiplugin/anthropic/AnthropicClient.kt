@@ -1,8 +1,10 @@
 package com.github.piotrszybicki.independentintelijaiplugin.anthropic
 
+import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
+import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.Logger
 import java.net.URI
 import java.net.http.HttpClient
@@ -54,13 +56,10 @@ private data class AnthropicRequest(
     val tools: List<ToolDefinition>?,
 )
 
-private data class AnthropicErrorBody(val type: String?, val message: String?)
-
 private data class AnthropicResponse(
     val content: JsonArray?,
     val stop_reason: String?,
     val usage: AnthropicUsage?,
-    val error: AnthropicErrorBody?,
 )
 
 object AnthropicClient {
@@ -82,17 +81,33 @@ object AnthropicClient {
     ): AnthropicTurn {
         endpoint.validate()?.let { throw AnthropicApiException("Cannot send the request: $it") }
 
-        val requestBody = gson.toJson(
-            AnthropicRequest(
-                model,
-                maxTokens,
-                systemBlocks(system),
-                withCacheBreakpoints(withOrphanedToolUsesAnswered(messages)),
-                tools.ifEmpty { null },
+        // The repair runs before the translation, not instead of it: the invariant it restores is
+        // one every provider enforces, and it is easier to reason about on the plugin's own shape
+        // than on either of the wire ones.
+        val repaired = withOrphanedToolUsesAnswered(messages)
+
+        val requestBody = when (endpoint.protocol) {
+            // Cache breakpoints go on only here. They are Anthropic's, and OpenAI's APIs reject an
+            // unknown field inside a content block rather than ignoring it -- so marking a request
+            // bound for one of them would fail it outright.
+            WireProtocol.ANTHROPIC_MESSAGES -> gson.toJson(
+                AnthropicRequest(
+                    model,
+                    maxTokens,
+                    systemBlocks(system),
+                    withCacheBreakpoints(repaired),
+                    tools.ifEmpty { null },
+                )
             )
-        )
+
+            WireProtocol.OPENAI_CHAT_COMPLETIONS ->
+                OpenAiProtocol.chatCompletionsRequest(model, maxTokens, system, repaired, tools).toString()
+
+            WireProtocol.OPENAI_RESPONSES ->
+                OpenAiProtocol.responsesRequest(model, maxTokens, system, repaired, tools).toString()
+        }
         // Headers are deliberately not logged: one of them is the token.
-        LOG.info("Anthropic API request -> ${endpoint.url}: $requestBody")
+        LOG.info("${endpoint.protocol.name} request -> ${endpoint.url}: $requestBody")
 
         val request = HttpRequest.newBuilder()
             .uri(URI.create(endpoint.url))
@@ -104,30 +119,61 @@ object AnthropicClient {
         val response = try {
             httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         } catch (e: Exception) {
-            LOG.info("Anthropic API request failed: ${e.message}")
+            LOG.info("API request failed: ${e.message}")
             throw AnthropicApiException("Could not reach ${endpoint.url}: ${e.message}")
         }
 
-        LOG.info("Anthropic API response <- ${response.statusCode()}: ${response.body()}")
+        LOG.info("${endpoint.protocol.name} response <- ${response.statusCode()}: ${response.body()}")
 
-        val parsed = runCatching { gson.fromJson(response.body(), AnthropicResponse::class.java) }.getOrNull()
+        val root = runCatching { JsonParser.parseString(response.body()) }
+            .getOrNull()
+            ?.takeIf { it.isJsonObject }
+            ?.asJsonObject
 
         if (response.statusCode() !in 200..299) {
-            // A gateway that is not speaking the Messages API will not return the error shape
-            // either, so fall back to the raw body rather than reporting nothing.
-            throw AnthropicApiException(parsed?.error?.message ?: "HTTP ${response.statusCode()}: ${response.body()}")
+            // Anthropic and OpenAI both nest the message under `error`, so one path covers the
+            // providers -- but a gateway in front of either may return neither shape, so fall back
+            // to the raw body rather than reporting nothing.
+            throw AnthropicApiException(errorMessage(root) ?: "HTTP ${response.statusCode()}: ${response.body()}")
+        }
+        if (root == null) throw AnthropicApiException("Empty or unrecognised response from ${endpoint.url}")
+
+        val turn = when (endpoint.protocol) {
+            WireProtocol.ANTHROPIC_MESSAGES -> {
+                val parsed = runCatching { gson.fromJson(root, AnthropicResponse::class.java) }.getOrNull()
+                val content = parsed?.content
+                    ?: throw AnthropicApiException("Empty or unrecognised response from ${endpoint.url}")
+                AnthropicTurn(content, parsed.stop_reason, parsed.usage)
+            }
+
+            WireProtocol.OPENAI_CHAT_COMPLETIONS -> OpenAiProtocol.parseChatCompletions(root)
+            WireProtocol.OPENAI_RESPONSES -> OpenAiProtocol.parseResponses(root)
         }
 
-        val content = parsed?.content
-            ?: throw AnthropicApiException("Empty or unrecognised response from ${endpoint.url}")
-
-        parsed.usage?.let {
+        turn.usage?.let {
             LOG.info(
-                "Anthropic usage: input=${it.input_tokens} output=${it.output_tokens} " +
+                "usage: input=${it.input_tokens} output=${it.output_tokens} " +
                     "cache_write=${it.cache_creation_input_tokens} cache_read=${it.cache_read_input_tokens}",
             )
         }
-        return AnthropicTurn(content, parsed.stop_reason, parsed.usage)
+        return turn
+    }
+
+    /**
+     * The human-readable half of an error body, whichever of the two shapes it arrived in.
+     *
+     * `error` is an object with a `message` on both providers, but some compatible servers put a
+     * bare string there instead, and reporting `{"error":"model not found"}` as nothing at all is
+     * the worst of the options.
+     */
+    private fun errorMessage(root: JsonObject?): String? {
+        val error = root?.get("error") ?: return null
+        if (error.isJsonPrimitive) return error.asString.takeIf { it.isNotBlank() }
+        if (!error.isJsonObject) return null
+        return error.asJsonObject.get("message")
+            ?.takeIf { it.isJsonPrimitive }
+            ?.asString
+            ?.takeIf { it.isNotBlank() }
     }
 
     // --- repair -----------------------------------------------------------------------------------

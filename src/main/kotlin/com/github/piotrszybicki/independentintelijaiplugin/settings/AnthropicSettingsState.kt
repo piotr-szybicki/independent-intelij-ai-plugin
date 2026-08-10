@@ -10,10 +10,10 @@ import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
 /**
  * Which header carries the token.
  *
- * Providers differ only in the header name, not in the request body, so this is enough to reach any
- * endpoint that speaks the Messages API -- Anthropic's own, a corporate gateway in front of it, or
- * Microsoft Foundry. Keeping it an enum rather than a free-text header name is what keeps the token
- * out of here: the secret comes from the environment and is never part of the settings XML.
+ * Half of what it takes to reach a given provider -- [WireProtocol] is the other half, for the ones
+ * that differ in the request body too. Keeping it an enum rather than a free-text header name is
+ * what keeps the token out of here: the secret comes from the environment and is never part of the
+ * settings XML.
  */
 enum class AuthScheme(val headerName: String, val displayName: String) {
     X_API_KEY("x-api-key", "x-api-key (Anthropic API)"),
@@ -51,6 +51,15 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
          */
         var endpointUrl: String = DEFAULT_ENDPOINT_URL,
         var authScheme: AuthScheme = AuthScheme.X_API_KEY,
+
+        /**
+         * Which API shape the endpoint speaks. Defaults to Anthropic's, which is what every
+         * settings file written before this field existed was configured for -- an absent value
+         * reads back as the default, so upgrading leaves those setups exactly where they were.
+         */
+        var wireProtocol: WireProtocol = WireProtocol.ANTHROPIC_MESSAGES,
+
+        /** Ignored unless [wireProtocol] is the Messages API: no other provider knows the header. */
         var anthropicVersion: String = DEFAULT_ANTHROPIC_VERSION,
 
         /**
