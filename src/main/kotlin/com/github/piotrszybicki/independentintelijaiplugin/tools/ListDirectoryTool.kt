@@ -4,7 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Lists what is in a project directory -- the tool for orienting in an unfamiliar codebase.
@@ -13,7 +13,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * what the user happens to have open, so without this the only way to see the project's shape was
  * a shell `ls`, which costs an approval dialog and differs per platform.
  */
-class ListDirectoryTool(private val project: Project) : AnthropicTool {
+class ListDirectoryTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_MAX_ENTRIES = 200

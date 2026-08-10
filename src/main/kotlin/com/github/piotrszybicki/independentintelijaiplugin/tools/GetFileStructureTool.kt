@@ -11,7 +11,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * The Structure tool window, as a tool: what is in a file and on which line, without reading it.
@@ -27,7 +27,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * a dependency read through `read_library_class` -- a decompiled class is often thousands of lines,
  * and outlining it first is the difference between an API you can survey and a wall of text.
  */
-class GetFileStructureTool(private val project: Project) : AnthropicTool {
+class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_MAX_DEPTH = 3

@@ -6,9 +6,9 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.search.searches.ReferencesSearch
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class FindUsagesTool(private val project: Project) : AnthropicTool {
+class FindUsagesTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "find_usages"
     override val description =

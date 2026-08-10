@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.anthropic
+package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -188,7 +188,7 @@ class OpenAiProtocolTest {
     @Test
     fun `reports a response with no choices rather than returning nothing`() {
         val failure = runCatching { OpenAiProtocol.parseChatCompletions(json("""{"id":"x"}""")) }
-        assertTrue(failure.exceptionOrNull() is AnthropicApiException)
+        assertTrue(failure.exceptionOrNull() is AICodingAgentApiException)
     }
 
     // --- Responses: requests ------------------------------------------------------------------------
@@ -296,7 +296,7 @@ class OpenAiProtocolTest {
     @Test
     fun `reports a response with no output rather than returning nothing`() {
         val failure = runCatching { OpenAiProtocol.parseResponses(json("""{"status":"completed"}""")) }
-        assertTrue(failure.exceptionOrNull() is AnthropicApiException)
+        assertTrue(failure.exceptionOrNull() is AICodingAgentApiException)
     }
 
     // --- round trip ---------------------------------------------------------------------------------

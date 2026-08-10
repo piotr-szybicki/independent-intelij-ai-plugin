@@ -5,7 +5,7 @@ import com.google.gson.JsonObject
 import com.intellij.execution.RunManager
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Starts an existing run configuration under the debugger, by name.
@@ -20,7 +20,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  *
  * Pairs with `await_breakpoint`: set the breakpoint, start the configuration here, then wait.
  */
-class StartDebugConfigurationTool(private val project: Project) : AnthropicTool {
+class StartDebugConfigurationTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         /** Enough names to recognise a typo without turning an error into a wall of text. */

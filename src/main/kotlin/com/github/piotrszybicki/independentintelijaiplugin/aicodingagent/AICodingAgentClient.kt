@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.anthropic
+package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
 import com.google.gson.Gson
@@ -33,7 +33,7 @@ data class ToolDefinition(val name: String, val description: String, val input_s
  * a prefix that fails to match reports a write every turn and never a read, and nothing else about
  * the response looks any different.
  */
-data class AnthropicUsage(
+data class AICodingAgentUsage(
     val input_tokens: Int = 0,
     val output_tokens: Int = 0,
     val cache_creation_input_tokens: Int = 0,
@@ -71,7 +71,7 @@ data class SessionUsage(
 
     val isEmpty: Boolean get() = requests == 0
 
-    operator fun plus(usage: AnthropicUsage): SessionUsage = SessionUsage(
+    operator fun plus(usage: AICodingAgentUsage): SessionUsage = SessionUsage(
         inputTokens + usage.input_tokens,
         outputTokens + usage.output_tokens,
         cacheWriteTokens + usage.cache_creation_input_tokens,
@@ -80,11 +80,11 @@ data class SessionUsage(
     )
 }
 
-data class AnthropicTurn(val content: JsonArray, val stopReason: String?, val usage: AnthropicUsage? = null)
+data class AICodingAgentTurn(val content: JsonArray, val stopReason: String?, val usage: AICodingAgentUsage? = null)
 
-class AnthropicApiException(message: String) : Exception(message)
+class AICodingAgentApiException(message: String) : Exception(message)
 
-private data class AnthropicRequest(
+private data class AICodingAgentRequest(
     val model: String,
     val max_tokens: Int,
     /**
@@ -96,15 +96,15 @@ private data class AnthropicRequest(
     val tools: List<ToolDefinition>?,
 )
 
-private data class AnthropicResponse(
+private data class AICodingAgentResponse(
     val content: JsonArray?,
     val stop_reason: String?,
-    val usage: AnthropicUsage?,
+    val usage: AICodingAgentUsage?,
 )
 
-object AnthropicClient {
+object AICodingAgentClient {
 
-    private val LOG = Logger.getInstance(AnthropicClient::class.java)
+    private val LOG = Logger.getInstance(AICodingAgentClient::class.java)
 
     private val gson = Gson()
     private val httpClient: HttpClient = HttpClient.newBuilder()
@@ -112,14 +112,14 @@ object AnthropicClient {
         .build()
 
     fun sendMessage(
-        endpoint: AnthropicEndpoint,
+        endpoint: AICodingAgentEndpoint,
         model: String,
         maxTokens: Int,
         messages: List<ChatMessage>,
         tools: List<ToolDefinition> = emptyList(),
         system: String? = null,
-    ): AnthropicTurn {
-        endpoint.validate()?.let { throw AnthropicApiException("Cannot send the request: $it") }
+    ): AICodingAgentTurn {
+        endpoint.validate()?.let { throw AICodingAgentApiException("Cannot send the request: $it") }
 
         // The repair runs before the translation, not instead of it: the invariant it restores is
         // one every provider enforces, and it is easier to reason about on the plugin's own shape
@@ -131,7 +131,7 @@ object AnthropicClient {
             // unknown field inside a content block rather than ignoring it -- so marking a request
             // bound for one of them would fail it outright.
             WireProtocol.ANTHROPIC_MESSAGES -> gson.toJson(
-                AnthropicRequest(
+                AICodingAgentRequest(
                     model,
                     maxTokens,
                     systemBlocks(system),
@@ -160,7 +160,7 @@ object AnthropicClient {
             httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         } catch (e: Exception) {
             LOG.info("API request failed: ${e.message}")
-            throw AnthropicApiException("Could not reach ${endpoint.url}: ${e.message}")
+            throw AICodingAgentApiException("Could not reach ${endpoint.url}: ${e.message}")
         }
 
         LOG.info("${endpoint.protocol.name} response <- ${response.statusCode()}: ${response.body()}")
@@ -174,16 +174,16 @@ object AnthropicClient {
             // Anthropic and OpenAI both nest the message under `error`, so one path covers the
             // providers -- but a gateway in front of either may return neither shape, so fall back
             // to the raw body rather than reporting nothing.
-            throw AnthropicApiException(errorMessage(root) ?: "HTTP ${response.statusCode()}: ${response.body()}")
+            throw AICodingAgentApiException(errorMessage(root) ?: "HTTP ${response.statusCode()}: ${response.body()}")
         }
-        if (root == null) throw AnthropicApiException("Empty or unrecognised response from ${endpoint.url}")
+        if (root == null) throw AICodingAgentApiException("Empty or unrecognised response from ${endpoint.url}")
 
         val turn = when (endpoint.protocol) {
             WireProtocol.ANTHROPIC_MESSAGES -> {
-                val parsed = runCatching { gson.fromJson(root, AnthropicResponse::class.java) }.getOrNull()
+                val parsed = runCatching { gson.fromJson(root, AICodingAgentResponse::class.java) }.getOrNull()
                 val content = parsed?.content
-                    ?: throw AnthropicApiException("Empty or unrecognised response from ${endpoint.url}")
-                AnthropicTurn(content, parsed.stop_reason, parsed.usage)
+                    ?: throw AICodingAgentApiException("Empty or unrecognised response from ${endpoint.url}")
+                AICodingAgentTurn(content, parsed.stop_reason, parsed.usage)
             }
 
             WireProtocol.OPENAI_CHAT_COMPLETIONS -> OpenAiProtocol.parseChatCompletions(root)

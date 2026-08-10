@@ -24,8 +24,8 @@ enum class AuthScheme(val headerName: String, val displayName: String) {
 }
 
 @Service(Service.Level.APP)
-@State(name = "AnthropicChatSettings", storages = [Storage("anthropicChatSettings.xml")])
-class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.State> {
+@State(name = "AICodingAgentChatSettings", storages = [Storage("aiCodingAgentChatSettings.xml")])
+class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSettingsState.State> {
 
     data class State(
         var model: String = "claude-sonnet-5",
@@ -60,7 +60,7 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
         var wireProtocol: WireProtocol = WireProtocol.ANTHROPIC_MESSAGES,
 
         /** Ignored unless [wireProtocol] is the Messages API: no other provider knows the header. */
-        var anthropicVersion: String = DEFAULT_ANTHROPIC_VERSION,
+        var apiVersion: String = DEFAULT_API_VERSION,
 
         /**
          * Extra headers as `Name: Value`, one per line. Stored in plain XML, so this is for routing
@@ -100,8 +100,8 @@ class AnthropicSettingsState : PersistentStateComponent<AnthropicSettingsState.S
 
     companion object {
         const val DEFAULT_ENDPOINT_URL = "https://api.anthropic.com/v1/messages"
-        const val DEFAULT_ANTHROPIC_VERSION = "2023-06-01"
+        const val DEFAULT_API_VERSION = "2023-06-01"
 
-        fun getInstance(): AnthropicSettingsState = service()
+        fun getInstance(): AICodingAgentSettingsState = service()
     }
 }

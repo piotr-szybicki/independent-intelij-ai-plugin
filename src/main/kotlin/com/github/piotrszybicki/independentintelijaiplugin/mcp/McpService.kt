@@ -4,8 +4,8 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import java.io.File
 
 /**
@@ -27,7 +27,7 @@ class McpService(private val project: Project) : Disposable {
 
     private val approvals = McpApprovalGate()
 
-    private class Connection(val client: McpClient?, val tools: List<AnthropicTool>, val status: ServerStatus)
+    private class Connection(val client: McpClient?, val tools: List<AICodingAgentTool>, val status: ServerStatus)
 
     /** Null until the first connect; keyed on the settings text it was built from. */
     private var connections: List<Connection>? = null
@@ -40,7 +40,7 @@ class McpService(private val project: Project) : Disposable {
      * same whether or not any servers are configured.
      */
     @Synchronized
-    fun tools(): List<AnthropicTool> = current().flatMap { it.tools }
+    fun tools(): List<AICodingAgentTool> = current().flatMap { it.tools }
 
     /** One line per configured server, for the settings panel and for diagnosing a missing tool. */
     @Synchronized
@@ -61,7 +61,7 @@ class McpService(private val project: Project) : Disposable {
     override fun dispose() = reload()
 
     private fun current(): List<Connection> {
-        val text = AnthropicSettingsState.getInstance().state.mcpServers
+        val text = AICodingAgentSettingsState.getInstance().state.mcpServers
         connections?.let { if (builtFrom == text) return it }
 
         connections?.forEach { runCatching { it.client?.close() } }

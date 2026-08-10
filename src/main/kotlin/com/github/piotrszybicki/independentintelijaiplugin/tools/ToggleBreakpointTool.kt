@@ -14,7 +14,7 @@ import com.intellij.xdebugger.breakpoints.XBreakpointManager
 import com.intellij.xdebugger.breakpoints.XBreakpointProperties
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Adds or removes a line breakpoint, so a debugging session can be set up from the chat instead of
@@ -23,7 +23,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * Breakpoints are the debugger's own state, not file content: they survive edits, are not part of
  * the change session, and Approve/Revert does not touch them.
  */
-class ToggleBreakpointTool(private val project: Project) : AnthropicTool {
+class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "toggle_breakpoint"
     override val description =

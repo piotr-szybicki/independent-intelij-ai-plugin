@@ -1,7 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.changes
 
 import com.google.gson.JsonObject
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Opens a [ChangeSessionService] capture window around a tool call, so any document the tool touches
@@ -12,9 +12,9 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * `rename_symbol`, whose file set is only known once the refactoring runs.
  */
 class ChangeTrackingTool(
-    private val delegate: AnthropicTool,
+    private val delegate: AICodingAgentTool,
     private val session: ChangeSessionService,
-) : AnthropicTool by delegate {
+) : AICodingAgentTool by delegate {
 
     override fun execute(input: JsonObject): String {
         session.beginCapture()
@@ -34,7 +34,7 @@ class ChangeTrackingTool(
 
     companion object {
         /** Wraps every tool; the read-only ones simply never trigger a capture. */
-        fun wrapAll(tools: List<AnthropicTool>, session: ChangeSessionService): List<AnthropicTool> =
+        fun wrapAll(tools: List<AICodingAgentTool>, session: ChangeSessionService): List<AICodingAgentTool> =
             tools.map { ChangeTrackingTool(it, session) }
     }
 }

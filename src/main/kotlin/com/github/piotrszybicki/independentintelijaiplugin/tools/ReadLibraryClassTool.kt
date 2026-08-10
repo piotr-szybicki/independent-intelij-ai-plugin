@@ -4,7 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Reads a class the project depends on but does not contain.
@@ -19,7 +19,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * is exactly what Ctrl+B shows. Neither has line numbers that mean anything outside this tool, so
  * they are only useful for paging through with `start_line`/`end_line` -- nothing edits here.
  */
-class ReadLibraryClassTool(private val project: Project) : AnthropicTool {
+class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val MAX_CANDIDATES = 20

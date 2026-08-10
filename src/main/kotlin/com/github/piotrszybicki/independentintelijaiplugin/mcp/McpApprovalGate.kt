@@ -5,7 +5,7 @@ import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -31,7 +31,7 @@ class McpApprovalGate {
 
     /** Blocks the agent thread on the EDT dialog: the call must not start until the user has decided. */
     fun confirm(project: Project, toolName: String, server: McpServerConfig, input: JsonObject): Boolean {
-        if (!AnthropicSettingsState.getInstance().state.confirmMcpToolCalls) return true
+        if (!AICodingAgentSettingsState.getInstance().state.confirmMcpToolCalls) return true
         if (approveEverything.get() || approvedTools.contains(toolName)) return true
 
         val arguments = gson.toJson(input).let { if (it.length > 2_000) it.take(2_000) + "\n[...]" else it }

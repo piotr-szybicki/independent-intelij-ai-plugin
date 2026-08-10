@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.anthropic
+package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -8,7 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
  * Drives the request/tool-call/tool-result cycle described at
  * https://docs.anthropic.com/en/docs/build-with-claude/tool-use until the model stops asking for tools.
  */
-class AnthropicAgent(
+class AICodingAgent(
     /**
      * The tools to offer, asked for once per [run] rather than fixed at construction.
      *
@@ -17,7 +17,7 @@ class AnthropicAgent(
      * happen on the EDT where the tool window is assembled. Resolving per turn also means a server
      * added in settings is usable on the next message instead of after a restart.
      */
-    private val tools: () -> List<AnthropicTool>,
+    private val tools: () -> List<AICodingAgentTool>,
     /**
      * Machine-specific facts appended to the system prompt. A lambda rather than a string because
      * describing the environment reads IDE settings, which must not happen on the EDT -- the agent
@@ -65,7 +65,7 @@ class AnthropicAgent(
          * A request that failed reports nothing -- the usage block comes with the response, and an
          * error does not carry one.
          */
-        fun onUsage(usage: AnthropicUsage) {}
+        fun onUsage(usage: AICodingAgentUsage) {}
 
         /**
          * Called when a turn was cut off by the model's output limit. [limit] is the cap that was
@@ -173,7 +173,7 @@ class AnthropicAgent(
 
         /**
          * How far doubling the output cap will go on its own. The models themselves allow far more,
-         * but [AnthropicClient] waits 60 seconds for a response and does not stream: past roughly
+         * but [AICodingAgentClient] waits 60 seconds for a response and does not stream: past roughly
          * this many tokens the reply stops arriving in time, and a timeout is a worse answer than a
          * truncated one. Not a hard limit -- it is where the automatic raises stop and the user is
          * asked for a number instead, which is a judgement about their connection and patience that
@@ -225,7 +225,7 @@ class AnthropicAgent(
         return if (listing.isEmpty()) basePrompt else "$basePrompt\n\n$listing"
     }
 
-    private val log = Logger.getInstance(AnthropicAgent::class.java)
+    private val log = Logger.getInstance(AICodingAgent::class.java)
 
     /**
      * Runs the loop, mutating [history] in place with every assistant/tool-result turn produced.
@@ -244,7 +244,7 @@ class AnthropicAgent(
      * caller's to do, from the value it returned there.
      */
     fun run(
-        endpoint: AnthropicEndpoint,
+        endpoint: AICodingAgentEndpoint,
         model: String,
         maxTokens: Int,
         maxIterations: Int,
@@ -279,7 +279,7 @@ class AnthropicAgent(
         try {
             while (true) {
                 if (used >= budget) {
-                    log.info("AnthropicAgent reached the $budget tool-call iteration cap")
+                    log.info("AICodingAgent reached the $budget tool-call iteration cap")
                     if (!listener.onMaxIterations(used)) return
                     budget += maxIterations
                 }
@@ -287,7 +287,7 @@ class AnthropicAgent(
 
                 if (isCancelled()) return
                 val turn =
-                    AnthropicClient.sendMessage(endpoint, model, tokenCap, history, toolDefinitions, system)
+                    AICodingAgentClient.sendMessage(endpoint, model, tokenCap, history, toolDefinitions, system)
                 turn.usage?.let(listener::onUsage)
                 val truncated = turn.stopReason == "max_tokens"
                 val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
@@ -340,7 +340,7 @@ class AnthropicAgent(
                     } else {
                         listener.onToolStarted(toolName, input, toolsByName[toolName]?.interruptible ?: true)
                         runCatching {
-                            val tool = toolsByName[toolName] ?: throw AnthropicApiException("Unknown tool: $toolName")
+                            val tool = toolsByName[toolName] ?: throw AICodingAgentApiException("Unknown tool: $toolName")
                             tool.execute(input)
                         }.getOrElse { e ->
                             log.info("Tool '$toolName' failed: ${e.message}")

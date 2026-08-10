@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.anthropic
+package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
@@ -14,7 +14,7 @@ import org.junit.Test
  * API rejects, and a marker left on the live history is a leak that only shows up several turns
  * later, once the count has crept past the limit.
  */
-class AnthropicClientCacheTest {
+class AICodingAgentClientCacheTest {
 
     companion object {
         /** The API's ceiling of four, minus the one the system prompt always carries. */
@@ -25,7 +25,7 @@ class AnthropicClientCacheTest {
     fun `marks the last message`() {
         val messages = listOf(message("user", 1), message("assistant", 1), message("user", 1))
 
-        val marked = AnthropicClient.withCacheBreakpoints(messages)
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
         assertEquals(1, marked.last().breakpoints())
     }
@@ -34,7 +34,7 @@ class AnthropicClientCacheTest {
     fun `leaves the caller's history untouched`() {
         val messages = listOf(message("user", 1), message("assistant", 20), message("user", 3))
 
-        AnthropicClient.withCacheBreakpoints(messages)
+        AICodingAgentClient.withCacheBreakpoints(messages)
 
         assertTrue(messages.all { it.breakpoints() == 0 })
     }
@@ -45,7 +45,7 @@ class AnthropicClientCacheTest {
         // satisfied several times over.
         val messages = (1..40).map { message(if (it % 2 == 0) "assistant" else "user", 4) }
 
-        val marked = AnthropicClient.withCacheBreakpoints(messages)
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
         assertTrue(marked.sumOf { it.breakpoints() } <= MAX_MESSAGE_BREAKPOINTS)
     }
@@ -54,7 +54,7 @@ class AnthropicClientCacheTest {
     fun `marks a second point once the conversation is deep enough`() {
         val messages = (1..10).map { message("user", 4) }
 
-        val marked = AnthropicClient.withCacheBreakpoints(messages)
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
         assertEquals(MAX_MESSAGE_BREAKPOINTS, marked.sumOf { it.breakpoints() })
     }
@@ -64,7 +64,7 @@ class AnthropicClientCacheTest {
     fun `marks once when a single message covers the lookback`() {
         val messages = listOf(message("user", 50))
 
-        val marked = AnthropicClient.withCacheBreakpoints(messages)
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
         assertEquals(1, marked.single().breakpoints())
     }
@@ -73,7 +73,7 @@ class AnthropicClientCacheTest {
     fun `marks the final block, not an earlier one`() {
         val messages = listOf(message("user", 3))
 
-        val content = AnthropicClient.withCacheBreakpoints(messages).single().content
+        val content = AICodingAgentClient.withCacheBreakpoints(messages).single().content
 
         assertFalse(content[0].asJsonObject.has("cache_control"))
         assertFalse(content[1].asJsonObject.has("cache_control"))
@@ -82,7 +82,7 @@ class AnthropicClientCacheTest {
 
     @Test
     fun `passes an empty history through`() {
-        assertTrue(AnthropicClient.withCacheBreakpoints(emptyList()).isEmpty())
+        assertTrue(AICodingAgentClient.withCacheBreakpoints(emptyList()).isEmpty())
     }
 
     /**
@@ -96,7 +96,7 @@ class AnthropicClientCacheTest {
             ChatMessage("assistant", blocks("thinking" to 1, "text" to 1, "thinking" to 1)),
         )
 
-        val marked = AnthropicClient.withCacheBreakpoints(messages)
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
         val content = marked.last().content
         assertFalse(content[0].asJsonObject.has("cache_control"))
@@ -112,7 +112,7 @@ class AnthropicClientCacheTest {
             ChatMessage("assistant", blocks("thinking" to 1)),
         )
 
-        val marked = AnthropicClient.withCacheBreakpoints(messages)
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
         assertEquals(0, marked.last().breakpoints())
         assertEquals(1, marked.first().breakpoints())
@@ -122,7 +122,7 @@ class AnthropicClientCacheTest {
     fun `marks nothing when no block can carry a breakpoint`() {
         val messages = listOf(ChatMessage("assistant", blocks("thinking" to 1, "redacted_thinking" to 1)))
 
-        val marked = AnthropicClient.withCacheBreakpoints(messages)
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
         assertEquals(0, marked.sumOf { it.breakpoints() })
     }
@@ -136,7 +136,7 @@ class AnthropicClientCacheTest {
             ChatMessage("assistant", toolUse("toolu_1")),
         )
 
-        val repaired = AnthropicClient.withOrphanedToolUsesAnswered(messages)
+        val repaired = AICodingAgentClient.withOrphanedToolUsesAnswered(messages)
 
         assertEquals(3, repaired.size)
         assertEquals("user", repaired.last().role)
@@ -151,7 +151,7 @@ class AnthropicClientCacheTest {
             ChatMessage("user", toolResult("toolu_2")),
         )
 
-        val repaired = AnthropicClient.withOrphanedToolUsesAnswered(messages)
+        val repaired = AICodingAgentClient.withOrphanedToolUsesAnswered(messages)
 
         assertEquals(2, repaired.size)
         assertEquals(setOf("toolu_1", "toolu_2"), resultIds(repaired[1]))
@@ -165,7 +165,7 @@ class AnthropicClientCacheTest {
             ChatMessage("user", toolResult("toolu_1")),
         )
 
-        val repaired = AnthropicClient.withOrphanedToolUsesAnswered(messages)
+        val repaired = AICodingAgentClient.withOrphanedToolUsesAnswered(messages)
 
         assertEquals(messages, repaired)
     }
@@ -178,7 +178,7 @@ class AnthropicClientCacheTest {
             ChatMessage.text("user", "never mind, do something else"),
         )
 
-        val repaired = AnthropicClient.withOrphanedToolUsesAnswered(messages)
+        val repaired = AICodingAgentClient.withOrphanedToolUsesAnswered(messages)
 
         assertEquals(2, repaired.size)
         assertEquals(setOf("toolu_1"), resultIds(repaired[1]))

@@ -1,7 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.history
 
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.ChatMessage
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.SessionUsage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
 import com.google.gson.Gson
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.Service
@@ -87,7 +87,7 @@ class ChatHistoryService(project: Project) {
     private val lock = Any()
 
     private val directory: Path =
-        Paths.get(PathManager.getSystemPath(), "anthropicChat", "chats", project.locationHash)
+        Paths.get(PathManager.getSystemPath(), "aiCodingAgentChat", "chats", project.locationHash)
 
     private data class Index(var activeId: String?, val chats: MutableList<ChatSummary>)
 

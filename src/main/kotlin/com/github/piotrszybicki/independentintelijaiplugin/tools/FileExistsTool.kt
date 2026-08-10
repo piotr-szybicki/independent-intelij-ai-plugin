@@ -4,13 +4,13 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Answers whether a project-relative path is there, so the model can pick between `create_file` and
  * `edit_file_lines` without burning a failed call on the wrong one.
  */
-class FileExistsTool(private val project: Project) : AnthropicTool {
+class FileExistsTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "file_exists"
     override val description =

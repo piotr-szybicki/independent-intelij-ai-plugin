@@ -7,7 +7,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.XDebuggerUtil
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * The buttons on the debugger toolbar: resume, the four kinds of step, run to a line, pause and
@@ -18,7 +18,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * you have to fetch separately doubles the round trips of a debugging loop, and leaves a gap where
  * the program can stop again before anyone is listening.
  */
-class DebuggerActionTool(private val project: Project) : AnthropicTool {
+class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         /**

@@ -28,20 +28,20 @@ import com.intellij.ui.content.ContentFactory
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicAgent
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicEndpoint
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicUsage
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.ChatMessage
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.SessionUsage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgent
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentUsage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeTrackingTool
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryService
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredRow
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicCredentials
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentCredentials
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.tools.AddImportTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ApplyQuickFixTool
@@ -110,7 +110,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 DumbAwareAction.create("New Chat", AllIcons.General.Add) { chatPanel.startNewChat() },
                 DumbAwareAction.create("Chat History", AllIcons.Vcs.History) { e -> chatPanel.showHistory(e) },
                 DumbAwareAction.create("Settings", AllIcons.General.Settings) {
-                    ShowSettingsUtil.getInstance().showSettingsDialog(project, AnthropicSettingsConfigurable::class.java)
+                    ShowSettingsUtil.getInstance().showSettingsDialog(project, AICodingAgentSettingsConfigurable::class.java)
                 },
             )
         )
@@ -212,7 +212,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         private val log = Logger.getInstance(ChatToolWindowFactory::class.java)
 
-        private val agent = AnthropicAgent(
+        private val agent = AICodingAgent(
             tools = {
                 // The MCP tools are wrapped along with the rest. The change session cannot track
                 // what a server writes straight to disk -- no more than it can for
@@ -768,7 +768,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             clearAttachment()
             setBusy(true)
 
-            val settings = AnthropicSettingsState.getInstance().state
+            val settings = AICodingAgentSettingsState.getInstance().state
             val model = settings.model
             // maxOf rather than the raised value alone, so raising the setting mid-conversation
             // still takes effect -- the raise is a floor this chat has earned, not a replacement.
@@ -779,7 +779,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             // Resolving the endpoint happens here on the pooled thread, alongside the network call.
             turn = ApplicationManager.getApplication().executeOnPooledThread {
-                val endpoint = AnthropicEndpoint.fromSettings()
+                val endpoint = AICodingAgentEndpoint.fromSettings()
                 if (endpoint.token.isBlank()) {
                     ApplicationManager.getApplication().invokeLater {
                         rollbackHistoryTo(sizeBeforeTurn)
@@ -790,7 +790,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 }
 
                 try {
-                    agent.run(endpoint, model, maxTokens, maxIterations, history, object : AnthropicAgent.Listener {
+                    agent.run(endpoint, model, maxTokens, maxIterations, history, object : AICodingAgent.Listener {
                         override fun onAssistantText(text: String) {
                             if (text.isBlank()) return
                             ApplicationManager.getApplication().invokeLater { showAssistantMessage(text) }
@@ -798,7 +798,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
                         // Per request, so the count climbs while a long tool loop is still running
                         // rather than jumping once at the end of the turn.
-                        override fun onUsage(usage: AnthropicUsage) {
+                        override fun onUsage(usage: AICodingAgentUsage) {
                             ApplicationManager.getApplication().invokeLater { addUsage(usage) }
                         }
 
@@ -815,14 +815,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             name: String,
                             toolInput: JsonObject,
                             result: String,
-                            outcome: AnthropicAgent.ToolOutcome,
+                            outcome: AICodingAgent.ToolOutcome,
                         ) {
                             ApplicationManager.getApplication().invokeLater {
                                 transcript.setCancellable(true)
                                 val status = when (outcome) {
-                                    AnthropicAgent.ToolOutcome.OK -> ChatTranscript.ToolStatus.DONE
-                                    AnthropicAgent.ToolOutcome.FAILED -> ChatTranscript.ToolStatus.FAILED
-                                    AnthropicAgent.ToolOutcome.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
+                                    AICodingAgent.ToolOutcome.OK -> ChatTranscript.ToolStatus.DONE
+                                    AICodingAgent.ToolOutcome.FAILED -> ChatTranscript.ToolStatus.FAILED
+                                    AICodingAgent.ToolOutcome.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
                                 }
                                 val details = toolCallDetails(toolInput, result)
                                 // A tool the cancel got to first was never started, so there is no
@@ -932,7 +932,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         // --- token usage -------------------------------------------------------------------------
 
         /** Adds what one request cost to the running total. EDT only. */
-        private fun addUsage(reported: AnthropicUsage) = setUsage(usage + reported)
+        private fun addUsage(reported: AICodingAgentUsage) = setUsage(usage + reported)
 
         private fun setUsage(total: SessionUsage) {
             usage = total
@@ -1086,7 +1086,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun promptForMissingApiKey() {
             val openSettings = Messages.showYesNoDialog(
                 project,
-                "Set the ${AnthropicCredentials.ENV_VAR} environment variable to your Anthropic API " +
+                "Set the ${AICodingAgentCredentials.ENV_VAR} environment variable to your provider's API " +
                     "key, then restart the IDE so it picks the value up.",
                 "API Key Missing",
                 "Open Settings",
@@ -1094,14 +1094,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 Messages.getWarningIcon(),
             )
             if (openSettings == Messages.YES) {
-                ShowSettingsUtil.getInstance().showSettingsDialog(project, AnthropicSettingsConfigurable::class.java)
+                ShowSettingsUtil.getInstance().showSettingsDialog(project, AICodingAgentSettingsConfigurable::class.java)
             }
         }
 
         /**
          * Runs on the EDT, called from the agent thread when a reply hit the output token limit.
          * [limit] is the cap that was hit and [suggested] the one to continue at; they are equal once
-         * doubling has run into [AnthropicAgent.MAX_TOKENS_CEILING], and that is the case that asks
+         * doubling has run into [AICodingAgent.MAX_TOKENS_CEILING], and that is the case that asks
          * for a number rather than a yes. Returns the cap to continue at, or null to stop.
          *
          * Recording the raise happens here rather than at the call site so that [raisedMaxTokens] is
@@ -1137,7 +1137,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         /**
          * Asks outright once the automatic doubling has stopped at
-         * [AnthropicAgent.MAX_TOKENS_CEILING]. It stops there because replies much longer than that
+         * [AICodingAgent.MAX_TOKENS_CEILING]. It stops there because replies much longer than that
          * do not finish inside the client's 60-second timeout on a typical connection -- a guess
          * that may be wrong about this one, so from here the number is the user's to pick. Cancel
          * leaves the answer where it stopped.

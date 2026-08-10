@@ -1,8 +1,8 @@
-package com.github.piotrszybicki.independentintelijaiplugin.anthropic
+package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.google.gson.JsonObject
 
-interface AnthropicTool {
+interface AICodingAgentTool {
     val name: String
     val description: String
 

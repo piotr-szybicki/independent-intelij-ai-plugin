@@ -5,7 +5,7 @@ import com.google.gson.JsonObject
 import com.intellij.execution.RunManager
 import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Runs one of the project's existing run configurations and returns its exit code and output.
@@ -22,7 +22,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * user already created and can already launch with one click, so there is nothing here they have
  * not already sanctioned.
  */
-class RunConfigurationTool(private val project: Project) : AnthropicTool {
+class RunConfigurationTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         /** Enough names to recognise a typo without turning an error into a wall of text. */

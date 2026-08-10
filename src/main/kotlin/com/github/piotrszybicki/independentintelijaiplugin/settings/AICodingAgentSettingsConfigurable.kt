@@ -26,14 +26,14 @@ import java.io.File
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JComponent
 
-class AnthropicSettingsConfigurable : Configurable {
+class AICodingAgentSettingsConfigurable : Configurable {
 
     private val apiKeyStatusLabel = JBLabel()
     private val modelField = JBTextField()
     private val maxTokensField = JBTextField()
     private val maxIterationsField = JBTextField()
     private val endpointField = JBTextField()
-    private val anthropicVersionField = JBTextField()
+    private val apiVersionField = JBTextField()
 
     private val authSchemeCombo = ComboBox(DefaultComboBoxModel(AuthScheme.entries.toTypedArray())).apply {
         renderer = SimpleListCellRenderer.create("") { scheme -> scheme.displayName }
@@ -60,7 +60,7 @@ class AnthropicSettingsConfigurable : Configurable {
         font = JBUI.Fonts.create("Monospaced", font.size)
     }
 
-    override fun getDisplayName(): String = "Anthropic Chat"
+    override fun getDisplayName(): String = "AICodingAgent"
 
     override fun createComponent(): JComponent = panel {
         group("Connection") {
@@ -77,7 +77,7 @@ class AnthropicSettingsConfigurable : Configurable {
                 cell(endpointField).align(AlignX.FILL)
             }.rowComment(
                 "The full endpoint, path included. Anthropic's own is " +
-                    "<code>${AnthropicSettingsState.DEFAULT_ENDPOINT_URL}</code>; an Azure or " +
+                    "<code>${AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL}</code>; an Azure or " +
                     "Foundry one looks like " +
                     "<code>https://&lt;resource&gt;.services.ai.azure.com/openai/v1/responses</code>. " +
                     "Point this at a gateway or proxy to route through it.",
@@ -85,7 +85,7 @@ class AnthropicSettingsConfigurable : Configurable {
             row("API token:") {
                 cell(apiKeyStatusLabel).align(AlignX.FILL)
             }.rowComment(
-                "Read from the <code>${AnthropicCredentials.ENV_VAR}</code> environment variable. " +
+                "Read from the <code>${AICodingAgentCredentials.ENV_VAR}</code> environment variable. " +
                     "The IDE only sees variables set when it was launched, so set it and then " +
                     "restart the IDE.",
             )
@@ -93,7 +93,7 @@ class AnthropicSettingsConfigurable : Configurable {
                 cell(authSchemeCombo).align(AlignX.FILL)
             }
             row("anthropic-version:") {
-                cell(anthropicVersionField).align(AlignX.FILL)
+                cell(apiVersionField).align(AlignX.FILL)
             }.rowComment(
                 "Leave empty to omit the header, which some gateways require. Sent only when the " +
                     "protocol above is the Messages API &mdash; no other provider knows it.",
@@ -168,12 +168,12 @@ class AnthropicSettingsConfigurable : Configurable {
     }.also { reset() }
 
     override fun isModified(): Boolean {
-        val settings = AnthropicSettingsState.getInstance().state
+        val settings = AICodingAgentSettingsState.getInstance().state
         return modelField.text != settings.model ||
             maxTokensField.positiveIntOr(settings.maxTokens) != settings.maxTokens ||
             maxIterationsField.positiveIntOr(settings.maxIterations) != settings.maxIterations ||
             endpointField.text != settings.endpointUrl ||
-            anthropicVersionField.text != settings.anthropicVersion ||
+            apiVersionField.text != settings.apiVersion ||
             extraHeadersArea.text != settings.extraHeaders ||
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
@@ -183,7 +183,7 @@ class AnthropicSettingsConfigurable : Configurable {
     }
 
     override fun apply() {
-        val settings = AnthropicSettingsState.getInstance().state
+        val settings = AICodingAgentSettingsState.getInstance().state
         settings.model = modelField.text.trim().ifBlank { "claude-sonnet-5" }
         settings.maxTokens = maxTokensField.positiveIntOr(settings.maxTokens)
         settings.maxIterations = maxIterationsField.positiveIntOr(settings.maxIterations)
@@ -193,8 +193,8 @@ class AnthropicSettingsConfigurable : Configurable {
         maxIterationsField.text = settings.maxIterations.toString()
         // Blanking the endpoint means "back to Anthropic" rather than an unusable configuration.
         settings.endpointUrl = endpointField.text.trim()
-            .ifBlank { AnthropicSettingsState.DEFAULT_ENDPOINT_URL }
-        settings.anthropicVersion = anthropicVersionField.text.trim()
+            .ifBlank { AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL }
+        settings.apiVersion = apiVersionField.text.trim()
         settings.extraHeaders = extraHeadersArea.text
         settings.authScheme = authSchemeCombo.selectedItem as? AuthScheme ?: AuthScheme.X_API_KEY
         settings.wireProtocol = protocolCombo.selectedItem as? WireProtocol ?: WireProtocol.ANTHROPIC_MESSAGES
@@ -213,17 +213,17 @@ class AnthropicSettingsConfigurable : Configurable {
     }
 
     override fun reset() {
-        val settings = AnthropicSettingsState.getInstance().state
-        apiKeyStatusLabel.text = if (AnthropicCredentials.apiKey == null) {
-            "Not set -- ${AnthropicCredentials.ENV_VAR} is empty or undefined in the IDE's environment."
+        val settings = AICodingAgentSettingsState.getInstance().state
+        apiKeyStatusLabel.text = if (AICodingAgentCredentials.apiKey == null) {
+            "Not set -- ${AICodingAgentCredentials.ENV_VAR} is empty or undefined in the IDE's environment."
         } else {
-            "Set from ${AnthropicCredentials.ENV_VAR}."
+            "Set from ${AICodingAgentCredentials.ENV_VAR}."
         }
         modelField.text = settings.model
         maxTokensField.text = settings.maxTokens.toString()
         maxIterationsField.text = settings.maxIterations.toString()
         endpointField.text = settings.endpointUrl
-        anthropicVersionField.text = settings.anthropicVersion
+        apiVersionField.text = settings.apiVersion
         extraHeadersArea.text = settings.extraHeaders
         authSchemeCombo.selectedItem = settings.authScheme
         protocolCombo.selectedItem = settings.wireProtocol

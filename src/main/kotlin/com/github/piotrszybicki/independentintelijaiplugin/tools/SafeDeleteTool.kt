@@ -9,9 +9,9 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.search.searches.ReferencesSearch
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class SafeDeleteTool(private val project: Project) : AnthropicTool {
+class SafeDeleteTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "safe_delete"
     override val description =

@@ -7,7 +7,7 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Line-addressed editing: the general-purpose escape hatch from the PSI-shaped tools, for changes
@@ -20,7 +20,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * The line numbers are resolved inside the write action against the document's current text, so
  * they cannot go stale between the model's read and the write.
  */
-class EditFileLinesTool(private val project: Project) : AnthropicTool {
+class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
 
     private companion object {
         const val REPLACE = "replace"

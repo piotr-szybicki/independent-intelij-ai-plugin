@@ -1,11 +1,11 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
     <id>com.github.piotrszybicki.independentintelijaiplugin</id>
-    <name>Anthropic Chat</name>
+    <name>AICodingAgent</name>
     <vendor>piotr-szybicki</vendor>
     <description><![CDATA[
-        <p><b>Anthropic Chat</b> is a simple chat tool window backed by the Anthropic Messages API, or by any provider speaking OpenAI's Chat Completions or Responses API &mdash; OpenAI, Azure, Microsoft Foundry, OpenRouter, or a local vLLM or Ollama server.</p>
-        <p>Set the <code>AI_API_KEY</code> environment variable to your API key and restart the IDE, then chat from the tool window. Model, endpoint, API protocol and MCP servers are configured under Settings | Tools | Anthropic Chat.</p>
+        <p><b>AICodingAgent</b> is a simple chat tool window backed by the Anthropic Messages API, or by any provider speaking OpenAI's Chat Completions or Responses API &mdash; OpenAI, Azure, Microsoft Foundry, OpenRouter, or a local vLLM or Ollama server.</p>
+        <p>Set the <code>AI_API_KEY</code> environment variable to your API key and restart the IDE, then chat from the tool window. Model, endpoint, API protocol and MCP servers are configured under Settings | Tools | AICodingAgent.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -13,12 +13,12 @@
     <depends>org.jetbrains.plugins.terminal</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory" id="Anthropic Chat"
+        <toolWindow factoryClass="com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory" id="AICodingAgent"
                     anchor="right" icon="/icons/chatToolWindow.svg"/>
         <applicationConfigurable
             parentId="tools"
-            instance="com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable"
-            id="com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsConfigurable"
-            displayName="Anthropic Chat"/>
+            instance="com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable"
+            id="com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable"
+            displayName="AICodingAgent"/>
     </extensions>
 </idea-plugin>

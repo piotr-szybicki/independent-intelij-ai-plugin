@@ -9,7 +9,7 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Search by name rather than by content -- the IDE's Go to Class / Go to File / Find Action, for
@@ -19,7 +19,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * Classes go through the same contributors that back Go to Class, so whichever languages the IDE
  * has support for are covered without this plugin knowing about any of them.
  */
-class FindByNameTool(private val project: Project) : AnthropicTool {
+class FindByNameTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_MAX_RESULTS = 50

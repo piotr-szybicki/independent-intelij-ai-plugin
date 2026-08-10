@@ -14,7 +14,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.CodeSmellDetector
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Reports what the IDE's own analysis thinks is wrong with a file -- unresolved references, type
@@ -26,7 +26,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * seconds, need an approval, and read the file off disk -- where the edits made this session have
  * not been saved yet.
  */
-class GetFileProblemsTool(private val project: Project) : AnthropicTool {
+class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_MAX_PROBLEMS = 100

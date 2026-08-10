@@ -6,7 +6,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.terminal.ui.TerminalWidget
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import java.io.File
@@ -29,7 +29,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Files a command writes are also outside the change session: it edits on disk rather than through
  * documents, so Approve/Revert has no baseline for them.
  */
-class RunShellCommandTool(private val project: Project) : AnthropicTool {
+class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_TIMEOUT_SECONDS = 120

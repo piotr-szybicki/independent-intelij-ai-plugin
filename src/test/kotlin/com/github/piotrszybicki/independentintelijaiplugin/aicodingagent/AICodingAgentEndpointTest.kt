@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.anthropic
+package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AuthScheme
 import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
@@ -13,7 +13,7 @@ import org.junit.Test
  * going somewhere that does not understand it, and a URL pointed at a protocol other than the one
  * configured.
  */
-class AnthropicEndpointTest {
+class AICodingAgentEndpointTest {
 
     @Test
     fun `sends the version header to the Messages API`() {
@@ -77,12 +77,12 @@ class AnthropicEndpointTest {
     private fun endpoint(
         url: String = "https://api.anthropic.com/v1/messages",
         protocol: WireProtocol = WireProtocol.ANTHROPIC_MESSAGES,
-    ) = AnthropicEndpoint(
+    ) = AICodingAgentEndpoint(
         url = url,
         token = "sk-test",
         authScheme = AuthScheme.X_API_KEY,
         protocol = protocol,
-        anthropicVersion = "2023-06-01",
+        apiVersion = "2023-06-01",
         extraHeaders = emptyMap(),
     )
 }

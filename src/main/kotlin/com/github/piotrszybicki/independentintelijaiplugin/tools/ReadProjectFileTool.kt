@@ -5,9 +5,9 @@ import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class ReadProjectFileTool(private val project: Project) : AnthropicTool {
+class ReadProjectFileTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         /** Cap on a single slice. Hitting it means the requested range was too wide, not that the file is unreadable. */

@@ -8,7 +8,7 @@ import com.intellij.psi.ElementDescriptionUtil
 import com.intellij.psi.PsiElement
 import com.intellij.usageView.UsageViewLongNameLocation
 import com.intellij.usageView.UsageViewTypeLocation
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Go to Declaration, as a tool. Answers "what is this?" about a symbol the model is looking at,
@@ -18,7 +18,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * The declaration's *source* comes back, not just its location: returning `File.kt:47` would only
  * force a `read_project_file` call afterwards, which is the round trip this exists to remove.
  */
-class GetSymbolInfoTool(private val project: Project) : AnthropicTool {
+class GetSymbolInfoTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         /** Enough for a whole method, or a class header with its first few members. */

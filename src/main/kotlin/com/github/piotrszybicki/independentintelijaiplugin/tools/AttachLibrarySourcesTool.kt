@@ -10,7 +10,7 @@ import com.intellij.openapi.roots.LibraryOrderEntry
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.ActionCallback
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * The "Download Sources" button from the decompiled-file banner, as a tool.
@@ -26,7 +26,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * bundled internet provider a hash lookup against a third-party service -- and it rewrites the
  * project's library roots. Both are the user's call, so this asks first.
  */
-class AttachLibrarySourcesTool(private val project: Project) : AnthropicTool {
+class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val EP_NAME = "com.intellij.attachSourcesProvider"

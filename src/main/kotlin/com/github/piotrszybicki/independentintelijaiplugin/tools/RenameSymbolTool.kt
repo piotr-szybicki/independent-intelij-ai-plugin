@@ -7,9 +7,9 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.refactoring.rename.RenameProcessor
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class RenameSymbolTool(private val project: Project) : AnthropicTool {
+class RenameSymbolTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "rename_symbol"
     override val description =

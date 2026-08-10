@@ -5,7 +5,7 @@ import com.google.gson.JsonObject
 import com.intellij.openapi.project.Project
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerManager
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Evaluate Expression, as a tool -- the thing you actually reach for at a breakpoint.
@@ -18,7 +18,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * The evaluation itself lives in [DebuggerPause] alongside the variable reading, because rendering
  * the answer is the same asynchronous dance either way.
  */
-class EvaluateExpressionTool(private val project: Project) : AnthropicTool {
+class EvaluateExpressionTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_TIMEOUT_SECONDS = 20

@@ -5,7 +5,7 @@ import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Deletes a file outright, for when the file itself is the thing that should go -- [SafeDeleteTool]
@@ -18,7 +18,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * tracks document text, and a deleted file has no document left to restore. The platform's Local
  * History does keep the contents, which is what the result points the user at.
  */
-class DeleteFileTool(private val project: Project) : AnthropicTool {
+class DeleteFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "delete_file"
     override val description =

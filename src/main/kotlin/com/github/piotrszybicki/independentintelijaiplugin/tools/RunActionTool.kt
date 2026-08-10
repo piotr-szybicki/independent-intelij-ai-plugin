@@ -14,7 +14,7 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Asks the user to let an IDE action run, then runs it -- reformat, optimise imports, run
@@ -28,7 +28,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * machinery rather than this plugin's, so Approve/Revert has no baseline for it. The IDE's own
  * Undo does.
  */
-class RunActionTool(private val project: Project) : AnthropicTool {
+class RunActionTool(private val project: Project) : AICodingAgentTool {
 
     /**
      * An action that opens a dialog owns the UI thread until the user answers it, and interrupting

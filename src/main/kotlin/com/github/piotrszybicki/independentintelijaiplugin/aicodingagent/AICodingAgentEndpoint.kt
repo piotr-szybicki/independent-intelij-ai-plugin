@@ -1,24 +1,24 @@
-package com.github.piotrszybicki.independentintelijaiplugin.anthropic
+package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicCredentials
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentCredentials
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AuthScheme
 import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
 import java.net.URI
 
 /**
  * Where requests go, what they speak and how they authenticate -- everything about the transport
- * that the user can configure, resolved once per turn and carried down to [AnthropicClient].
+ * that the user can configure, resolved once per turn and carried down to [AICodingAgentClient].
  *
  * Exists so that pointing the plugin at a gateway or another provider does not mean threading five
  * more arguments through the agent loop.
  */
-data class AnthropicEndpoint(
+data class AICodingAgentEndpoint(
     val url: String,
     val token: String,
     val authScheme: AuthScheme,
     val protocol: WireProtocol,
-    val anthropicVersion: String,
+    val apiVersion: String,
     val extraHeaders: Map<String, String>,
 ) {
 
@@ -27,8 +27,8 @@ data class AnthropicEndpoint(
         put("content-type", "application/json")
         // Only Anthropic's own API knows this header; OpenAI's rejects nothing but ignores it, and
         // some gateways in front of it are stricter than that. Send it where it means something.
-        if (protocol == WireProtocol.ANTHROPIC_MESSAGES && anthropicVersion.isNotBlank()) {
-            put("anthropic-version", anthropicVersion)
+        if (protocol == WireProtocol.ANTHROPIC_MESSAGES && apiVersion.isNotBlank()) {
+            put("anthropic-version", apiVersion)
         }
         putAll(extraHeaders)
         put(authScheme.headerName, authScheme.headerValue(token))
@@ -37,7 +37,7 @@ data class AnthropicEndpoint(
     /** A human-readable reason the endpoint cannot be used, or null when it looks usable. */
     fun validate(): String? {
         if (token.isBlank()) {
-            return "no API token is configured -- set the ${AnthropicCredentials.ENV_VAR} " +
+            return "no API token is configured -- set the ${AICodingAgentCredentials.ENV_VAR} " +
                 "environment variable and restart the IDE"
         }
         if (url.isBlank()) return "no endpoint URL is configured"
@@ -55,7 +55,7 @@ data class AnthropicEndpoint(
         if (implied != null && implied != protocol) {
             return "the endpoint URL looks like a ${implied.displayName.substringBefore(" (")} " +
                 "endpoint, but the API protocol is set to ${protocol.displayName.substringBefore(" (")}" +
-                " -- change one of the two in Settings | Tools | Anthropic Chat"
+                " -- change one of the two in Settings | Tools | AICodingAgent"
         }
         return null
     }
@@ -63,14 +63,14 @@ data class AnthropicEndpoint(
     companion object {
 
         /** Reads the configured endpoint, including the token from the environment. */
-        fun fromSettings(): AnthropicEndpoint {
-            val settings = AnthropicSettingsState.getInstance().state
-            return AnthropicEndpoint(
-                url = settings.endpointUrl.trim().ifBlank { AnthropicSettingsState.DEFAULT_ENDPOINT_URL },
-                token = AnthropicCredentials.apiKey.orEmpty(),
+        fun fromSettings(): AICodingAgentEndpoint {
+            val settings = AICodingAgentSettingsState.getInstance().state
+            return AICodingAgentEndpoint(
+                url = settings.endpointUrl.trim().ifBlank { AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL },
+                token = AICodingAgentCredentials.apiKey.orEmpty(),
                 authScheme = settings.authScheme,
                 protocol = settings.wireProtocol,
-                anthropicVersion = settings.anthropicVersion.trim(),
+                apiVersion = settings.apiVersion.trim(),
                 extraHeaders = parseHeaders(settings.extraHeaders),
             )
         }

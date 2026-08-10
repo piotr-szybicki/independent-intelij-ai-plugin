@@ -9,7 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Creates a new file, since [EditFileLinesTool] can only address lines that already exist.
@@ -18,7 +18,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * anywhere in the tool set, so a `create_file` that silently clobbered would be the one way to lose
  * a file's contents in a single call.
  */
-class CreateFileTool(private val project: Project) : AnthropicTool {
+class CreateFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "create_file"
     override val description =

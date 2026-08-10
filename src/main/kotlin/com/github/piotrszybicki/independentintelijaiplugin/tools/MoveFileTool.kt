@@ -13,7 +13,7 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.refactoring.move.moveFilesOrDirectories.MoveFilesOrDirectoriesProcessor
 import com.intellij.refactoring.rename.RenameProcessor
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import java.io.File
 
 /**
@@ -24,7 +24,7 @@ import java.io.File
  * A move and a rename are two separate refactorings, so a call that does both has to pick an order.
  * Whichever runs first leaves the file in an intermediate location, and that location must be free.
  */
-class MoveFileTool(private val project: Project) : AnthropicTool {
+class MoveFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "move_file"
     override val description =

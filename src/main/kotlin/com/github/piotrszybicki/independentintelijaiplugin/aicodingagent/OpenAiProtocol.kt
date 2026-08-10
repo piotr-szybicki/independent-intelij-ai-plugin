@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.anthropic
+package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.google.gson.JsonArray
 import com.google.gson.JsonElement
@@ -118,11 +118,11 @@ internal object OpenAiProtocol {
     }
 
     /** Reads a `/chat/completions` response back into the plugin's own block shape. */
-    fun parseChatCompletions(root: JsonObject): AnthropicTurn {
+    fun parseChatCompletions(root: JsonObject): AICodingAgentTurn {
         val choice = root.array("choices")?.firstOrNull()?.takeIf { it.isJsonObject }?.asJsonObject
-            ?: throw AnthropicApiException("The response has no choices: $root")
+            ?: throw AICodingAgentApiException("The response has no choices: $root")
         val message = choice.obj("message")
-            ?: throw AnthropicApiException("The response's first choice has no message: $root")
+            ?: throw AICodingAgentApiException("The response's first choice has no message: $root")
 
         val content = JsonArray()
         messageText(message.get("content"))?.let { content.add(textBlock(it)) }
@@ -140,11 +140,11 @@ internal object OpenAiProtocol {
         }
 
         val usage = root.obj("usage")
-        return AnthropicTurn(
+        return AICodingAgentTurn(
             content,
             stopReason(choice.string("finish_reason").takeIf { it.isNotEmpty() }, content),
             usage?.let {
-                AnthropicUsage(
+                AICodingAgentUsage(
                     input_tokens = it.int("prompt_tokens"),
                     output_tokens = it.int("completion_tokens"),
                     // No equivalent of a cache write: the caching is automatic and unbilled, so a
@@ -227,9 +227,9 @@ internal object OpenAiProtocol {
     }
 
     /** Reads a `/responses` response back into the plugin's own block shape. */
-    fun parseResponses(root: JsonObject): AnthropicTurn {
+    fun parseResponses(root: JsonObject): AICodingAgentTurn {
         val output = root.array("output")
-            ?: throw AnthropicApiException("The response has no output: $root")
+            ?: throw AICodingAgentApiException("The response has no output: $root")
 
         val content = JsonArray()
         for (item in output) {
@@ -261,11 +261,11 @@ internal object OpenAiProtocol {
             root.obj("incomplete_details").string("reason") == "max_output_tokens"
 
         val usage = root.obj("usage")
-        return AnthropicTurn(
+        return AICodingAgentTurn(
             content,
             if (truncated) "max_tokens" else stopReason(null, content),
             usage?.let {
-                AnthropicUsage(
+                AICodingAgentUsage(
                     input_tokens = it.int("input_tokens"),
                     output_tokens = it.int("output_tokens"),
                     cache_read_input_tokens = it.obj("input_tokens_details").int("cached_tokens"),

@@ -10,7 +10,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.search.searches.DefinitionsScopedSearch
 import com.intellij.usageView.UsageViewLongNameLocation
 import com.intellij.usageView.UsageViewTypeLocation
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Go to Implementation, as a tool: who implements this interface, and what overrides this method.
@@ -25,7 +25,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * and Rider. This one is platform, is what Ctrl+Alt+B uses, and covers both directions of the
  * question through whatever language support the IDE happens to have.
  */
-class FindImplementationsTool(private val project: Project) : AnthropicTool {
+class FindImplementationsTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_MAX_RESULTS = 100

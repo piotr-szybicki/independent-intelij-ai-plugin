@@ -19,7 +19,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
 import com.intellij.util.Processor
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * Alt+Enter, as a tool: applies the fix the IDE already worked out instead of having the model
@@ -37,7 +37,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * fixes these are only runs for open files -- but it does mean this tool has a visible side effect
  * the read-only tools do not.
  */
-class ApplyQuickFixTool(private val project: Project) : AnthropicTool {
+class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         /** How long to let the daemon finish before asking anyway with whatever it has. */

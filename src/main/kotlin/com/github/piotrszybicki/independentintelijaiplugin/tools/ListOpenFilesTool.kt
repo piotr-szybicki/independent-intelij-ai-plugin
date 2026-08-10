@@ -4,9 +4,9 @@ import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class ListOpenFilesTool(private val project: Project) : AnthropicTool {
+class ListOpenFilesTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "list_open_files"
     override val description = "Lists the file paths currently open in the editor, relative to the project root."

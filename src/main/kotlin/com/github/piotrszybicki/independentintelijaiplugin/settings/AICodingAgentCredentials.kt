@@ -1,6 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
-object AnthropicCredentials {
+object AICodingAgentCredentials {
 
     /** The environment variable the API token is read from. */
     const val ENV_VAR = "AI_API_KEY"

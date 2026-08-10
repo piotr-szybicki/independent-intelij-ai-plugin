@@ -45,7 +45,7 @@ This Fancy IntelliJ Platform Plugin is going to be your implementation of the br
 - **JDK 21** — the 2025.2 platform targets it, and Gradle builds with whatever JVM it runs on.
 - **IntelliJ IDEA 2025.2.x** to install into. The plugin is built against `2025.2.6.2`; it also
   depends on the bundled Terminal plugin and the VCS platform module, both of which ship with IDEA.
-- An Anthropic API key in the **`AI_API_KEY`** environment variable. The plugin reads it from the
+- An API key for your provider in the **`AI_API_KEY`** environment variable. The plugin reads it from the
   environment at runtime — there is no field to paste it into.
 
 ### Running it

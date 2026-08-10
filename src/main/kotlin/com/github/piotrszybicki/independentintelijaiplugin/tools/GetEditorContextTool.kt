@@ -6,7 +6,7 @@ import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * What the user is looking at: the file in front of them, where the caret is, and what is selected.
@@ -18,7 +18,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * Returns the surrounding lines too, rather than only coordinates. "Explain this" answered with a
  * line number would just cost a `read_project_file` call to get back to where a human already was.
  */
-class GetEditorContextTool(private val project: Project) : AnthropicTool {
+class GetEditorContextTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         /** Lines either side of the caret when nothing is selected -- enough to see a small method. */

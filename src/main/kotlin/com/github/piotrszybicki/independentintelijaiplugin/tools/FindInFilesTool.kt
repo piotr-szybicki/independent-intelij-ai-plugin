@@ -14,7 +14,7 @@ import com.intellij.usageView.UsageInfo
 import com.intellij.usages.FindUsagesProcessPresentation
 import com.intellij.usages.UsageViewPresentation
 import com.intellij.util.Processor
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * Complements find_usages, which resolves a symbol through the PSI. This one has no idea what the
  * text means -- use it for strings, comments, config keys, and anything that is not a declaration.
  */
-class FindInFilesTool(private val project: Project) : AnthropicTool {
+class FindInFilesTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_MAX_RESULTS = 100

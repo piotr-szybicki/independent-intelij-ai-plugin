@@ -11,7 +11,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
  * The editor gutter's Run button, as a tool.
@@ -32,7 +32,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTo
  * [StartDebugConfigurationTool] can only debug what already exists, and a test class just written
  * has nothing.
  */
-class RunAtLocationTool(private val project: Project) : AnthropicTool {
+class RunAtLocationTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         /** Enough to show what else the producers offered without burying the result. */

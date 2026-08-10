@@ -115,7 +115,7 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
             // nothing.
             add("capabilities", JsonObject())
             add("clientInfo", JsonObject().apply {
-                addProperty("name", "anthropic-chat-intellij")
+                addProperty("name", "aicodingagent-intellij")
                 addProperty("version", "1.0")
             })
         })

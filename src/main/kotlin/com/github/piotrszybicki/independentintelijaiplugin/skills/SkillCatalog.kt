@@ -2,7 +2,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.skills
 
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import java.io.File
 
 /**
@@ -39,7 +39,7 @@ object SkillCatalog {
 
     /** Reads the configured roots and scans them. Touches the filesystem, so never on the EDT. */
     fun scan(project: Project): Scan {
-        val text = AnthropicSettingsState.getInstance().state.skillPaths
+        val text = AICodingAgentSettingsState.getInstance().state.skillPaths
         return scan(SkillRoot.parseAll(text, project.basePath?.let(::File)))
     }
 

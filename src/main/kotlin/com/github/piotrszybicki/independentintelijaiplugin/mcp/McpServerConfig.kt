@@ -50,7 +50,7 @@ data class McpServerConfig(
 
         /**
          * Placeholder for a value that must not be written to the settings XML -- an API token, most
-         * of the time. The same reasoning as [com.github.piotrszybicki.independentintelijaiplugin.settings.AnthropicCredentials]:
+         * of the time. The same reasoning as [com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentCredentials]:
          * secrets live in the environment, and the IDE only sees what was set before it launched.
          */
         private val ENV_REFERENCE = Regex("""\$\{env:([A-Za-z_][A-Za-z0-9_]*)}""")

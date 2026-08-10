@@ -7,9 +7,9 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class AddImportTool(private val project: Project) : AnthropicTool {
+class AddImportTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "add_import"
     override val description =

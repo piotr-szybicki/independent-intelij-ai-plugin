@@ -3,10 +3,10 @@ package com.github.piotrszybicki.independentintelijaiplugin.mcp
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.anthropic.AnthropicTool
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
 /**
- * Presents one tool from an MCP server as an ordinary [AnthropicTool].
+ * Presents one tool from an MCP server as an ordinary [AICodingAgentTool].
  *
  * This is the whole of the adaptation, and it is small because the two models line up: MCP's
  * name/description/inputSchema is the Messages API's tool definition, and `tools/call` is
@@ -20,7 +20,7 @@ class McpTool(
     private val descriptor: McpToolDescriptor,
     private val approvals: McpApprovalGate,
     override val name: String,
-) : AnthropicTool {
+) : AICodingAgentTool {
 
     companion object {
         private val LOG = Logger.getInstance(McpTool::class.java)
