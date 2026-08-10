@@ -87,7 +87,7 @@ object AnthropicClient {
                 model,
                 maxTokens,
                 systemBlocks(system),
-                withCacheBreakpoints(messages),
+                withCacheBreakpoints(withOrphanedToolUsesAnswered(messages)),
                 tools.ifEmpty { null },
             )
         )
@@ -130,6 +130,95 @@ object AnthropicClient {
         return AnthropicTurn(content, parsed.stop_reason, parsed.usage)
     }
 
+    // --- repair -----------------------------------------------------------------------------------
+
+    /**
+     * Stands in for a tool call the conversation never recorded an answer for. Says what happened
+     * rather than inventing a result, so the model retries the call instead of assuming it worked.
+     */
+    private const val ORPHANED_RESULT =
+        "This tool call was interrupted and never ran. Nothing it would have done has happened. " +
+            "Call it again if you still need it."
+
+    /**
+     * Answers any `tool_use` block the next message does not, so a history that lost a tool result
+     * can still be sent.
+     *
+     * The API requires a `tool_result` for every `tool_use` in the message immediately after, and
+     * rejects the whole request otherwise -- which makes a single missing result terminal rather
+     * than awkward. It is in every message from then on, so every retry fails the same way and the
+     * conversation cannot be continued at all, only abandoned.
+     *
+     * The agent loop is careful never to produce that, and a conversation only reaching the API is
+     * not where the gap opens: it is a history saved to disk part-way through an iteration and read
+     * back later, at which point the damage is permanent and in a file. Repairing here rather than
+     * at the point of the loss covers whatever caused it, including the chats already saved.
+     */
+    internal fun withOrphanedToolUsesAnswered(messages: List<ChatMessage>): List<ChatMessage> {
+        val repaired = mutableListOf<ChatMessage>()
+        var i = 0
+        while (i < messages.size) {
+            val message = messages[i]
+            repaired.add(message)
+
+            val pending = toolUseIds(message)
+            val next = messages.getOrNull(i + 1)
+            // Only a user message can carry results; anything else leaves every id unanswered.
+            val answered = if (next != null && next.role == "user") toolResultIds(next) else emptySet()
+            val missing = pending - answered
+            if (missing.isEmpty()) {
+                i++
+                continue
+            }
+
+            LOG.info("Answering ${missing.size} unanswered tool_use block(s) in message $i: $missing")
+            val content = JsonArray()
+            missing.forEach { id ->
+                content.add(JsonObject().apply {
+                    addProperty("type", "tool_result")
+                    addProperty("tool_use_id", id)
+                    addProperty("content", ORPHANED_RESULT)
+                })
+            }
+
+            if (next != null && next.role == "user") {
+                // Merge rather than insert: two user messages in a row would put the real results
+                // one message too late, which is the same rejection again.
+                next.content.forEach { content.add(it) }
+                repaired.add(ChatMessage("user", content))
+                i += 2
+            } else {
+                repaired.add(ChatMessage("user", content))
+                i++
+            }
+        }
+        return repaired
+    }
+
+    /** The ids of every `tool_use` block in [message], in the order they appear. */
+    private fun toolUseIds(message: ChatMessage): Set<String> {
+        if (message.role != "assistant") return emptySet()
+        val ids = linkedSetOf<String>()
+        for (block in message.content) {
+            if (!block.isJsonObject) continue
+            val obj = block.asJsonObject
+            if (obj.get("type")?.asString != "tool_use") continue
+            obj.get("id")?.asString?.takeIf { it.isNotEmpty() }?.let { ids.add(it) }
+        }
+        return ids
+    }
+
+    private fun toolResultIds(message: ChatMessage): Set<String> {
+        val ids = mutableSetOf<String>()
+        for (block in message.content) {
+            if (!block.isJsonObject) continue
+            val obj = block.asJsonObject
+            if (obj.get("type")?.asString != "tool_result") continue
+            obj.get("tool_use_id")?.asString?.let { ids.add(it) }
+        }
+        return ids
+    }
+
     // --- prompt caching ---------------------------------------------------------------------------
 
     /**
@@ -141,6 +230,20 @@ object AnthropicClient {
      * Marking a second, older point keeps one within reach.
      */
     private const val LOOKBACK_BLOCKS = 15
+
+    /**
+     * The block types that accept a breakpoint.
+     *
+     * A `thinking` block does not: its schema has no `cache_control` field, and marking one is
+     * rejected outright with "Extra inputs are not permitted" -- taking the whole conversation down
+     * with it, since the offending block stays in the history and every retry sends it again. The
+     * model returns thinking blocks whenever thinking is on, which on the current models it is by
+     * default, so an assistant turn ending in one is ordinary rather than a corner case.
+     *
+     * An allow list rather than a deny list on purpose. A type nobody anticipated then goes
+     * unmarked, which costs a breakpoint; guessing the other way costs the request.
+     */
+    private val CACHEABLE_BLOCK_TYPES = setOf("text", "tool_use", "tool_result", "image", "document")
 
     private fun ephemeral(): JsonObject = JsonObject().apply { addProperty("type", "ephemeral") }
 
@@ -185,11 +288,15 @@ object AnthropicClient {
     internal fun withCacheBreakpoints(messages: List<ChatMessage>): List<ChatMessage> {
         if (messages.isEmpty()) return messages
 
-        val marked = mutableSetOf(messages.lastIndex)
+        // Not necessarily the last message: a turn can end on a thinking block, which cannot carry
+        // the marker, so the newest markable message is what the tail breakpoint lands on.
+        val tail = messages.indices.lastOrNull { markableBlock(messages[it]) >= 0 } ?: return messages
+        val marked = mutableSetOf(tail)
+
         var blocks = 0
-        for (i in messages.lastIndex downTo 0) {
+        for (i in tail downTo 0) {
             blocks += messages[i].content.size()
-            if (blocks >= LOOKBACK_BLOCKS) {
+            if (blocks >= LOOKBACK_BLOCKS && markableBlock(messages[i]) >= 0) {
                 marked.add(i)
                 break
             }
@@ -198,16 +305,38 @@ object AnthropicClient {
         return messages.mapIndexed { i, message -> if (i in marked) withBreakpoint(message) else message }
     }
 
-    /** A copy of [message] whose final content block carries a breakpoint. */
-    private fun withBreakpoint(message: ChatMessage): ChatMessage {
+    /**
+     * The index of the last block in [message] that can carry a breakpoint, or -1 when it has none.
+     *
+     * The last one rather than the first, so that the cached span covers as much of the message as
+     * the API allows.
+     */
+    private fun markableBlock(message: ChatMessage): Int {
         val content = message.content
-        val last = content.lastOrNull()
-        // Only an object can carry the field, and an empty message has nothing to mark.
-        if (last == null || !last.isJsonObject) return message
+        for (i in content.size() - 1 downTo 0) {
+            val block = content[i]
+            if (!block.isJsonObject) continue
+            if (block.asJsonObject.get("type")?.asString in CACHEABLE_BLOCK_TYPES) return i
+        }
+        return -1
+    }
 
+    /** A copy of [message] whose last markable content block carries a breakpoint. */
+    private fun withBreakpoint(message: ChatMessage): ChatMessage {
+        val at = markableBlock(message)
+        if (at < 0) return message
+
+        val content = message.content
         val copy = JsonArray()
-        for (i in 0 until content.size() - 1) copy.add(content[i])
-        copy.add(last.deepCopy().asJsonObject.apply { add("cache_control", ephemeral()) })
+        for (i in 0 until content.size()) {
+            copy.add(
+                if (i == at) {
+                    content[i].deepCopy().asJsonObject.apply { add("cache_control", ephemeral()) }
+                } else {
+                    content[i]
+                },
+            )
+        }
         return ChatMessage(message.role, copy)
     }
 }

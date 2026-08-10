@@ -148,6 +148,9 @@ class AnthropicAgent(
         /** Stands in for a tool that was skipped or interrupted when the user pressed Stop. */
         private const val CANCELLED_RESULT = "The user cancelled this turn before the tool finished."
 
+        /** Stands in for a tool the loop never reached, because the turn failed on its way there. */
+        private const val ABANDONED_RESULT = "This tool never ran: the turn ended with an error before it started."
+
         private const val CONTINUE_PROMPT =
             "Your previous response was cut off because it hit the output token limit. " +
                 "Continue from exactly where you stopped -- do not repeat what you already wrote " +
@@ -207,73 +210,111 @@ class AnthropicAgent(
         var budget = maxIterations
         var used = 0
 
-        while (true) {
-            if (used >= budget) {
-                log.info("AnthropicAgent reached the $budget tool-call iteration cap")
-                if (!listener.onMaxIterations(used)) return
-                budget += maxIterations
-            }
-            used++
-
-            if (isCancelled()) return
-            val turn =
-                AnthropicClient.sendMessage(endpoint, model, maxTokens, history, toolDefinitions, system)
-            val truncated = turn.stopReason == "max_tokens"
-            val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
-            if (content.size() > 0) {
-                history.add(ChatMessage("assistant", content))
-            }
-
-            for (block in content) {
-                val obj = block.asJsonObject
-                if (obj.get("type")?.asString == "text") {
-                    listener.onAssistantText(obj.get("text")?.asString.orEmpty())
+        // The finally is what keeps a failed turn from costing the whole conversation: see
+        // [answerDanglingToolUse].
+        try {
+            while (true) {
+                if (used >= budget) {
+                    log.info("AnthropicAgent reached the $budget tool-call iteration cap")
+                    if (!listener.onMaxIterations(used)) return
+                    budget += maxIterations
                 }
-            }
+                used++
 
-            val toolUseBlocks = content.filter { it.asJsonObject.get("type")?.asString == "tool_use" }
-            if (toolUseBlocks.isEmpty()) {
-                if (!truncated) return
-                // The answer stopped mid-sentence. Only the user can say whether it is worth
-                // another round trip, so ask before spending one.
-                if (!listener.onMaxTokens()) return
-                history.add(ChatMessage.text("user", CONTINUE_PROMPT))
-                continue
-            }
+                if (isCancelled()) return
+                val turn =
+                    AnthropicClient.sendMessage(endpoint, model, maxTokens, history, toolDefinitions, system)
+                val truncated = turn.stopReason == "max_tokens"
+                val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
+                if (content.size() > 0) {
+                    history.add(ChatMessage("assistant", content))
+                }
 
-            val toolResults = JsonArray()
-            for (block in toolUseBlocks) {
-                val obj = block.asJsonObject
-                val toolName = obj.get("name")?.asString.orEmpty()
-                val toolUseId = obj.get("id")?.asString.orEmpty()
-                val input = obj.getAsJsonObject("input") ?: JsonObject()
-
-                // Cancelling stops the work but still answers the block: an assistant turn whose
-                // tool_use has no matching tool_result is rejected by the API on the next message.
-                val resultText = if (isCancelled()) {
-                    CANCELLED_RESULT
-                } else {
-                    listener.onToolStarted(toolName, toolsByName[toolName]?.interruptible ?: true)
-                    runCatching {
-                        val tool = toolsByName[toolName] ?: throw AnthropicApiException("Unknown tool: $toolName")
-                        tool.execute(input)
-                    }.getOrElse { e ->
-                        log.info("Tool '$toolName' failed: ${e.message}")
-                        if (isCancelled()) CANCELLED_RESULT else "Error: ${e.message}"
+                for (block in content) {
+                    val obj = block.asJsonObject
+                    if (obj.get("type")?.asString == "text") {
+                        listener.onAssistantText(obj.get("text")?.asString.orEmpty())
                     }
                 }
 
-                listener.onToolCall(toolName, input, resultText)
+                val toolUseBlocks = content.filter { it.asJsonObject.get("type")?.asString == "tool_use" }
+                if (toolUseBlocks.isEmpty()) {
+                    if (!truncated) return
+                    // The answer stopped mid-sentence. Only the user can say whether it is worth
+                    // another round trip, so ask before spending one.
+                    if (!listener.onMaxTokens()) return
+                    history.add(ChatMessage.text("user", CONTINUE_PROMPT))
+                    continue
+                }
 
-                toolResults.add(JsonObject().apply {
-                    addProperty("type", "tool_result")
-                    addProperty("tool_use_id", toolUseId)
-                    addProperty("content", resultText)
-                })
+                val toolResults = JsonArray()
+                for (block in toolUseBlocks) {
+                    val obj = block.asJsonObject
+                    val toolName = obj.get("name")?.asString.orEmpty()
+                    val toolUseId = obj.get("id")?.asString.orEmpty()
+                    val input = obj.getAsJsonObject("input") ?: JsonObject()
+
+                    // Cancelling stops the work but still answers the block: an assistant turn whose
+                    // tool_use has no matching tool_result is rejected by the API on the next message.
+                    val resultText = if (isCancelled()) {
+                        CANCELLED_RESULT
+                    } else {
+                        listener.onToolStarted(toolName, toolsByName[toolName]?.interruptible ?: true)
+                        runCatching {
+                            val tool = toolsByName[toolName] ?: throw AnthropicApiException("Unknown tool: $toolName")
+                            tool.execute(input)
+                        }.getOrElse { e ->
+                            log.info("Tool '$toolName' failed: ${e.message}")
+                            if (isCancelled()) CANCELLED_RESULT else "Error: ${e.message}"
+                        }
+                    }
+
+                    listener.onToolCall(toolName, input, resultText)
+
+                    toolResults.add(JsonObject().apply {
+                        addProperty("type", "tool_result")
+                        addProperty("tool_use_id", toolUseId)
+                        addProperty("content", resultText)
+                    })
+                }
+
+                history.add(ChatMessage("user", toolResults))
             }
-
-            history.add(ChatMessage("user", toolResults))
+        } finally {
+            answerDanglingToolUse(history)
         }
+    }
+
+    /**
+     * Answers any `tool_use` blocks the loop did not get to, so the conversation stays sendable.
+     *
+     * The API rejects a request whose history holds a `tool_use` with no matching `tool_result`, and
+     * it rejects it every time -- the offending turn is still there on the next message, and the one
+     * after that. So a turn that fell over between asking for a tool and answering it does not just
+     * fail once, it leaves the chat dead for good: every later message comes back with the same
+     * error, and only starting a new conversation, or restarting the IDE onto a chat saved before
+     * the break, gets out of it. Writing the missing results closes that hole wherever the loop left
+     * off -- an exception, an Error, a cancelled thread.
+     */
+    private fun answerDanglingToolUse(history: MutableList<ChatMessage>) {
+        val last = history.lastOrNull() ?: return
+        if (last.role != "assistant") return
+
+        val unanswered = last.content.filter {
+            it.isJsonObject && it.asJsonObject.get("type")?.asString == "tool_use"
+        }
+        if (unanswered.isEmpty()) return
+
+        val results = JsonArray()
+        for (block in unanswered) {
+            results.add(JsonObject().apply {
+                addProperty("type", "tool_result")
+                addProperty("tool_use_id", block.asJsonObject.get("id")?.asString.orEmpty())
+                addProperty("content", ABANDONED_RESULT)
+            })
+        }
+        log.info("Answering ${results.size()} tool call(s) left dangling by a turn that did not finish")
+        history.add(ChatMessage("user", results))
     }
 
     /**

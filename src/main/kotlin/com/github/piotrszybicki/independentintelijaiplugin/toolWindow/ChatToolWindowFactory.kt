@@ -7,6 +7,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.options.ShowSettingsUtil
@@ -173,6 +174,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             RunActionTool(project),
             shellTool,
         )
+
+        private val log = Logger.getInstance(ChatToolWindowFactory::class.java)
 
         private val agent = AnthropicAgent(
             tools = {
@@ -641,16 +644,30 @@ class ChatToolWindowFactory : ToolWindowFactory {
                         }
                     }, isCancelled = cancelled::get)
                     ApplicationManager.getApplication().invokeLater { endTurn() }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
+                    // Throwable, not Exception: whatever comes out of a turn, the composer has to be
+                    // handed back. Anything that is not an Exception used to go straight to the
+                    // pooled thread's default handler, leaving the window stuck on "AI is working"
+                    // with no way out of it short of restarting the IDE.
+                    log.warn("The turn failed", e)
                     // A cancel usually surfaces as an exception first -- an interrupted wait, or a
                     // half-torn-down HTTP call -- and reporting that as a failure would be noise.
-                    if (cancelled.get()) {
-                        ApplicationManager.getApplication().invokeLater { endTurn() }
-                        return@executeOnPooledThread
-                    }
+                    val message = if (cancelled.get()) null else e.message ?: "The request failed."
                     ApplicationManager.getApplication().invokeLater {
-                        rollbackHistoryTo(sizeBeforeTurn)
-                        showError(e.message ?: "The request failed.")
+                        if (message != null) {
+                            // Drawing the error must not be able to cost the composer either, hence
+                            // the guard: endTurn below is the one thing that has to happen.
+                            runCatching {
+                                // Only the opening request is worth taking back. Nothing has
+                                // happened yet at that point, so dropping the message leaves a clean
+                                // conversation to send again from -- but once the turn has tool
+                                // results in it, discarding them would leave the model blind to work
+                                // the transcript still shows and to file changes that really did
+                                // happen.
+                                if (history.size <= sizeBeforeTurn + 1) rollbackHistoryTo(sizeBeforeTurn)
+                                showError(message)
+                            }.onFailure { log.warn("Could not report the failure in the transcript", it) }
+                        }
                         endTurn()
                     }
                 }
@@ -665,6 +682,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
          * waiting -- await_breakpoint sitting on a latch, or run_shell_command polling the terminal.
          * Neither can stop a shell command that is already running; that is what Ctrl+C in the
          * terminal is for.
+         *
+         * Frees the composer but deliberately does not save. The agent is still running at this
+         * point and may be part-way through an iteration -- the assistant's tool calls appended but
+         * their results not yet -- and a conversation written to disk in that state is one the API
+         * refuses to accept ever again. Saving is left to the pooled thread, which does it once it
+         * has actually unwound and the history is whole.
          */
         private fun cancelTurn() {
             if (sendButton.isEnabled) return
@@ -672,7 +695,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             turn?.cancel(true)
             showError("Stopped. The reply is incomplete.")
-            endTurn()
+            setBusy(false)
         }
 
         private fun setBusy(busy: Boolean) {
