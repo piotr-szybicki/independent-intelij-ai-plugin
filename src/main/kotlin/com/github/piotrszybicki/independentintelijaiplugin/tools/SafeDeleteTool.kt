@@ -15,10 +15,9 @@ class SafeDeleteTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "safe_delete"
     override val description =
-        "Deletes a symbol only if it has no remaining usages. Returns the list of references if the " +
-            "symbol is still in use. Point it at the declaration or at any use of the symbol; either " +
-            "way it is the declaration that is removed. Symbols declared in a library or the SDK " +
-            "cannot be deleted."
+        "Deletes a symbol only if it has no remaining usages, returning the references if it is " +
+            "still in use. Point it at the declaration or any use; either way the declaration is " +
+            "removed. Library and SDK symbols cannot be deleted."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

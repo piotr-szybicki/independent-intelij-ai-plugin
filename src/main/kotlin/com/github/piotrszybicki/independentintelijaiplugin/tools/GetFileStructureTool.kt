@@ -39,14 +39,11 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "get_file_structure"
     override val description =
-        "Outlines a file: its classes, methods, fields and other declarations, each with the line " +
-            "it starts on, as the IDE's Structure view shows them. Use this instead of reading a " +
-            "whole file when you want to know what is in it or where something is defined -- it " +
-            "costs a fraction of the tokens, and the line numbers it returns are what " +
-            "read_project_file and edit_file_lines take, so you can then read or edit just the part " +
-            "you need. Pass 'path' for a file in the project, or 'class_name' to outline a class " +
-            "from a library or the JDK, whose lines then feed read_library_class. Use " +
-            "get_symbol_info instead when you already know the name and want the declaration itself."
+        "Outlines a file's classes, methods, fields and other declarations with their start lines " +
+            "(Structure view). Far cheaper than reading the whole file, and the lines feed " +
+            "read_project_file and edit_file_lines. Pass 'path' for a project file, or " +
+            "'class_name' for a library or JDK class, whose lines feed read_library_class. For " +
+            "one known symbol, use get_symbol_info."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

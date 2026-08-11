@@ -28,10 +28,8 @@ class MoveFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "move_file"
     override val description =
-        "Moves or renames a file inside the project, creating any missing target directories. " +
-            "Both paths are relative to the project root; pass the same directory with a different " +
-            "file name to rename in place. References to the file elsewhere in the project are " +
-            "updated. Fails if the target path already exists."
+        "Moves or renames a project file, creating missing target directories and updating " +
+            "references to it. Fails if the target path already exists."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

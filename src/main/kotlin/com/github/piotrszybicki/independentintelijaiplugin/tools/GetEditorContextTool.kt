@@ -30,12 +30,9 @@ class GetEditorContextTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "get_editor_context"
     override val description =
-        "Reports what the user currently has open and where their cursor is: the file, the caret " +
-            "line and column, and the selected text if there is a selection. Call this first " +
-            "whenever the user says \"this\", \"here\", \"the selected code\", \"this method\" or " +
-            "similar without naming a file -- it is what those words refer to. Returns the " +
-            "surrounding lines as well, so it usually answers the question on its own without a " +
-            "further read."
+        "Returns what the user has open: the file, caret line and column, any selection, and the " +
+            "surrounding lines. Call this first when the user says \"this\", \"here\" or \"the " +
+            "selected code\" without naming a file."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject())

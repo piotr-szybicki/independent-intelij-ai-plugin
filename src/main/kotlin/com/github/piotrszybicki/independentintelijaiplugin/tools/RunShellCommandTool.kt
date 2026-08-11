@@ -73,14 +73,12 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "run_shell_command"
     override val description =
-        "Runs a shell command in the IDE's Terminal tool window and returns its exit code and " +
-            "output. Use it for builds, git, and other command-line tools, and for anything the " +
-            "project has no run configuration for. Prefer run_configuration when one exists -- it " +
-            "reports per-test results rather than raw terminal text. The user watches " +
-            "it run and can stop it with Ctrl+C, and approves each command first, so prefer one " +
-            "purposeful command over a chain of exploratory ones. Use the dedicated file tools for " +
-            "reading and editing files. Interactive commands that wait for input will hang until " +
-            "the user types into the terminal or interrupts."
+        "Runs a shell command in the IDE's Terminal and returns its exit code and output. For " +
+            "builds, git, and anything with no run configuration; prefer run_configuration when " +
+            "one exists, as it reports per-test results. The user approves each command and " +
+            "watches it run, so send one purposeful command rather than a chain of exploratory " +
+            "ones. Use the file tools to read and edit files. Interactive commands hang until the " +
+            "user types into the terminal or interrupts."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

@@ -29,12 +29,10 @@ class EvaluateExpressionTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "evaluate_expression"
     override val description =
-        "Evaluates an expression in the frame the debugger is currently stopped in, and returns its " +
-            "value -- the IDE's Evaluate Expression. The session must already be paused; pair it " +
-            "with await_breakpoint. Write the expression in the debuggee's own language, using the " +
-            "locals and fields in scope at that line. It runs for real: calling a method calls it, " +
-            "with whatever side effects that has, so prefer reading state over invoking things that " +
-            "change it."
+        "Evaluates an expression in the frame the debugger is stopped in and returns its value. " +
+            "The session must already be paused; pair with await_breakpoint. Write it in the " +
+            "debuggee's language. It runs for real, so prefer reading state over calling methods " +
+            "with side effects."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

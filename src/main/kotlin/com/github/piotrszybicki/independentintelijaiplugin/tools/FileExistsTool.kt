@@ -14,9 +14,7 @@ class FileExistsTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "file_exists"
     override val description =
-        "Checks whether a path exists inside the current project, given a path relative to the " +
-            "project root. Reports whether it is a file or a directory. Use this before create_file " +
-            "(which fails on an existing path) or before reading a file you are not sure is there."
+        "Reports whether a project-relative path exists, and whether it is a file or a directory."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

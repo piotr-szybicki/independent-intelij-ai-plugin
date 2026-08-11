@@ -28,14 +28,11 @@ class GetSymbolInfoTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "get_symbol_info"
     override val description =
-        "Resolves the symbol at a file and line to its declaration and shows it: what kind of thing " +
-            "it is, its qualified name, where it is declared, and its source including any doc " +
-            "comment. This is the IDE's Go to Declaration -- point it at a *use* of a symbol (a " +
-            "call, a type reference, an inferred receiver) and it finds the definition, including " +
-            "for symbols from libraries or the JDK that no project file contains. Pointing it at " +
-            "the declaration itself works too. Prefer it over reading a whole file to learn one " +
-            "signature, and use it before find_usages or rename_symbol when you are unsure which " +
-            "declaration a name refers to."
+        "Resolves the symbol at a file and line to its declaration and shows it: kind, qualified " +
+            "name, location, and source with any doc comment. This is Go to Declaration, so it " +
+            "works on a use -- a call, type reference, inferred receiver -- including symbols " +
+            "from libraries and the JDK. Cheaper than reading a file for one signature; use it " +
+            "before find_usages or rename_symbol when the target is ambiguous."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

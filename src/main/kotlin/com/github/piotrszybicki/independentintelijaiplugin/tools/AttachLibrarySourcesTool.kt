@@ -41,12 +41,10 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
 
     override val name = "attach_library_sources"
     override val description =
-        "Downloads and attaches the sources for the library a class comes from, so it can be read " +
-            "as real source instead of decompiled bytecode -- the IDE's Download Sources action. " +
-            "Use it when read_library_class reports a class as decompiled and the missing comments, " +
-            "Javadoc or parameter names actually matter; decompiled output is usually enough to " +
-            "read an API. Asks the user before doing anything, because it downloads over the " +
-            "network and changes the project's library configuration."
+        "Downloads and attaches a library's sources so its classes read as source instead of " +
+            "decompiled bytecode. Worth it only when read_library_class reports decompiled output " +
+            "and the comments or parameter names matter. Asks the user first: it downloads over " +
+            "the network and changes the project's library configuration."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

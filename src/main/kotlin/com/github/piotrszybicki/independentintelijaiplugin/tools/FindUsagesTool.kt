@@ -12,9 +12,8 @@ class FindUsagesTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "find_usages"
     override val description =
-        "Finds all usages (references) of a symbol in the project. Point it at the declaration or " +
-            "at any use of the symbol -- a use resolves to what it refers to first. Returns a list " +
-            "of file:line locations."
+        "Finds all usages (references) of a symbol. Point it at the declaration or at any use. " +
+            "Returns file:line locations."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

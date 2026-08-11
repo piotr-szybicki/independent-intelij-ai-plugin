@@ -24,11 +24,9 @@ class ListDirectoryTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "list_directory"
     override val description =
-        "Lists the files and directories inside a project directory, for finding your way around " +
-            "the project. Returns paths relative to the project root, with a trailing \"/\" on " +
-            "directories. Lists one level by default; set recursive to true to descend, optionally " +
-            "bounded by max_depth. Build output, VCS metadata and other excluded directories are " +
-            "skipped. Use find_in_files instead when you know what text you are looking for."
+        "Lists a project directory's contents, relative to the project root, with a trailing " +
+            "\"/\" on directories. One level by default; recursive=true descends, bounded by " +
+            "max_depth. Build output and VCS metadata are skipped."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

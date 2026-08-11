@@ -29,12 +29,10 @@ class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "edit_file_lines"
     override val description =
-        "Edits a file inside the project by line number. Line numbers are 1-based and inclusive, " +
-            "matching what read_project_file returns -- read the file first to get them. " +
-            "With mode='replace', lines start_line through end_line are removed and 'content' is " +
-            "put in their place. With mode='insert', nothing is removed and 'content' is inserted " +
-            "immediately above start_line (use start_line=1 to prepend to the file, or one past " +
-            "the last line to append). Do not include line-number prefixes in 'content'."
+        "Edits a project file by 1-based inclusive line numbers, as read_project_file returns " +
+            "them -- read the file first. mode='replace' swaps start_line..end_line for " +
+            "'content'; mode='insert' puts 'content' above start_line (1 to prepend, last+1 to " +
+            "append). Do not include line-number prefixes in 'content'."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

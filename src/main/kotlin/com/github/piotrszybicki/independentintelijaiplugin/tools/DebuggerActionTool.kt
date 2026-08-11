@@ -51,10 +51,9 @@ class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "debugger_action"
     override val description =
-        "Drives a paused debugger the way the toolbar buttons do: resume, step_over, step_into, " +
-            "force_step_into, step_out, run_to_line, pause and stop. Reports where execution " +
-            "stopped next, with the variables in scope there, so a step needs no follow-up call. " +
-            "run_to_line also takes path and line."
+        "Drives a paused debugger: resume, step_over, step_into, force_step_into, step_out, " +
+            "run_to_line (also takes path and line), pause, stop. Returns where execution stopped " +
+            "next and the variables in scope there."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

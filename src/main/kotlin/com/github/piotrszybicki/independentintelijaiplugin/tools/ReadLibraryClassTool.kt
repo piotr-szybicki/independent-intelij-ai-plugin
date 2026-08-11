@@ -30,12 +30,10 @@ class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "read_library_class"
     override val description =
-        "Reads the source of a class from a library, framework or the JDK -- anything the project " +
-            "depends on but does not contain, which read_project_file cannot reach. Give the class " +
-            "name, simple or fully qualified; qualify it if the simple name is ambiguous. Returns " +
-            "real source when the dependency ships a sources jar and decompiled bytecode otherwise, " +
-            "the same as Go to Declaration in the IDE. Use get_symbol_info first if you only want " +
-            "one method's signature -- this is for reading round a dependency's API."
+        "Reads a class from a library, framework or the JDK -- anything read_project_file cannot " +
+            "reach. Takes a simple or qualified class name; qualify it if ambiguous. Returns real " +
+            "source when a sources jar is present, decompiled bytecode otherwise. For a single " +
+            "signature, use get_symbol_info."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

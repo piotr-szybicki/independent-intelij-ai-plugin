@@ -16,11 +16,10 @@ class ReadProjectFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "read_project_file"
     override val description =
-        "Reads a file inside the current project, given a path relative to the project root. " +
-            "Returns the requested lines, each prefixed with its line number, plus the file's " +
-            "total line count. Omit start_line/end_line to read the whole file. The line numbers " +
-            "are what edit_file_lines takes as arguments; they are display only and must not be " +
-            "included in the content passed back to edit_file_lines."
+        "Reads a project file, returning the requested lines each prefixed with its line number, " +
+            "plus the total line count. Omit start_line/end_line for the whole file. Those line " +
+            "numbers are what edit_file_lines takes; never include the prefixes in content passed " +
+            "back."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

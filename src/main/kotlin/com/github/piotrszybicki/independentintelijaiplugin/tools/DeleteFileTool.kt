@@ -22,9 +22,8 @@ class DeleteFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "delete_file"
     override val description =
-        "Deletes a file from the project, given a path relative to the project root. Refuses " +
-            "directories -- delete their files individually. Use safe_delete instead to remove a " +
-            "single class or function from a file that should stay."
+        "Deletes a project file. Refuses directories. To remove a single class or function from a " +
+            "file that should stay, use safe_delete."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

@@ -31,11 +31,9 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "find_by_name"
     override val description =
-        "Finds things in the project by name, rather than by their contents. Set type to \"class\" " +
-            "to find a class, interface or other top-level declaration (the IDE's Go to Class), " +
-            "\"file\" to find a file by file name, or \"action\" to find an IDE action and its id " +
-            "(the IDE's Find Action) -- an action id is what run_action takes. Matching is a " +
-            "case-insensitive substring by default. Use find_in_files instead to search file contents."
+        "Finds project items by name rather than content: type \"class\" (Go to Class), \"file\", " +
+            "or \"action\" for an IDE action id, which is what run_action takes. Case-insensitive " +
+            "substring by default. To search contents, use find_in_files."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

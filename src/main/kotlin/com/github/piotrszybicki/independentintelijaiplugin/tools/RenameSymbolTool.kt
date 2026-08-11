@@ -13,9 +13,8 @@ class RenameSymbolTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "rename_symbol"
     override val description =
-        "Renames a symbol and all its usages across the project. Updates references in every file. " +
-            "Point it at the declaration or at any use of the symbol. Symbols declared in a library " +
-            "or the SDK cannot be renamed."
+        "Renames a symbol and all its usages across the project. Point it at the declaration or " +
+            "any use. Library and SDK symbols cannot be renamed."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

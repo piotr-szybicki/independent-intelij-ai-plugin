@@ -40,11 +40,10 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "find_in_files"
     override val description =
-        "Searches the project's files for text, like the IDE's Find in Files. Supports regular " +
-            "expressions, case sensitivity, whole-word matching, a file mask such as \"*.kt\", and " +
-            "restricting the search to a subdirectory. Returns matching lines as path:line with " +
-            "the line's text. Use find_usages instead when looking for the uses of a declaration -- " +
-            "this is a plain text search and does not understand code."
+        "Plain text search across project files (Find in Files). Supports regex, case " +
+            "sensitivity, whole-word, a file mask such as \"*.kt\", and a subdirectory scope. " +
+            "Returns path:line with the matching line. To find uses of a declaration, use " +
+            "find_usages."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

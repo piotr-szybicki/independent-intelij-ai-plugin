@@ -27,9 +27,9 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "toggle_breakpoint"
     override val description =
-        "Adds or removes a line breakpoint in a project file. Line numbers are 1-based and match " +
-            "what read_project_file returns. Adding requires a line the debugger can actually stop " +
-            "on -- an executable statement, not a blank line, comment, or declaration."
+        "Adds or removes a line breakpoint in a project file. Line numbers are 1-based, as " +
+            "read_project_file returns them. Adding requires an executable statement, not a blank " +
+            "line, comment or declaration."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

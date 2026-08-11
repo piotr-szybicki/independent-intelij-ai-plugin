@@ -46,17 +46,13 @@ class RunAtLocationTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "run_at_location"
     override val description =
-        "Runs whatever is runnable at a place in the source -- a test class, a single test method, " +
-            "a main function -- creating the run configuration for it the way the editor's gutter " +
-            "Run button does. Use this when there is no saved run configuration for what you want " +
-            "to run, which is the normal case for a test class you just wrote. Give the line of " +
-            "the declaration you want to run: a line inside a test method runs that one method, a " +
-            "line on the class runs the whole class, and omitting the line runs the file. Returns " +
-            "the same exit code, per-test results and console output as run_configuration. Prefer " +
-            "run_configuration when a configuration for this already exists. Pass debug=true to " +
-            "start it under the debugger instead, which is how you stop in a test that has no saved " +
-            "configuration: set the breakpoint with toggle_breakpoint first, then call " +
-            "await_breakpoint to catch the hit."
+        "Runs whatever is runnable at a source location -- a test class, a single test method, a " +
+            "main function -- creating the configuration the way the gutter Run button does. Use " +
+            "it when nothing is saved for it, the normal case for a test class you just wrote. A " +
+            "line inside a method runs that method, a line on the class runs the class, no line " +
+            "runs the file. Returns the same exit code, per-test results and output as " +
+            "run_configuration. debug=true starts it under the debugger: set breakpoints with " +
+            "toggle_breakpoint first, then call await_breakpoint."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

@@ -39,14 +39,11 @@ class RunActionTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "run_action"
     override val description =
-        "Runs an IDE action by its id, after asking the user to approve it. Use find_by_name with " +
-            "type \"action\" to discover ids. Good for things the IDE does better than editing " +
-            "text by hand -- reformatting, optimising imports, VCS operations. This reports only " +
-            "whether the action ran, not what it produced, so use run_configuration to run " +
-            "something and read its results. The action runs against the current editor and project, so open or select " +
-            "the file it should apply to first. An action that opens a dialog will wait for the " +
-            "user to answer it. Changes an action makes are undone with the IDE's Undo, not by " +
-            "reverting this chat's changes."
+        "Runs an IDE action by id, after asking the user to approve it -- reformatting, " +
+            "optimising imports, VCS operations. Discover ids with find_by_name type \"action\". " +
+            "It reports only whether the action ran, not what it produced, and acts on the " +
+            "current editor, so open the target file first. A dialog will wait for the user; " +
+            "changes are undone with the IDE's Undo, not by reverting this chat's changes."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

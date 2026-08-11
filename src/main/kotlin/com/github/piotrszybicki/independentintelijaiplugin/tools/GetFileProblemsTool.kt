@@ -45,13 +45,10 @@ class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "get_file_problems"
     override val description =
-        "Runs the IDE's code analysis on a file and returns its errors and warnings -- unresolved " +
-            "references, type errors, and inspection findings -- as path:line:column with the " +
-            "message. This is the fastest way to check whether an edit was valid: it analyses the " +
-            "unsaved in-memory file, so it sees changes you have just made and a build would not. " +
-            "Call it after editing a file, and prefer it over running a build to check for " +
-            "mistakes. To fix what it reports, try apply_quick_fix on the reported line before " +
-            "editing by hand -- the IDE usually knows the fix already."
+        "Runs the IDE's analysis on a file and returns errors and warnings as path:line:column " +
+            "with the message. It analyses the unsaved in-memory file, so it sees edits a build " +
+            "would not -- call it after editing instead of building. Fix what it reports with " +
+            "apply_quick_fix where you can."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

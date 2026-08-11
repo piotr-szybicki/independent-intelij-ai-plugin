@@ -34,12 +34,9 @@ class FindImplementationsTool(private val project: Project) : AICodingAgentTool 
 
     override val name = "find_implementations"
     override val description =
-        "Finds the implementations of a symbol: the classes implementing an interface or extending " +
-            "an abstract class, or the methods overriding a method. This is the IDE's Go to " +
-            "Implementation. Use it for \"who implements this\" and \"what overrides this\" -- " +
-            "find_usages answers a different question and will not find them, because a class that " +
-            "implements an interface need never mention its methods by name. Point it at the " +
-            "declaration or at any use of the symbol. Returns file:line for each result."
+        "Finds implementations of a symbol: classes implementing an interface or extending an " +
+            "abstract class, methods overriding a method (Go to Implementation). find_usages will " +
+            "not find these. Point it at the declaration or any use; returns file:line."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

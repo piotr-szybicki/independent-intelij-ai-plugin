@@ -21,11 +21,9 @@ class AwaitBreakpointTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "await_breakpoint"
     override val description =
-        "Waits until the running debugger stops at a breakpoint (or finishes a step) and returns " +
-            "the file and line it stopped on plus the variables in scope, with their values. " +
-            "Returns straight away if it is already stopped. Requires a debug session -- one the " +
-            "user started, or one started by start_debug_configuration or by run_at_location with " +
-            "debug=true; use debugger_action to move on from the pause afterwards."
+        "Waits until the debug session stops at a breakpoint or finishes a step, and returns the " +
+            "file, line and variables in scope. Returns immediately if already stopped. Requires " +
+            "a running debug session; use debugger_action to move on afterwards."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

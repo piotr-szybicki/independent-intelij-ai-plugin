@@ -52,13 +52,10 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "apply_quick_fix"
     override val description =
-        "Applies one of the IDE's own quick fixes -- the Alt+Enter actions -- at a line, so an " +
-            "error reported by get_file_problems can be fixed by the IDE rather than by hand. This " +
-            "is the right way to resolve an unresolved reference: the IDE knows the fully qualified " +
-            "name and will add the correct import, which guessing at one will not reliably do. Call " +
-            "it without 'fix' to list what is available at that line, then again with the name of " +
-            "the one you want. Names are matched case-insensitively, in full or by a unique " +
-            "fragment. Opens the file in an editor."
+        "Applies an IDE quick fix (Alt+Enter) at a line -- the reliable way to fix an unresolved " +
+            "reference, since the IDE knows the qualified name and adds the right import. Call it " +
+            "without 'fix' to list what is available at that line, then again with a name " +
+            "(case-insensitive, full or unique fragment). Opens the file in an editor."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

@@ -22,9 +22,8 @@ class CreateFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "create_file"
     override val description =
-        "Creates a new file inside the project with the given content, along with any missing " +
-            "parent directories. Fails if the file already exists -- use edit_file_lines to " +
-            "change a file that is already there."
+        "Creates a new file with the given content, plus any missing parent directories. Fails if " +
+            "the file already exists -- use edit_file_lines for one that does."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

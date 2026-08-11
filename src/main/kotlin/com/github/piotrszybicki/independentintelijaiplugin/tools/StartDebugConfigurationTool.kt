@@ -31,11 +31,10 @@ class StartDebugConfigurationTool(private val project: Project) : AICodingAgentT
 
     override val name = "start_debug_configuration"
     override val description =
-        "Starts one of the project's existing run configurations under the debugger, by name -- " +
-            "including Remote JVM Debug configurations, which attach to an already-running process. " +
-            "The configuration must already exist; naming one that does not returns the list of the " +
-            "ones that do. To debug a test class or method that has no configuration yet, use " +
-            "run_at_location with debug=true instead. Follow this with await_breakpoint to catch the hit."
+        "Starts an existing run configuration under the debugger by name, including Remote JVM " +
+            "Debug configurations that attach to a running process. Naming one that does not " +
+            "exist returns the ones that do. For a test with no configuration yet, use " +
+            "run_at_location with debug=true. Follow with await_breakpoint."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
