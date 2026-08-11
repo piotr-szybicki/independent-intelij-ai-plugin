@@ -43,40 +43,10 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgen
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
-import com.github.piotrszybicki.independentintelijaiplugin.tools.AddImportTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.ApplyQuickFixTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.AttachLibrarySourcesTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.AwaitBreakpointTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.CreateFileTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.DebuggerActionTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.DeleteFileTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.EditFileLinesTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.EvaluateExpressionTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.FileExistsTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.FindByNameTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.FindImplementationsTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.FindInFilesTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.FindUsagesTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.GetEditorContextTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.GetFileProblemsTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.GetFileStructureTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.GetSymbolInfoTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.InsertMemberTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.ListDirectoryTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.ListOpenFilesTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.MoveFileTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
 import com.github.piotrszybicki.independentintelijaiplugin.tools.PsiTargets
-import com.github.piotrszybicki.independentintelijaiplugin.tools.ReadLibraryClassTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.ReadProjectFileTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.RenameSymbolTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.RunActionTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.RunAtLocationTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.RunConfigurationTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunShellCommandTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.SafeDeleteTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.StartDebugConfigurationTool
-import com.github.piotrszybicki.independentintelijaiplugin.tools.ToggleBreakpointTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension
@@ -165,9 +135,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         private val session = ChangeSessionService.getInstance(project)
 
-        // Held onto so "Always Run in This Chat" can be cleared when the conversation is reset.
-        private val shellTool = RunShellCommandTool(project)
-
         /**
          * Same reasoning as [chatHistory]: connecting to the configured MCP servers starts
          * processes and opens sockets, which is not something to be doing from the EDT while the
@@ -175,40 +142,15 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private val mcp by lazy { McpService.getInstance(project) }
 
-        private val builtInTools = listOf(
-            GetEditorContextTool(project),
-            ListOpenFilesTool(project),
-            ListDirectoryTool(project),
-            FileExistsTool(project),
-            ReadProjectFileTool(project),
-            ReadLibraryClassTool(project),
-            AttachLibrarySourcesTool(project),
-            GetFileStructureTool(project),
-            GetFileProblemsTool(project),
-            ApplyQuickFixTool(project),
-            EditFileLinesTool(project),
-            CreateFileTool(project),
-            MoveFileTool(project),
-            DeleteFileTool(project),
-            FindInFilesTool(project),
-            FindByNameTool(project),
-            FindUsagesTool(project),
-            FindImplementationsTool(project),
-            GetSymbolInfoTool(project),
-            RenameSymbolTool(project),
-            SafeDeleteTool(project),
-            AddImportTool(project),
-            InsertMemberTool(project),
-            ToggleBreakpointTool(project),
-            RunConfigurationTool(project),
-            RunAtLocationTool(project),
-            StartDebugConfigurationTool(project),
-            AwaitBreakpointTool(project),
-            DebuggerActionTool(project),
-            EvaluateExpressionTool(project),
-            RunActionTool(project),
-            shellTool,
-        )
+        /**
+         * Every built-in tool, including the ones the settings currently withhold. Building them
+         * all costs nothing -- a tool is a name, a schema and a function -- and it means switching
+         * one on takes effect on the next message rather than the next time this panel is built.
+         */
+        private val builtInTools = ToolCatalog.buildAll(project)
+
+        // Held onto so "Always Run in This Chat" can be cleared when the conversation is reset.
+        private val shellTool = builtInTools.filterIsInstance<RunShellCommandTool>().firstOrNull()
 
         private val log = Logger.getInstance(ChatToolWindowFactory::class.java)
 
@@ -218,7 +160,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 // what a server writes straight to disk -- no more than it can for
                 // run_shell_command -- but the wrapper also flushes the model's unsaved edits
                 // before every call, which is what lets a server that reads files see them.
-                ChangeTrackingTool.wrapAll(builtInTools + mcp.tools(), session)
+                ChangeTrackingTool.wrapAll(ToolCatalog.enabledIn(builtInTools) + mcp.tools(), session)
             },
             environment = { ProjectEnvironment.describe(project) },
             // Reads the skill directories off disk, so this runs on the agent's pooled thread with
@@ -529,7 +471,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             runningToolIndex = -1
             // Shell and MCP approvals are given for a conversation, not for the project. So is the
             // raised output cap: a new chat starts back at the configured one.
-            shellTool.forgetApprovals()
+            shellTool?.forgetApprovals()
             mcp.forgetApprovals()
             raisedMaxTokens = 0
             setUsage(SessionUsage())

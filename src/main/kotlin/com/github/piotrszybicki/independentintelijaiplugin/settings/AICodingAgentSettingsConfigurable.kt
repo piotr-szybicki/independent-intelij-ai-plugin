@@ -22,6 +22,8 @@ import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpServerConfig
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCategory
 import java.io.File
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JComponent
@@ -54,6 +56,16 @@ class AICodingAgentSettingsConfigurable : Configurable {
     }
 
     private val confirmMcpCheckBox = JBCheckBox("Ask before each MCP tool call")
+
+    /**
+     * The tools picked in [ToolSelectionDialog] but not yet applied.
+     *
+     * Held here rather than read back off a component, because the component the user chose them
+     * with is gone by the time [apply] runs -- the dialog closes with its checkboxes.
+     */
+    private var pendingTools: Set<String> = emptySet()
+
+    private val toolsSummaryLabel = JBLabel()
 
     private val skillPathsArea = JBTextArea(5, 40).apply {
         lineWrap = false
@@ -125,6 +137,23 @@ class AICodingAgentSettingsConfigurable : Configurable {
                     "ceiling &mdash; it is the check that stops a loop running away unnoticed.",
             )
         }
+        group("Tools") {
+            row {
+                cell(toolsSummaryLabel).align(AlignX.FILL)
+            }
+            row {
+                button("Select Tools…") { chooseTools() }
+            }.rowComment(
+                "Which built-in tools the model is told about. Every definition is re-sent with " +
+                    "every message, so the whole set costs tokens on each turn whether it gets " +
+                    "used or not &mdash; the default is what it takes to read and navigate a " +
+                    "project, and nothing that changes it. Switch on the rest when you want the " +
+                    "model editing, running or debugging. A tool that is off cannot be called, so " +
+                    "this is a limit on what the model can do and not only on what it costs. " +
+                    "Chosen here, saved with the rest of this page, and in effect from the next " +
+                    "message.",
+            )
+        }
         group("MCP servers") {
             row {
                 scrollCell(mcpServersArea).align(AlignX.FILL)
@@ -178,6 +207,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
             skillPathsArea.text != settings.skillPaths ||
+            pendingTools != ToolCatalog.parse(settings.enabledTools) ||
             authSchemeCombo.selectedItem != settings.authScheme ||
             protocolCombo.selectedItem != settings.wireProtocol
     }
@@ -201,6 +231,9 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // Nothing to notify: the roots are rescanned on the next turn, so a path added here is read
         // the next time the user sends a message.
         settings.skillPaths = skillPathsArea.text
+        // Same again: the chat panel holds every built-in tool and asks the catalog which of them to
+        // send each turn, so this lands on the next message without rebuilding anything.
+        settings.enabledTools = ToolCatalog.format(pendingTools)
 
         val serversChanged = settings.mcpServers != mcpServersArea.text
         settings.mcpServers = mcpServersArea.text
@@ -230,6 +263,30 @@ class AICodingAgentSettingsConfigurable : Configurable {
         mcpServersArea.text = settings.mcpServers
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths
+        pendingTools = ToolCatalog.parse(settings.enabledTools)
+        updateToolsSummary()
+    }
+
+    /**
+     * Opens the picker on what is pending rather than on what is saved, so cancelling this page
+     * after choosing tools discards them along with every other unapplied edit.
+     */
+    private fun chooseTools() {
+        val dialog = ToolSelectionDialog(ProjectManager.getInstance().openProjects.firstOrNull(), pendingTools)
+        if (dialog.showAndGet()) {
+            pendingTools = dialog.selectedTools
+            updateToolsSummary()
+        }
+    }
+
+    /** Per category rather than a bare total: which corners are switched off is the useful part. */
+    private fun updateToolsSummary() {
+        val byCategory = ToolCategory.entries.joinToString(", ") { category ->
+            val inCategory = ToolCatalog.entries.filter { it.category == category }
+            "${category.displayName} ${inCategory.count { it.name in pendingTools }}/${inCategory.size}"
+        }
+        toolsSummaryLabel.text =
+            "${pendingTools.size} of ${ToolCatalog.entries.size} tools selected -- $byCategory"
     }
 
     /**

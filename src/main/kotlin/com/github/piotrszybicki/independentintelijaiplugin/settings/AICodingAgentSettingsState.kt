@@ -6,6 +6,7 @@ import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.service
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
 
 /**
  * Which header carries the token.
@@ -80,6 +81,18 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
 
         /** Whether each MCP tool call is shown for approval, as shell commands are. */
         var confirmMcpToolCalls: Boolean = true,
+
+        /**
+         * Which built-in tools a request carries, by name, comma-separated. Names not in
+         * [com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog] are ignored, so a
+         * tool that is later renamed or dropped leaves nothing behind to clean up.
+         *
+         * Stored as the set to send rather than the set to withhold, which is what makes the
+         * default mean something: an absent value reads back as [ToolCatalog.DEFAULT_ENABLED], and a
+         * tool added to the catalog in a later version stays off until it is asked for. Empty is a
+         * real answer -- no built-in tools at all, for a chat that works through MCP servers.
+         */
+        var enabledTools: String = ToolCatalog.DEFAULT_ENABLED,
 
         /**
          * Directories to look for skills in, one path per line. Relative paths are resolved against
