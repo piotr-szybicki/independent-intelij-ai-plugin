@@ -187,7 +187,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private val attachButton = InplaceButton(
-            "Attach the editor selection, or the whole file when nothing is selected",
+            "Attach the editor selection, or the whole file when nothing is selected " +
+                "(press again with another file open to attach several)",
             AllIcons.Actions.AddFile,
         ) { attachFromEditor() }
 
@@ -213,33 +214,34 @@ class ChatToolWindowFactory : ToolWindowFactory {
             add(usageLabel, BorderLayout.EAST)
         }
 
-        private var pendingAttachment: String? = null
-        private var pendingAttachmentSummary: String? = null
+        /** One thing riding along with the next message: [body] is sent, [summary] labels the chip. */
+        private data class PendingAttachment(val summary: String, val body: String)
 
-        private val attachmentLabel = JBLabel().apply {
-            font = JBFont.small()
-            foreground = ChatColors.foreground
-        }
+        /** Everything attached to the next message, in the order it was attached. */
+        private val pendingAttachments = mutableListOf<PendingAttachment>()
 
-        /** Chip above the input showing what code is riding along with the next message. */
-        private val attachmentChip = RoundedPanel(
-            BorderLayout(JBUI.scale(6), 0),
-            arc = { ChatMetrics.smallArc },
-            fill = { ChatColors.card },
-            stroke = { ChatColors.separator },
-        ).apply {
-            border = JBUI.Borders.empty(JBUI.scale(3), JBUI.scale(7))
-            add(attachmentLabel, BorderLayout.CENTER)
-            add(
-                InplaceButton("Remove attachment", AllIcons.Actions.Close) { clearAttachment() },
-                BorderLayout.EAST,
-            )
-        }
+        /** One chip per entry in [pendingAttachments]. Rebuilt by [refreshAttachments]. */
+        private val attachmentList = JPanel(GridLayout(0, 1, 0, JBUI.scale(3))).apply { isOpaque = false }
 
-        private val attachmentRow = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+        /**
+         * Same bargain as [changedFilesScroll]: the chips sit on top of the composer, so a handful
+         * of attached files must not push the input off the bottom of the tool window.
+         */
+        private val attachmentRow = object : JBScrollPane(attachmentList) {
+            override fun getPreferredSize(): Dimension {
+                val preferred = super.getPreferredSize()
+                return Dimension(preferred.width, minOf(preferred.height, JBUI.scale(96)))
+            }
+
+            // Long paths must not set a floor on how narrow the tool window can be dragged.
+            override fun getMinimumSize(): Dimension = Dimension(0, preferredSize.height)
+        }.apply {
+            border = JBUI.Borders.empty()
             isOpaque = false
+            viewport.isOpaque = false
             isVisible = false
-            add(attachmentChip)
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
         }
 
         private val changesLabel = JBLabel().apply {
@@ -328,7 +330,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
         }
 
-        /** Everything stacked between the transcript and the input: pending changes, then the attachment chip. */
+        /** Everything stacked between the transcript and the input: pending changes, then the attachment chips. */
         private val composerTop = JPanel(BorderLayout(0, JBUI.scale(5))).apply {
             isOpaque = false
             add(changesBar, BorderLayout.NORTH)
@@ -476,7 +478,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             raisedMaxTokens = 0
             setUsage(SessionUsage())
             transcript.clear()
-            clearAttachment()
+            clearAttachments()
         }
 
         /** Null until the conversation has something worth keeping. */
@@ -685,29 +687,36 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun send() {
             if (!sendButton.isEnabled) return
             val text = input.text.trim()
-            val attachment = pendingAttachment
-            val attachmentSummary = pendingAttachmentSummary
-            if (text.isEmpty() && attachment == null) return
+            val attachments = pendingAttachments.toList()
+            if (text.isEmpty() && attachments.isEmpty()) return
 
+            val attached = attachments.joinToString("\n\n") { it.body }
             val messageText = when {
-                attachment == null -> text
-                text.isEmpty() -> attachment
-                else -> "$attachment\n\n$text"
+                attachments.isEmpty() -> text
+                text.isEmpty() -> attached
+                else -> "$attached\n\n$text"
             }
 
-            // The transcript shows a marker instead of the raw attached code (it's still sent in
-            // full as part of messageText below), so the chat window doesn't get cluttered with it.
+            // The transcript shows a marker per attachment instead of the raw attached code (it's
+            // still sent in full as part of messageText below), so the chat window doesn't get
+            // cluttered with it. Several become a list, which is what keeps them on separate lines
+            // once the markdown is rendered.
+            val markers = if (attachments.size == 1) {
+                "📎 `${attachments.first().summary}`"
+            } else {
+                attachments.joinToString("\n") { "- 📎 `${it.summary}`" }
+            }
             val displayText = when {
-                attachment == null -> text
-                text.isEmpty() -> "📎 `$attachmentSummary`"
-                else -> "📎 `$attachmentSummary`\n\n$text"
+                attachments.isEmpty() -> text
+                text.isEmpty() -> markers
+                else -> "$markers\n\n$text"
             }
 
             val sizeBeforeTurn = history.size
             history.add(ChatMessage.text("user", messageText))
             showUserMessage(displayText)
             input.text = ""
-            clearAttachment()
+            clearAttachments()
             setBusy(true)
 
             val settings = AICodingAgentSettingsState.getInstance().state
@@ -934,8 +943,16 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val maxAttachmentChars = 60_000
 
         /**
+         * And a ceiling on the pile of them. Each one is cheap to add, but they are concatenated
+         * into the message and carried by every turn after it, so the set needs a limit of its own
+         * rather than only a per-file one.
+         */
+        private val maxTotalAttachmentChars = 150_000
+
+        /**
          * Attaches from the focused editor: the selection when there is one, the whole file when
-         * there is not.
+         * there is not. Adds to whatever is already attached, so several files can ride along with
+         * one message -- open the next file, press the button again.
          *
          * One button rather than two because the choice is never ambiguous -- having selected code
          * and wanting the whole file instead is not a real intent -- and a narrow tool window has
@@ -969,7 +986,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             "Select the part you mean, or just ask -- the AI can read it itself."
                     return
                 }
-                setAttachment(
+                addAttachment(
                     body = fence("Full contents of $displayPath (${document.lineCount} lines)", extension, text),
                     summary = "$displayPath (whole file)",
                 )
@@ -980,7 +997,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val endLine = document.getLineNumber(selectionModel.selectionEnd) + 1
             val lineRange = if (startLine == endLine) "line $startLine" else "lines $startLine-$endLine"
 
-            setAttachment(
+            addAttachment(
                 body = fence("Selected code from $displayPath ($lineRange)", extension, selectedText),
                 summary = "$displayPath ($lineRange)",
             )
@@ -1004,25 +1021,74 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
         }
 
-        private fun setAttachment(body: String, summary: String) {
-            pendingAttachment = body
-            pendingAttachmentSummary = summary
-            attachmentLabel.text = "📎 $summary"
-            attachmentLabel.toolTipText = summary
-            attachmentRow.isVisible = true
+        private fun addAttachment(body: String, summary: String) {
+            // Attaching the same file or selection twice refreshes it in place rather than sending
+            // it twice: the second attach is how a user picks up edits made since the first.
+            val existing = pendingAttachments.indexOfFirst { it.summary == summary }
+            val othersLength = pendingAttachments
+                .filterIndexed { index, _ -> index != existing }
+                .sumOf { it.body.length }
+            if (othersLength + body.length > maxTotalAttachmentChars) {
+                statusLabel.text =
+                    "That is more than $maxTotalAttachmentChars characters of attachments. " +
+                        "Send what is attached, or remove some of it, first."
+                return
+            }
+
+            val attachment = PendingAttachment(summary, body)
+            if (existing >= 0) pendingAttachments[existing] = attachment else pendingAttachments.add(attachment)
             statusLabel.text = " "
+            refreshAttachments()
+        }
+
+        private fun removeAttachment(attachment: PendingAttachment) {
+            pendingAttachments.remove(attachment)
+            refreshAttachments()
+        }
+
+        private fun clearAttachments() {
+            pendingAttachments.clear()
+            refreshAttachments()
+        }
+
+        private fun refreshAttachments() {
+            attachmentList.removeAll()
+            pendingAttachments.forEach { attachmentList.add(attachmentChip(it)) }
+            attachmentRow.isVisible = pendingAttachments.isNotEmpty()
+            // The whole composer moves when a chip appears or goes, so revalidating the row alone
+            // leaves the input where it was.
             composer.revalidate()
             composer.repaint()
         }
 
-        private fun clearAttachment() {
-            pendingAttachment = null
-            pendingAttachmentSummary = null
-            attachmentLabel.text = ""
-            attachmentLabel.toolTipText = null
-            attachmentRow.isVisible = false
-            composer.revalidate()
-            composer.repaint()
+        /** A chip above the input, naming one attachment and offering to drop it. */
+        private fun attachmentChip(attachment: PendingAttachment): JComponent {
+            val chip = RoundedPanel(
+                BorderLayout(JBUI.scale(6), 0),
+                arc = { ChatMetrics.smallArc },
+                fill = { ChatColors.card },
+                stroke = { ChatColors.separator },
+            ).apply {
+                border = JBUI.Borders.empty(JBUI.scale(3), JBUI.scale(7))
+                add(
+                    JBLabel("📎 ${attachment.summary}").apply {
+                        font = JBFont.small()
+                        foreground = ChatColors.foreground
+                        toolTipText = attachment.summary
+                    },
+                    BorderLayout.CENTER,
+                )
+                add(
+                    InplaceButton("Remove attachment", AllIcons.Actions.Close) { removeAttachment(attachment) },
+                    BorderLayout.EAST,
+                )
+            }
+            // Left-aligned in a row of its own, so the chip hugs its text instead of stretching to
+            // the width of the tool window as the grid would otherwise have it.
+            return JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
+                isOpaque = false
+                add(chip)
+            }
         }
 
         private fun promptForMissingApiKey() {
