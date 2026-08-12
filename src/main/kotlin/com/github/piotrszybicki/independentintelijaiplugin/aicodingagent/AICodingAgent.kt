@@ -127,6 +127,9 @@ class AICodingAgent(
             - `find_implementations` for "who implements this" and "what overrides this".
               `find_usages` will not answer either: a class can implement an interface without ever
               mentioning its methods by name, so it shows up in one and not the other.
+            - `git_status`, `git_diff`, `git_log` and `git_blame` answer what has changed and why a
+              line is the way it is. They read the repository directly and need no approval, so use
+              them rather than running git yourself.
             - Prefer the refactoring tools over hand-editing text when one fits: `rename_symbol`,
               `safe_delete`, `add_import`, and `insert_member` go through the IDE's own engine, so
               they update every reference instead of just the line in front of you.
@@ -148,8 +151,9 @@ class AICodingAgent(
               Give it the file and the line of the test class or method and it creates the
               configuration the way the editor's gutter Run button does, then reports the same
               results. Do not ask the user to set a configuration up; this is what it is for.
-            - `run_shell_command` for builds, git, and anything neither of those can launch. It
-              needs the user's approval and its output comes back as terminal text.
+            - `run_shell_command` for builds, git commands that change something, and anything
+              neither of those can launch. It needs the user's approval and its output comes back as
+              terminal text.
             - to stop at a breakpoint, `toggle_breakpoint` first, then start the thing under the
               debugger -- `start_debug_configuration` when a saved configuration covers it,
               `run_at_location` with `debug` when none does -- and then `await_breakpoint`. Never

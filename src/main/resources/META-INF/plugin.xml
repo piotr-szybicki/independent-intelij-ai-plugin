@@ -11,6 +11,9 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.vcs</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
+    <!-- The git_* tools. Bundled and enabled by default in every IDE, so a hard dependency rather
+         than an optional descriptor, which the tool catalog's flat list has no shape for. -->
+    <depends>Git4Idea</depends>
     <!-- SMTestProxy and friends moved out of the core platform into this bundled plugin in 2026.2. -->
     <depends>intellij.testRunner.plugin</depends>
 

@@ -48,6 +48,8 @@ dependencies {
         // These were core platform classes through 2025.x; 2026.2 moved them out into the bundled
         // Test Runner plugin (plugins/platform-testRunner-plugin), so they now need declaring.
         bundledPlugin("intellij.testRunner.plugin")
+        // The git_* tools run git through git4idea rather than a process of their own.
+        bundledPlugin("Git4Idea")
         // get_file_problems uses CodeSmellDetector (com.intellij.openapi.vcs), the platform's
         // on-demand "analyse this file" entry point -- it lives in VCS because that is what runs
         // code analysis before a commit.
@@ -58,6 +60,11 @@ dependencies {
         // bundledLibrary() is the documented workaround for exactly that gap; switch back to
         // bundledModule() once the Gradle plugin catches up with the 262 classpath layout.
         bundledLibrary("lib/intellij.platform.vcs.impl.jar")
+        // git_status reads ChangeListManager (intellij.platform.vcs) and GitRepository inherits its
+        // root, branch and state from com.intellij.dvcs.repo.Repository (intellij.platform.vcs.dvcs).
+        // Same flattened-module problem as above: both are modules that 2026.2 moved into lib/.
+        bundledLibrary("lib/intellij.platform.vcs.jar")
+        bundledLibrary("lib/intellij.platform.vcs.dvcs.jar")
         testFramework(TestFrameworkType.Platform)
     }
 }

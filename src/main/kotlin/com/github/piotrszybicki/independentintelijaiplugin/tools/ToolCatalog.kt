@@ -6,12 +6,16 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
 /**
- * What a tool lets the model do. The settings list is grouped by this, and it is also the line the
- * defaults are drawn along: everything past [NAVIGATE] changes something, and is off until asked for.
+ * What a tool lets the model do. The settings list is grouped by this, and it is roughly the line
+ * the defaults are drawn along: everything past [NAVIGATE] is off until asked for, because it either
+ * changes something or is dead weight in the project that does not want it.
  */
 enum class ToolCategory(val displayName: String) {
     READ("Reading code"),
     NAVIGATE("Navigating code"),
+
+    /** Read-only, but off by default: four tool definitions that say nothing outside a Git repository. */
+    VCS("Version control"),
 
     /** get_file_problems is read-only, but it belongs to the edit/verify loop and is dead weight without it. */
     EDIT("Editing and fixing"),
@@ -58,6 +62,11 @@ object ToolCatalog {
         Entry("find_usages", ToolCategory.NAVIGATE, true, ::FindUsagesTool),
         Entry("find_implementations", ToolCategory.NAVIGATE, true, ::FindImplementationsTool),
         Entry("get_symbol_info", ToolCategory.NAVIGATE, true, ::GetSymbolInfoTool),
+
+        Entry("git_status", ToolCategory.VCS, false, ::GitStatusTool),
+        Entry("git_diff", ToolCategory.VCS, false, ::GitDiffTool),
+        Entry("git_log", ToolCategory.VCS, false, ::GitLogTool),
+        Entry("git_blame", ToolCategory.VCS, false, ::GitBlameTool),
 
         Entry("get_file_problems", ToolCategory.EDIT, false, ::GetFileProblemsTool),
         Entry("apply_quick_fix", ToolCategory.EDIT, false, ::ApplyQuickFixTool),

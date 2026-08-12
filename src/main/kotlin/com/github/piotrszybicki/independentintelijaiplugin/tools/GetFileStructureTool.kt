@@ -5,8 +5,8 @@ import com.intellij.ide.structureView.StructureViewTreeElement
 import com.intellij.ide.structureView.TreeBasedStructureViewBuilder
 import com.intellij.ide.util.treeView.smartTree.TreeElement
 import com.intellij.lang.LanguageStructureViewBuilder
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElement
@@ -35,6 +35,7 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         private const val DEFAULT_MAX_ITEMS = 300
         private const val MAX_MAX_ITEMS = 1000
         private const val MAX_CANDIDATES = 20
+        private const val MAX_ERROR_CHARS = 500
     }
 
     override val name = "get_file_structure"
@@ -100,8 +101,10 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
 
         val outline = try {
             compute(target.file, maxDepth, maxItems)
+        } catch (e: ProcessCanceledException) {
+            return "Error: outlining ${target.label} was cancelled before it finished."
         } catch (e: Exception) {
-            return "Error: could not outline ${target.label}: ${e.message ?: e::class.java.simpleName}"
+            return "Error: could not outline ${target.label}: ${describe(e)}"
         } ?: return "Error: could not read ${target.label}."
 
         if (!outline.supported) {
@@ -182,12 +185,29 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         val supported: Boolean,
     )
 
-    private fun compute(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? {
-        var result: Outline? = null
-        ApplicationManager.getApplication().invokeAndWait {
-            result = ReadAction.computeBlocking<Outline?, RuntimeException> { build(psiFile, maxDepth, maxItems) }
-        }
-        return result
+    /**
+     * A read action on the calling background thread, and deliberately *not* a hop onto the EDT.
+     *
+     * Kotlin's structure view renders each declaration's signature through the K2 Analysis API, and
+     * that API refuses to run on the UI thread -- it throws `Analysis is not allowed: Called in the
+     * EDT thread.` So building the model inside `invokeAndWait` made this tool fail for every single
+     * `.kt` file, which is most of the files it is pointed at. Nothing in [build] wants the EDT: the
+     * model is built from PSI and disposed without touching Swing.
+     */
+    private fun compute(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? =
+        ReadAction.computeBlocking<Outline?, RuntimeException> { build(psiFile, maxDepth, maxItems) }
+
+    /**
+     * Names the exception as well as quoting it: a bare `e.message` is empty for plenty of platform
+     * failures, which leaves the model with "could not outline Foo.kt" and nothing to act on. Capped
+     * because the Kotlin plugin's exceptions carry attachments -- whole file contents, module layout
+     * -- and dumping those into the transcript costs more than the outline was ever going to save.
+     */
+    private fun describe(e: Exception): String {
+        val message = e.message?.replace('\n', ' ')?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return e::class.java.simpleName
+        val capped = if (message.length <= MAX_ERROR_CHARS) message else message.take(MAX_ERROR_CHARS) + "…"
+        return "${e::class.java.simpleName}: $capped"
     }
 
     private fun build(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? {
