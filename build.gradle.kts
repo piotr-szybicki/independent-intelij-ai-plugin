@@ -61,10 +61,13 @@ dependencies {
         // bundledModule() once the Gradle plugin catches up with the 262 classpath layout.
         bundledLibrary("lib/intellij.platform.vcs.impl.jar")
         // git_status reads ChangeListManager (intellij.platform.vcs) and GitRepository inherits its
-        // root, branch and state from com.intellij.dvcs.repo.Repository (intellij.platform.vcs.dvcs).
-        // Same flattened-module problem as above: both are modules that 2026.2 moved into lib/.
+        // root, branch and state from com.intellij.dvcs.repo.Repository (intellij.platform.vcs.dvcs),
+        // while GitRepositoryManager extends AbstractRepositoryManager (intellij.platform.vcs.dvcs.impl)
+        // -- a supertype the compiler has to see even though we only call through GitRepositoryManager.
+        // Same flattened-module problem as above: all three are modules that 2026.2 moved into lib/.
         bundledLibrary("lib/intellij.platform.vcs.jar")
         bundledLibrary("lib/intellij.platform.vcs.dvcs.jar")
+        bundledLibrary("lib/intellij.platform.vcs.dvcs.impl.jar")
         testFramework(TestFrameworkType.Platform)
     }
 }
