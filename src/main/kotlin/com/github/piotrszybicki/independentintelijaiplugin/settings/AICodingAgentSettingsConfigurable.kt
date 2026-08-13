@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Messages
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -28,6 +29,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCategory
 import java.io.File
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JComponent
+import javax.swing.event.DocumentEvent
 
 class AICodingAgentSettingsConfigurable : Configurable {
 
@@ -47,22 +49,41 @@ class AICodingAgentSettingsConfigurable : Configurable {
         setFontColor(UIUtil.FontColor.BRIGHTER)
     }
 
+    /** What the URL in the field above says the provider is, and what was set to match it. */
+    private val providerLabel = JBLabel().apply {
+        setComponentStyle(UIUtil.ComponentStyle.SMALL)
+        setFontColor(UIUtil.FontColor.BRIGHTER)
+    }
+
+    /**
+     * The last profile the URL was read as, so a re-detection that says the same thing as before
+     * leaves the three settings alone.
+     *
+     * Without it, discovery would fight the user: every keystroke in the endpoint field re-detects,
+     * and re-applying an unchanged answer would undo a deliberate change to any of the three
+     * settings the moment the URL was touched again.
+     */
+    private var lastDetected: ProviderProfile? = null
+
+    /** Held while [reset] fills the page, so restoring saved settings does not look like an edit. */
+    private var suppressDiscovery = false
+
     private val apiVersionField = JBTextField()
 
     private val authSchemeCombo = ComboBox(DefaultComboBoxModel(AuthScheme.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create<AuthScheme>("") { it.displayName }
+        renderer = SimpleListCellRenderer.create<AuthScheme> { label, value, _ -> label.text = value?.displayName.orEmpty() }
     }
 
     private val protocolCombo = ComboBox(DefaultComboBoxModel(WireProtocol.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create<WireProtocol>("") { it.displayName }
+        renderer = SimpleListCellRenderer.create<WireProtocol> { label, value, _ -> label.text = value?.displayName.orEmpty() }
     }
 
     private val effortCombo = ComboBox(DefaultComboBoxModel(Effort.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create<Effort>("") { it.displayName }
+        renderer = SimpleListCellRenderer.create<Effort> { label, value, _ -> label.text = value?.displayName.orEmpty() }
     }
 
     private val thinkingCombo = ComboBox(DefaultComboBoxModel(ThinkingMode.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create<ThinkingMode>("") { it.displayName }
+        renderer = SimpleListCellRenderer.create<ThinkingMode> { label, value, _ -> label.text = value?.displayName.orEmpty() }
     }
 
     private val extraHeadersArea = JBTextArea(4, 40).apply {
@@ -92,6 +113,17 @@ class AICodingAgentSettingsConfigurable : Configurable {
         font = JBUI.Fonts.create("Monospaced", font.size)
     }
 
+    /**
+     * Last, rather than in [endpointField]'s own initialiser: the listener reads the three combos
+     * the URL configures, and they are built further down this class. Registering it here is what
+     * keeps a stray write to the field during construction from reaching them before they exist.
+     */
+    init {
+        endpointField.document.addDocumentListener(object : DocumentAdapter() {
+            override fun textChanged(e: DocumentEvent) = endpointChanged()
+        })
+    }
+
     override fun getDisplayName(): String = "AICodingAgent"
 
     override fun createComponent(): JComponent = panel {
@@ -102,11 +134,18 @@ class AICodingAgentSettingsConfigurable : Configurable {
                 "Which API the endpoint speaks. The request body differs between them, not just the " +
                     "headers &mdash; a Foundry or Azure deployment answers a Messages-API request " +
                     "with <i>Unsupported parameter: 'messages'</i>, which is this setting rather " +
-                    "than anything wrong with the request. Pick the one matching the URL's path: " +
-                    "<code>/messages</code>, <code>/chat/completions</code> or <code>/responses</code>.",
+                    "than anything wrong with the request.<br/>" +
+                    "Set from the URL below as it is typed, along with the token header and the " +
+                    "thinking setting, whenever the URL says enough to tell &mdash; the path picks " +
+                    "the protocol (<code>/messages</code>, <code>/chat/completions</code>, " +
+                    "<code>/responses</code>) and the host picks the header. Change it afterwards " +
+                    "and the change stands until the URL is edited again.",
             )
             row("Endpoint URL:") {
                 cell(endpointField).align(AlignX.FILL)
+            }
+            row("") {
+                cell(providerLabel).align(AlignX.FILL)
             }
             row("") {
                 cell(endpointSourceLabel).align(AlignX.FILL)
@@ -154,8 +193,13 @@ class AICodingAgentSettingsConfigurable : Configurable {
                 "Whether the model works a problem out before answering. Thinking is charged at the " +
                     "reply rate and shares the token limit below with the reply itself, so this is " +
                     "a cost setting as much as a quality one &mdash; but note that leaving it to the " +
-                    "provider does not mean off: the current models think by default. Turning it " +
-                    "off also makes them reach for tools less readily.",
+                    "provider does not mean off: on the Messages API the current models think by " +
+                    "default, while an OpenAI deployment may default to no reasoning at all, which " +
+                    "is what makes a model announce what it is about to do and then stop. Turning " +
+                    "it off makes them reach for tools less readily either way.<br/>" +
+                    "Sent as <code>thinking</code> on the Messages API and as <code>reasoning</code> " +
+                    "on OpenAI Responses. Nothing is sent on Chat Completions, where too many of " +
+                    "the compatible servers reject the field &mdash; the setting has no effect there.",
             )
             row("Effort:") {
                 cell(effortCombo).align(AlignX.FILL)
@@ -297,7 +341,28 @@ class AICodingAgentSettingsConfigurable : Configurable {
         }
     }
 
+    /**
+     * Fills the page from what is saved, with discovery held off for the duration.
+     *
+     * Filling the endpoint field is not an edit, and letting it re-detect here would overwrite the
+     * three saved settings with whatever the URL implies -- turning a deliberate choice the user
+     * made once into something that silently reverts every time the page is opened. What is saved
+     * wins; discovery only has a say when the URL is actually changed.
+     */
     override fun reset() {
+        suppressDiscovery = true
+        try {
+            resetFields()
+        } finally {
+            suppressDiscovery = false
+        }
+        // Seeded rather than applied, so the first real edit is compared against the URL that was
+        // already in force instead of re-applying the profile the saved settings came from.
+        lastDetected = ProviderProfile.detect(endpointField.text)
+        updateProviderLabel(lastDetected)
+    }
+
+    private fun resetFields() {
         val settings = AICodingAgentSettingsState.getInstance().state
         apiKeyStatusLabel.text = if (AICodingAgentCredentials.apiKey == null) {
             "Not set -- ${AICodingAgentCredentials.ENV_VAR} is empty or undefined in the IDE's environment."
@@ -345,6 +410,42 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // override should not be left sitting empty when the URL it dropped back to is not.
         endpointField.text = EndpointUrl.resolve()
         updateEndpointSource()
+    }
+
+    /**
+     * Reads the URL as it is typed and sets the settings that follow from it.
+     *
+     * Only when the answer has changed, and only ever the three things the URL genuinely decides:
+     * which API shape the body needs, which header the token goes in, and whether a thinking field
+     * can be sent at all. Everything it sets stays editable underneath -- this is here to stop the
+     * common combinations having to be assembled by hand from three dropdowns, not to hold them.
+     */
+    private fun endpointChanged() {
+        if (suppressDiscovery) return
+        val detected = ProviderProfile.detect(endpointField.text)
+        updateProviderLabel(detected)
+        if (detected == null || detected == lastDetected) return
+        lastDetected = detected
+
+        protocolCombo.selectedItem = detected.protocol
+        // Null means the host was not one of the ones whose header is a fact rather than a guess.
+        // Leaving it alone is the point: a gateway's token header is the user's to know, not ours.
+        detected.authScheme?.let { authSchemeCombo.selectedItem = it }
+        thinkingCombo.selectedItem = detected.thinking
+    }
+
+    /** Says what the URL was recognised as, so a setting that moved on its own is accounted for. */
+    private fun updateProviderLabel(detected: ProviderProfile?) {
+        providerLabel.text = when {
+            detected == null ->
+                "Endpoint not recognised -- set the protocol and token header below to match it."
+            detected.authScheme != null ->
+                "Recognised as ${detected.displayName}. Protocol, token header and thinking are set " +
+                    "to match; change any of them below to override."
+            else ->
+                "Recognised as ${detected.displayName} from the URL's path. Protocol and thinking " +
+                    "are set to match -- check the token header below, which the URL does not say."
+        }
     }
 
     /** Says which of the three sources the field is showing, so an ignored edit cannot look applied. */

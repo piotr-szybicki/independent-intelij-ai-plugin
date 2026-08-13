@@ -23,7 +23,6 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.InplaceButton
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.components.JBTextArea
 import com.intellij.ui.content.ContentFactory
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
@@ -200,16 +199,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val cancelled = AtomicBoolean(false)
         private var turn: Future<*>? = null
 
-        private val input = JBTextArea(3, 40).apply {
-            lineWrap = true
-            wrapStyleWord = true
-            border = JBUI.Borders.empty()
-            background = UIUtil.getTextFieldBackground()
-            emptyText.text = "Ask AI about this project…"
-        }
+        private val input = ChatInputPane("Ask AI about this project…")
 
         private val sendButton = JButton("Send").apply {
-            toolTipText = "Send message (Enter; Ctrl+Enter or Shift+Enter for a new line)"
+            toolTipText = "Send message (Enter; Shift+Enter for a new line)"
         }
 
         private val attachButton = InplaceButton(
@@ -388,11 +381,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
             input.addKeyListener(object : KeyAdapter() {
                 override fun keyPressed(e: KeyEvent) {
                     if (e.keyCode != KeyEvent.VK_ENTER) return
-                    if (e.isControlDown) {
-                        // Ctrl+Enter is not bound to a newline by default, so insert one by hand.
+                    if (e.isShiftDown) {
+                        // Shift+Enter inserts a newline.
                         e.consume()
                         input.replaceSelection("\n")
-                    } else if (!e.isShiftDown) {
+                    } else {
+                        // Plain Enter sends the message.
                         e.consume()
                         send()
                     }

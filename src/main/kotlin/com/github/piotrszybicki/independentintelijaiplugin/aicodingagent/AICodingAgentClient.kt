@@ -152,7 +152,9 @@ object AICodingAgentClient {
                 OpenAiProtocol.chatCompletionsRequest(model, maxTokens, system, repaired, tools).toString()
 
             WireProtocol.OPENAI_RESPONSES ->
-                OpenAiProtocol.responsesRequest(model, maxTokens, system, repaired, tools).toString()
+                OpenAiProtocol.responsesRequest(
+                    model, maxTokens, system, repaired, tools, reasoning.reasoningJson(),
+                ).toString()
         }
         // Headers are deliberately not logged: one of them is the token.
         LOG.info("${endpoint.protocol.name} request -> ${endpoint.url}: $requestBody")

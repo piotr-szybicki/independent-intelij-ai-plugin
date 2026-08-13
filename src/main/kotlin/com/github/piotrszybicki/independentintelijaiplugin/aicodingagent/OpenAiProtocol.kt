@@ -155,17 +155,26 @@ internal object OpenAiProtocol {
 
     // --- Responses ----------------------------------------------------------------------------------
 
-    /** A `/responses` request body. */
+    /**
+     * A `/responses` request body.
+     *
+     * [reasoning] is the one field here that has no equivalent on Chat Completions in this plugin --
+     * see [ReasoningOptions.reasoningJson] for why it is sent on this protocol only. Null leaves it
+     * out entirely, which is not the same as sending a level: an absent field is the deployment's
+     * own default, and that default can be no reasoning at all.
+     */
     fun responsesRequest(
         model: String,
         maxTokens: Int,
         system: String?,
         messages: List<ChatMessage>,
         tools: List<ToolDefinition>,
+        reasoning: JsonObject? = null,
     ): JsonObject = JsonObject().apply {
         addProperty("model", model)
         addProperty("max_output_tokens", maxTokens)
         if (!system.isNullOrEmpty()) addProperty("instructions", system)
+        if (reasoning != null) add("reasoning", reasoning)
         // The plugin resends the whole conversation on every request, so a server-side copy buys it
         // nothing -- and this endpoint keeps one by default, which would leave the user's source
         // sitting on the provider for no reason.

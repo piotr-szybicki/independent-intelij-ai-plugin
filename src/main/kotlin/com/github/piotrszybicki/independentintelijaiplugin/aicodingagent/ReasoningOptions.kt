@@ -44,7 +44,43 @@ data class ReasoningOptions(
         JsonObject().apply { addProperty("effort", value) }
     }
 
+    /**
+     * The same two settings as the Responses API's single `reasoning` field, or null to leave it out.
+     *
+     * Worth sending rather than leaving to the endpoint, which is the opposite of the reasoning on
+     * the Messages side: a deployment's own default for this field can be no reasoning at all, and a
+     * current model given no reasoning budget answers a piece of agentic work by announcing what it
+     * is about to do and then ending the turn -- a reply that costs a request and moves nothing
+     * forward. The plugin was not sending this at all, so every OpenAI-shaped chat ran on whatever
+     * the deployment happened to default to.
+     *
+     * [ThinkingMode.PROVIDER_DEFAULT] is still the escape hatch, and still sends nothing: this field
+     * is as capable of being rejected outright by a gateway as the two Anthropic ones are.
+     *
+     * Only the Responses API. Chat Completions has a field of its own for this, but that protocol is
+     * the one every OpenAI-compatible server speaks -- llama.cpp, vLLM, Ollama, LM Studio -- and
+     * many of them answer a field they do not know with a 400. Sending it there would break working
+     * setups to fix a problem they do not have.
+     */
+    fun reasoningJson(): JsonObject? = when (thinking) {
+        ThinkingMode.PROVIDER_DEFAULT -> null
+        // Not the absence of the field, which is what leaves the deployment's default standing.
+        ThinkingMode.OFF -> reasoningEffort("none")
+        ThinkingMode.ADAPTIVE -> reasoningEffort(effort.openAiValue ?: DEFAULT_OPENAI_EFFORT)
+    }
+
+    private fun reasoningEffort(value: String): JsonObject =
+        JsonObject().apply { addProperty("effort", value) }
+
     companion object {
+
+        /**
+         * What thinking-on means when the effort is left to the provider.
+         *
+         * The two settings are one field here, so "on, at no particular level" has to resolve to a
+         * level. Medium rather than the provider's own default, for the reason [Effort] gives.
+         */
+        private const val DEFAULT_OPENAI_EFFORT = "medium"
 
         /** Sends neither field, leaving both to whatever the endpoint does on its own. */
         val PROVIDER_DEFAULT = ReasoningOptions(Effort.PROVIDER_DEFAULT, ThinkingMode.PROVIDER_DEFAULT)

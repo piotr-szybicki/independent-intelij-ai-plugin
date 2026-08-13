@@ -105,9 +105,21 @@ class AICodingAgent(
          * Sent as the request's `system` field on every turn. This is what tells the model it is a
          * coding assistant working inside an IDE rather than a general chat model -- without it the
          * only thing shaping its behaviour is the tool schemas and whatever the user typed.
+         *
+         * The second paragraph is about a turn that ends on "On it -- I'll do X now" with no tool
+         * call in it. Nothing in the response says anything is outstanding: the API reports an
+         * ordinary finished turn, so the loop draws the sentence and stops, and the chat sits there
+         * looking like it gave up. It is a habit of the model rather than a state to be read back,
+         * which is why the fix is here rather than in the loop.
          */
         private val SYSTEM_PROMPT = """
-            You are a coding assistant inside InteliJ IDE"""
+            You are a coding assistant inside InteliJ IDE.
+
+            Do the work in the turn you announce it in. If you say you are about to read, edit, run
+            or check something, the tool call for it belongs in that same turn -- never end a turn
+            on a statement of intent about work you have not done. When something takes several
+            steps, take the first one now instead of describing the plan and stopping.
+        """.trimIndent()
 
         /**
          * How far doubling the output cap will go on its own. The models themselves allow far more,

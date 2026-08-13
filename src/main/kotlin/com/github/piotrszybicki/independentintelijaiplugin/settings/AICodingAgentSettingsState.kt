@@ -35,13 +35,15 @@ enum class AuthScheme(val headerName: String, val displayName: String) {
  * [PROVIDER_DEFAULT] sends nothing, which is the escape hatch for the older models and the gateways
  * that reject the field outright rather than ignoring it.
  */
-enum class Effort(val wireValue: String?, val displayName: String) {
-    PROVIDER_DEFAULT(null, "Provider default (field not sent)"),
-    LOW("low", "Low -- short, scoped work"),
-    MEDIUM("medium", "Medium (recommended)"),
-    HIGH("high", "High -- the provider's own default"),
-    XHIGH("xhigh", "Extra high -- hard agentic work"),
-    MAX("max", "Maximum -- correctness over cost"),
+enum class Effort(val wireValue: String?, val openAiValue: String?, val displayName: String) {
+    PROVIDER_DEFAULT(null, null, "Provider default (field not sent)"),
+    LOW("low", "low", "Low -- short, scoped work"),
+    MEDIUM("medium", "medium", "Medium (recommended)"),
+    HIGH("high", "high", "High -- the provider's own default"),
+    // OpenAI's scale stops at high, and a level it does not know is a rejected request rather than a
+    // clamped one -- so the two levels above it are clamped here instead.
+    XHIGH("xhigh", "high", "Extra high -- hard agentic work"),
+    MAX("max", "high", "Maximum -- correctness over cost"),
 }
 
 /**

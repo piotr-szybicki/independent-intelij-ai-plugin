@@ -16,6 +16,12 @@ import java.awt.LayoutManager
 import java.awt.RenderingHints
 import javax.swing.JEditorPane
 import javax.swing.JPanel
+import javax.swing.JTextPane
+import javax.swing.SwingUtilities
+import javax.swing.event.DocumentEvent
+import javax.swing.event.DocumentListener
+import javax.swing.text.Style
+import javax.swing.text.StyleConstants
 import javax.swing.text.html.StyleSheet
 
 /**
@@ -102,6 +108,21 @@ internal open class RoundedPanel(
 }
 
 /**
+ * Monospace family for code, taken from the editor scheme so it matches the rest of the IDE.
+ *
+ * Guarded, because reading it is the first thing that instantiates `EditorColorsManager`, and that
+ * service reads the registry in its constructor: when a restored tool window builds its panes during
+ * frame init, the registry is not loaded yet and the platform logs an error. The AWT logical family
+ * is a fine stand-in for the rare pane built that early.
+ */
+internal fun chatCodeFontName(): String =
+    if (LoadingState.COMPONENTS_LOADED.isOccurred) {
+        EditorColorsManager.getInstance().globalScheme.editorFontName
+    } else {
+        Font.MONOSPACED
+    }
+
+/**
  * Read-only HTML pane sized for a vertical stack: [applyWidth] pins it to the width the transcript
  * can give it, and the preferred height then follows from how the text wraps at that width. Without
  * this, a `JEditorPane` inside a vertically stacked container reports the height of a single long
@@ -125,24 +146,8 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
         addStyles(kit.styleSheet)
     }
 
-    /**
-     * Monospace family for code spans, taken from the editor scheme so it matches the rest of the
-     * IDE.
-     *
-     * Guarded, because reading it is the first thing that instantiates `EditorColorsManager`, and
-     * that service reads the registry in its constructor: when a restored tool window builds its
-     * panes during frame init, the registry is not loaded yet and the platform logs an error. The
-     * AWT logical family is a fine stand-in for the rare pane built that early.
-     */
-    private fun codeFontName(): String =
-        if (LoadingState.COMPONENTS_LOADED.isOccurred) {
-            EditorColorsManager.getInstance().globalScheme.editorFontName
-        } else {
-            Font.MONOSPACED
-        }
-
     private fun addStyles(sheet: StyleSheet) {
-        val codeFont = codeFontName()
+        val codeFont = chatCodeFontName()
         val codeBackground = ChatColors.hex(ChatColors.codeBackground)
         val quoteBorder = ChatColors.hex(ChatColors.mix(ChatColors.background, ChatColors.foreground, 0.25))
         sheet.addRule("body { margin: 0; padding: 0; }")
@@ -156,7 +161,6 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
             "pre { font-family: $codeFont; background-color: $codeBackground; " +
                 "margin: ${JBUI.scale(6)}px 0; padding: ${JBUI.scale(7)}px; }"
         )
-        sheet.addRule("blockquote { margin: ${JBUI.scale(4)}px 0; padding-left: ${JBUI.scale(8)}px; border-left: 2px solid $quoteBorder; }")
         sheet.addRule("table { margin: ${JBUI.scale(6)}px 0; }")
         sheet.addRule("td, th { padding: ${JBUI.scale(2)}px ${JBUI.scale(6)}px; }")
     }
@@ -184,4 +188,138 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
     }
 
     override fun getMinimumSize(): Dimension = if (fixedWidth > 0) Dimension(0, preferredSize.height) else super.getMinimumSize()
+}
+
+/**
+ * The composer's text field. A styled pane rather than a text area, so fenced blocks can be
+ * rendered in a markdown-like code style while keeping the raw markdown text intact.
+ */
+internal class ChatInputPane(
+    private val placeholder: String,
+    private val visibleRows: Int = 3,
+) : JTextPane() {
+
+    private data class FencedBlock(
+        val fenceStart: Int,
+        val contentStart: Int,
+        val contentEnd: Int,
+        val fenceEnd: Int,
+    )
+
+    private val bodyStyle: Style = addStyle("chat-input-body", null).apply {
+        StyleConstants.setFontFamily(this, JBFont.label().family)
+        StyleConstants.setFontSize(this, JBFont.label().size)
+        StyleConstants.setForeground(this, ChatColors.foreground)
+    }
+
+    private val codeStyle: Style = addStyle("chat-input-code", bodyStyle).apply {
+        StyleConstants.setFontFamily(this, chatCodeFontName())
+        StyleConstants.setBackground(this, ChatColors.codeBackground)
+    }
+
+    private val fenceStyle: Style = addStyle("chat-input-fence", bodyStyle).apply {
+        StyleConstants.setForeground(this, ChatColors.mix(UIUtil.getTextFieldBackground(), ChatColors.foreground, 0.22))
+        StyleConstants.setFontSize(this, maxOf(10, JBFont.small().size - 1))
+    }
+
+    /** Set while [restyle] runs, because the attribute changes it makes come back as edits. */
+    private var restyling = false
+
+    init {
+        border = JBUI.Borders.empty()
+        background = UIUtil.getTextFieldBackground()
+        foreground = ChatColors.foreground
+        font = JBFont.label()
+        document.addDocumentListener(object : DocumentListener {
+            override fun insertUpdate(e: DocumentEvent) = scheduleRestyle()
+            override fun removeUpdate(e: DocumentEvent) = scheduleRestyle()
+            override fun changedUpdate(e: DocumentEvent) = scheduleRestyle()
+        })
+    }
+
+    /**
+     * Swing forbids touching a document from inside its own change notification, so the restyle waits
+     * for the next EDT pass; [restyling] then swallows the notifications that restyle itself fires,
+     * which would otherwise schedule another pass forever.
+     */
+    private fun scheduleRestyle() {
+        if (restyling) return
+        SwingUtilities.invokeLater {
+            restyling = true
+            try {
+                restyle()
+            } finally {
+                restyling = false
+            }
+        }
+    }
+
+    /** Fenced blocks in monospace with code background, fences de-emphasized. */
+    private fun restyle() {
+        val styled = styledDocument
+        val text = styled.getText(0, styled.length)
+        val blocks = FENCED_BLOCK.findAll(text).map { match ->
+            val content = match.groups[1]!!.range
+            FencedBlock(
+                fenceStart = match.range.first,
+                contentStart = content.first,
+                contentEnd = content.last + 1,
+                fenceEnd = match.range.last + 1,
+            )
+        }.toList()
+
+        styled.setCharacterAttributes(0, styled.length, bodyStyle, true)
+        blocks.forEach { block ->
+            val openingFenceLength = (block.contentStart - block.fenceStart).coerceAtLeast(0)
+            if (openingFenceLength > 0) {
+                styled.setCharacterAttributes(block.fenceStart, openingFenceLength, fenceStyle, true)
+            }
+
+            val contentLength = (block.contentEnd - block.contentStart).coerceAtLeast(0)
+            if (contentLength > 0) {
+                styled.setCharacterAttributes(block.contentStart, contentLength, codeStyle, true)
+            }
+
+            val closingFenceLength = (block.fenceEnd - block.contentEnd).coerceAtLeast(0)
+            if (closingFenceLength > 0) {
+                styled.setCharacterAttributes(block.contentEnd, closingFenceLength, fenceStyle, true)
+            }
+        }
+    }
+
+    /** Kept at least [visibleRows] tall, so an empty composer is the box it used to be. */
+    override fun getPreferredSize(): Dimension {
+        val preferred = super.getPreferredSize()
+        // The look and feel installs both, and the layout can ask for a size before it has.
+        val textFont = font ?: return preferred
+        val textMargin = margin ?: return preferred
+        val rows = visibleRows * getFontMetrics(textFont).height +
+            insets.top + insets.bottom + textMargin.top + textMargin.bottom
+        return Dimension(preferred.width, maxOf(preferred.height, rows))
+    }
+
+    override fun paintComponent(g: Graphics) {
+        super.paintComponent(g)
+        if (document.length > 0) return
+        val textFont = font ?: return
+        val textMargin = margin ?: return
+        val g2 = g.create() as Graphics2D
+        try {
+            g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON)
+            g2.color = ChatColors.muted
+            g2.font = textFont
+            g2.drawString(
+                placeholder,
+                insets.left + textMargin.left,
+                insets.top + textMargin.top + g2.fontMetrics.ascent,
+            )
+        } finally {
+            g2.dispose()
+        }
+    }
+
+    private companion object {
+        /** Closed fenced blocks only: an unterminated one is still being typed. */
+        val FENCED_BLOCK = Regex("```[^\\r\\n]*\\R([\\s\\S]*?)\\R```")
+    }
 }

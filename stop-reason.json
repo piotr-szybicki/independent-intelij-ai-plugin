@@ -1,0 +1,1237 @@
+{
+  "id": "resp_027bc45d70afe355016a7de4ec2b248194af759dc324ecdd20",
+  "object": "response",
+  "created_at": 1786635500,
+  "status": "completed",
+  "background": false,
+  "completed_at": 1786635502,
+  "content_filters": [
+    {
+      "blocked": false,
+      "source_type": "prompt",
+      "content_filter_raw": [],
+      "content_filter_results": {
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "jailbreak": {
+          "detected": false,
+          "filtered": false
+        }
+      },
+      "content_filter_offsets": {
+        "start_offset": 0,
+        "end_offset": 56473,
+        "check_offset": 0
+      }
+    },
+    {
+      "blocked": false,
+      "source_type": "completion",
+      "content_filter_raw": [],
+      "content_filter_results": {
+        "protected_material_code": {
+          "detected": false,
+          "filtered": false
+        },
+        "protected_material_text": {
+          "detected": false,
+          "filtered": false
+        },
+        "hate": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "sexual": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "violence": {
+          "filtered": false,
+          "severity": "safe"
+        },
+        "self_harm": {
+          "filtered": false,
+          "severity": "safe"
+        }
+      },
+      "content_filter_offsets": {
+        "start_offset": 0,
+        "end_offset": 99,
+        "check_offset": 0
+      }
+    }
+  ],
+  "error": null,
+  "frequency_penalty": 0,
+  "incomplete_details": null,
+  "instructions": "\n            You are a coding assistant inside InteliJ IDE\n\nEnvironment:\n- Operating system: Windows 11.0\n- Terminal shell: PowerShell. Write run_shell_command input in this dialect, and use this platform's path separators and script extensions in it.\n- Project root: C:/Users/piotr/Documents/intellij-platform-plugin-template\n- IDE: IntelliJ IDEA 2026.2.0.1",
+  "max_output_tokens": 8000,
+  "max_tool_calls": null,
+  "model": "gpt-5.3-codex",
+  "moderation": null,
+  "output": [
+    {
+      "id": "msg_027bc45d70afe355016a7de4ee30588194b5ff95c816f3be80",
+      "type": "message",
+      "status": "completed",
+      "content": [
+        {
+          "type": "output_text",
+          "annotations": [],
+          "logprobs": [],
+          "text": "On it. I’ll implement the live fenced-code frame rendering now and then verify with a compile step."
+        }
+      ],
+      "phase": "final_answer",
+      "role": "assistant"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "presence_penalty": 0,
+  "previous_response_id": null,
+  "prompt_cache_key": null,
+  "prompt_cache_retention": "in_memory",
+  "reasoning": {
+    "context": "current_turn",
+    "effort": "none",
+    "mode": "standard",
+    "summary": null
+  },
+  "safety_identifier": null,
+  "service_tier": "default",
+  "store": false,
+  "temperature": 1,
+  "text": {
+    "format": {
+      "type": "text"
+    },
+    "verbosity": "medium"
+  },
+  "tool_choice": "auto",
+  "tool_usage": {
+    "image_gen": {
+      "input_tokens": 0,
+      "input_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "output_tokens": 0,
+      "output_tokens_details": {
+        "image_tokens": 0,
+        "text_tokens": 0
+      },
+      "total_tokens": 0
+    },
+    "web_search": {
+      "num_requests": 0
+    }
+  },
+  "tools": [
+    {
+      "type": "function",
+      "description": "Returns what the user has open: the file, caret line and column, any selection, and the surrounding lines. Call this first when the user says \"this\", \"here\" or \"the selected code\" without naming a file.",
+      "name": "get_editor_context",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Lists the file paths currently open in the editor, relative to the project root.",
+      "name": "list_open_files",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false,
+        "required": []
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Lists a project directory's contents, relative to the project root, with a trailing \"/\" on directories. One level by default; recursive=true descends, bounded by max_depth. Build output and VCS metadata are skipped.",
+      "name": "list_directory",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory to list, relative to the project root. Defaults to the project root."
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Descend into subdirectories. Defaults to false."
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "How many levels to descend when recursive is true, where 1 is the directory's own children. Defaults to 25 (effectively unbounded)."
+          },
+          "max_entries": {
+            "type": "integer",
+            "description": "Stop after this many entries. Defaults to 200, maximum 2000."
+          }
+        },
+        "required": [
+          "path",
+          "recursive",
+          "max_depth",
+          "max_entries"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Reports whether a project-relative path exists, and whether it is a file or a directory.",
+      "name": "file_exists",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path relative to the project root, e.g. src/Main.kt"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Reads a project file, returning the requested lines each prefixed with its line number, plus the total line count. Omit start_line/end_line for the whole file. Those line numbers are what edit_file_lines takes; never include the prefixes in content passed back.",
+      "name": "read_project_file",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/Main.kt"
+          },
+          "start_line": {
+            "type": "integer",
+            "description": "First line to read, 1-based and inclusive. Defaults to 1."
+          },
+          "end_line": {
+            "type": "integer",
+            "description": "Last line to read, 1-based and inclusive. Defaults to the end of the file."
+          }
+        },
+        "required": [
+          "path",
+          "start_line",
+          "end_line"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Reads a class from a library, framework or the JDK -- anything read_project_file cannot reach. Takes a simple or qualified class name; qualify it if ambiguous. Returns real source when a sources jar is present, decompiled bytecode otherwise. For a single signature, use get_symbol_info.",
+      "name": "read_library_class",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Class name, e.g. \"RenameProcessor\" or \"com.intellij.refactoring.rename.RenameProcessor\""
+          },
+          "start_line": {
+            "type": "integer",
+            "description": "First line to read, 1-based and inclusive. Defaults to 1."
+          },
+          "end_line": {
+            "type": "integer",
+            "description": "Last line to read, 1-based and inclusive. Defaults to the end."
+          }
+        },
+        "required": [
+          "name",
+          "start_line",
+          "end_line"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Outlines a file's classes, methods, fields and other declarations with their start lines (Structure view). Far cheaper than reading the whole file, and the lines feed read_project_file and edit_file_lines. Pass 'path' for a project file, or 'class_name' for a library or JDK class, whose lines feed read_library_class. For one known symbol, use get_symbol_info.",
+      "name": "get_file_structure",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/Main.kt. Give this or 'class_name'."
+          },
+          "class_name": {
+            "type": "string",
+            "description": "Class from a library, framework or the JDK, simple or fully qualified. Use instead of 'path' for anything outside the project."
+          },
+          "max_depth": {
+            "type": "integer",
+            "description": "How far to descend: 1 for top-level declarations only, 2 to include their members. Defaults to 3, maximum 10."
+          },
+          "max_items": {
+            "type": "integer",
+            "description": "Stop after this many entries. Defaults to 300, maximum 1000."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "class_name",
+          "max_depth",
+          "max_items"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Downloads and attaches a library's sources so its classes read as source instead of decompiled bytecode. Worth it only when read_library_class reports decompiled output and the comments or parameter names matter. Asks the user first: it downloads over the network and changes the project's library configuration.",
+      "name": "attach_library_sources",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "class_name": {
+            "type": "string",
+            "description": "A class from the library whose sources are wanted, simple or fully qualified"
+          },
+          "action": {
+            "type": "string",
+            "description": "Which attach action to run, when a previous call reported more than one. Omit when there is only one, which is the usual case."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "description": "How long to wait for the download. Defaults to 180, maximum 600."
+          }
+        },
+        "required": [
+          "class_name",
+          "action",
+          "timeout_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Plain text search across project files (Find in Files). Supports regex, case sensitivity, whole-word, a file mask such as \"*.kt\", and a subdirectory scope. Returns path:line with the matching line. To find uses of a declaration, use find_usages.",
+      "name": "find_in_files",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Text to search for, or a regular expression when 'regex' is true"
+          },
+          "regex": {
+            "type": "boolean",
+            "description": "Treat the query as a regular expression. Defaults to false."
+          },
+          "case_sensitive": {
+            "type": "boolean",
+            "description": "Match case exactly. Defaults to false."
+          },
+          "whole_words": {
+            "type": "boolean",
+            "description": "Match whole words only. Defaults to false."
+          },
+          "file_mask": {
+            "type": "string",
+            "description": "Restrict to file names matching a mask, e.g. \"*.kt\" or \"*.{kt,java}\". Omit to search every file."
+          },
+          "directory": {
+            "type": "string",
+            "description": "Restrict to a directory, relative to the project root. Omit to search the whole project."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Stop after this many matches. Defaults to 100, maximum 500."
+          }
+        },
+        "required": [
+          "query",
+          "regex",
+          "case_sensitive",
+          "whole_words",
+          "file_mask",
+          "directory",
+          "max_results"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Finds project items by name rather than content: type \"class\" (Go to Class), \"file\", or \"action\" for an IDE action id, which is what run_action takes. Case-insensitive substring by default. To search contents, use find_in_files.",
+      "name": "find_by_name",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The name, or part of it, to look for"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "class",
+              "file",
+              "action"
+            ],
+            "description": "What kind of thing to look for"
+          },
+          "exact": {
+            "type": "boolean",
+            "description": "Require the whole name to equal the query rather than contain it. Defaults to false."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Stop after this many results. Defaults to 50, maximum 200."
+          }
+        },
+        "required": [
+          "query",
+          "type",
+          "exact",
+          "max_results"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Finds all usages (references) of a symbol. Point it at the declaration or at any use. Returns file:line locations.",
+      "name": "find_usages",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, at a line where the symbol is declared or used"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line number of the declaration or the use"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Name of the symbol to search for"
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "symbol"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Finds implementations of a symbol: classes implementing an interface or extending an abstract class, methods overriding a method (Go to Implementation). find_usages will not find these. Point it at the declaration or any use; returns file:line.",
+      "name": "find_implementations",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, at a line where the symbol is declared or used"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line number of the declaration or the use"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "The name as it appears on that line -- just the identifier"
+          },
+          "occurrence": {
+            "type": "integer",
+            "description": "Which appearance of the name on that line to use, 1-based. Defaults to 1."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Stop after this many. Defaults to 100, maximum 500."
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "symbol",
+          "occurrence",
+          "max_results"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Resolves the symbol at a file and line to its declaration and shows it: kind, qualified name, location, and source with any doc comment. This is Go to Declaration, so it works on a use -- a call, type reference, inferred receiver -- including symbols from libraries and the JDK. Cheaper than reading a file for one signature; use it before find_usages or rename_symbol when the target is ambiguous.",
+      "name": "get_symbol_info",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, at a line where the symbol is used or declared"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line number, matching what read_project_file returns"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "The name as it appears on that line -- just the identifier, not the whole expression"
+          },
+          "occurrence": {
+            "type": "integer",
+            "description": "Which appearance of the name on that line to resolve, 1-based, left to right. Defaults to 1."
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "symbol",
+          "occurrence"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Uncommitted changes and untracked files, with the current branch. Paths are relative to the project root.",
+      "name": "git_status",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Any path in the repository to report on. Only needed when the project holds more than one."
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Unified diff. Uncommitted changes by default; 'from' alone diffs that revision against the working tree, 'from' and 'to' diff two revisions. Optionally limited to one path.",
+      "name": "git_diff",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File or directory to limit the diff to, relative to the project root."
+          },
+          "from": {
+            "type": "string",
+            "description": "Revision to diff from -- a hash, branch or tag. Defaults to HEAD."
+          },
+          "to": {
+            "type": "string",
+            "description": "Revision to diff to. Defaults to the working tree."
+          }
+        },
+        "required": [
+          "path",
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Recent commits, newest first: hash, date, author and subject. Optionally for one path, or over a revision range.",
+      "name": "git_log",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File or directory whose history to show, relative to the project root."
+          },
+          "revision_range": {
+            "type": "string",
+            "description": "A range such as main..HEAD, or a single revision to start from."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "How many commits to return. Defaults to 20, maximum 200."
+          }
+        },
+        "required": [
+          "path",
+          "revision_range",
+          "limit"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Per line of a file: the commit, author and date that last changed it. Uncommitted edits are not reflected.",
+      "name": "git_blame",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File to blame, relative to the project root."
+          },
+          "start_line": {
+            "type": "integer",
+            "description": "First line to blame, 1-based and inclusive. Defaults to the whole file."
+          },
+          "end_line": {
+            "type": "integer",
+            "description": "Last line to blame, 1-based and inclusive."
+          }
+        },
+        "required": [
+          "path",
+          "start_line",
+          "end_line"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Runs the IDE's analysis on a file and returns errors and warnings as path:line:column with the message. It analyses the unsaved in-memory file, so it sees edits a build would not -- call it after editing instead of building. Fix what it reports with apply_quick_fix where you can.",
+      "name": "get_file_problems",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/Main.kt"
+          },
+          "min_severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "weak_warning",
+              "information"
+            ],
+            "description": "Lowest severity to report. Defaults to \"warning\"; use \"error\" to see only what actually breaks the build."
+          },
+          "max_problems": {
+            "type": "integer",
+            "description": "Stop after this many problems. Defaults to 100, maximum 500."
+          }
+        },
+        "required": [
+          "path",
+          "min_severity",
+          "max_problems"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Applies an IDE quick fix (Alt+Enter) at a line -- the reliable way to fix an unresolved reference, since the IDE knows the qualified name and adds the right import. Call it without 'fix' to list what is available at that line, then again with a name (case-insensitive, full or unique fragment). Opens the file in an editor.",
+      "name": "apply_quick_fix",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/Main.kt"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line to act on, as reported by get_file_problems or read_project_file"
+          },
+          "fix": {
+            "type": "string",
+            "description": "The fix to apply, exactly as listed by a previous call, or a unique fragment of it. Omit to list what is available instead of applying anything."
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "fix"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Edits a project file by 1-based inclusive line numbers, as read_project_file returns them -- read the file first. mode='replace' swaps start_line..end_line for 'content'; mode='insert' puts 'content' above start_line (1 to prepend, last+1 to append). Do not include line-number prefixes in 'content'.",
+      "name": "edit_file_lines",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/Main.kt"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "replace",
+              "insert"
+            ],
+            "description": "'replace' to overwrite a line range, 'insert' to add lines without removing any"
+          },
+          "start_line": {
+            "type": "integer",
+            "description": "For 'replace', the first line to overwrite. For 'insert', the line the new content is placed above."
+          },
+          "end_line": {
+            "type": "integer",
+            "description": "For 'replace', the last line to overwrite (inclusive). Ignored for 'insert'."
+          },
+          "content": {
+            "type": "string",
+            "description": "The new lines, without line-number prefixes"
+          }
+        },
+        "required": [
+          "path",
+          "mode",
+          "start_line",
+          "end_line",
+          "content"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Creates a new file with the given content, plus any missing parent directories. Fails if the file already exists -- use edit_file_lines for one that does.",
+      "name": "create_file",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/Main.kt"
+          },
+          "content": {
+            "type": "string",
+            "description": "The contents of the new file. Pass an empty string for an empty file."
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Moves or renames a project file, creating missing target directories and updating references to it. Fails if the target path already exists.",
+      "name": "move_file",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Current file path relative to the project root, e.g. src/Main.kt"
+          },
+          "to": {
+            "type": "string",
+            "description": "New file path relative to the project root, including the file name, e.g. src/app/App.kt"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Deletes a project file. Refuses directories. To remove a single class or function from a file that should stay, use safe_delete.",
+      "name": "delete_file",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/Main.kt"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Renames a symbol and all its usages across the project. Point it at the declaration or any use. Library and SDK symbols cannot be renamed.",
+      "name": "rename_symbol",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, at a line where the symbol is declared or used"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line number of the declaration or the use"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Current name of the symbol to rename"
+          },
+          "new_name": {
+            "type": "string",
+            "description": "New name for the symbol"
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "symbol",
+          "new_name"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Deletes a symbol only if it has no remaining usages, returning the references if it is still in use. Point it at the declaration or any use; either way the declaration is removed. Library and SDK symbols cannot be deleted.",
+      "name": "safe_delete",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, at a line where the symbol is declared or used"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line number of the declaration or the use"
+          },
+          "symbol": {
+            "type": "string",
+            "description": "Name of the symbol to delete"
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "symbol"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Adds an import statement to a source file. No-op if the import already exists.",
+      "name": "add_import",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root"
+          },
+          "import_path": {
+            "type": "string",
+            "description": "Fully qualified import path, e.g. java.util.List or kotlinx.coroutines.launch"
+          }
+        },
+        "required": [
+          "path",
+          "import_path"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Inserts a new member (method, property, field, inner class) into an existing class, object, or interface.",
+      "name": "insert_member",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root"
+          },
+          "class_name": {
+            "type": "string",
+            "description": "Name of the target class, object, or interface"
+          },
+          "member_code": {
+            "type": "string",
+            "description": "Source code of the member to insert (method, property, field, etc.)"
+          }
+        },
+        "required": [
+          "path",
+          "class_name",
+          "member_code"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Runs an existing run configuration by name -- tests, an application, a Gradle or Maven task -- and returns its exit code and console output. Naming one that does not exist returns the ones that do. For a test with no configuration yet, use run_at_location; to stop at a breakpoint, start_debug_configuration.",
+      "name": "run_configuration",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the run configuration exactly as it appears in the IDE's run configuration list"
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "description": "How long to wait for it to finish before giving up on its output. It keeps running in the IDE either way. Defaults to 180, maximum 900."
+          }
+        },
+        "required": [
+          "name",
+          "timeout_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Runs whatever is runnable at a source location -- a test class, a single test method, a main function -- creating the configuration the way the gutter Run button does. Use it when nothing is saved for it, the normal case for a test class you just wrote. A line inside a method runs that method, a line on the class runs the class, no line runs the file. Returns the same exit code, per-test results and output as run_configuration. debug=true starts it under the debugger: set breakpoints with toggle_breakpoint first, then call await_breakpoint.",
+      "name": "run_at_location",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/test/kotlin/FooTest.kt"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line inside the declaration to run, matching what read_project_file returns. Anywhere inside it will do -- the signature line is the obvious choice. Omit to run the file as a whole."
+          },
+          "debug": {
+            "type": "boolean",
+            "description": "Start it under the debugger rather than just running it, as the gutter's Debug button does. Returns as soon as the debugger attaches, without waiting for the run to finish or reporting its results -- follow it with await_breakpoint. Defaults to false."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "description": "How long to wait for it to finish before giving up on its output. It keeps running in the IDE either way. Defaults to 180, maximum 900. With debug=true it means something different, because there is no output to wait for: how long to wait for the debugger to attach, defaulting to 20 with a maximum of 120."
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "debug",
+          "timeout_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Runs an IDE action by id, after asking the user to approve it -- reformatting, optimising imports, VCS operations. Discover ids with find_by_name type \"action\". It reports only whether the action ran, not what it produced, and acts on the current editor, so open the target file first. A dialog will wait for the user; changes are undone with the IDE's Undo, not by reverting this chat's changes.",
+      "name": "run_action",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action_id": {
+            "type": "string",
+            "description": "The action's id, e.g. \"ReformatCode\" or \"OptimizeImports\". Find ids with find_by_name."
+          },
+          "reason": {
+            "type": "string",
+            "description": "A short explanation of why this action should run, shown to the user in the approval prompt so they can judge it."
+          }
+        },
+        "required": [
+          "action_id",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Runs a shell command in the IDE's Terminal and returns its exit code and output. For builds, git, and anything with no run configuration; prefer run_configuration when one exists, as it reports per-test results. The user approves each command and watches it run, so send one purposeful command rather than a chain of exploratory ones. Use the file tools to read and edit files. Interactive commands hang until the user types into the terminal or interrupts.",
+      "name": "run_shell_command",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The command line to run, in the syntax of the shell configured for the IDE terminal. Pipes and redirection are allowed."
+          },
+          "working_dir": {
+            "type": "string",
+            "description": "Directory to run in, relative to the project root. Defaults to the project root."
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "description": "How long to wait for the command to finish before giving up on its output. The command keeps running in the terminal either way. Defaults to 120, maximum 600."
+          }
+        },
+        "required": [
+          "command",
+          "working_dir",
+          "timeout_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Adds or removes a line breakpoint in a project file. Line numbers are 1-based, as read_project_file returns them. Adding requires an executable statement, not a blank line, comment or declaration.",
+      "name": "toggle_breakpoint",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "File path relative to the project root, e.g. src/Main.kt"
+          },
+          "line": {
+            "type": "integer",
+            "description": "1-based line number to put the breakpoint on"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "add",
+              "remove"
+            ],
+            "description": "Whether to add a breakpoint at the line or remove the one there"
+          }
+        },
+        "required": [
+          "path",
+          "line",
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Starts an existing run configuration under the debugger by name, including Remote JVM Debug configurations that attach to a running process. Naming one that does not exist returns the ones that do. For a test with no configuration yet, use run_at_location with debug=true. Follow with await_breakpoint.",
+      "name": "start_debug_configuration",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the run configuration exactly as it appears in the IDE's run configuration list"
+          },
+          "wait_seconds": {
+            "type": "integer",
+            "description": "How long to wait for the debugger to actually attach before reporting back. Defaults to 20, maximum 120."
+          }
+        },
+        "required": [
+          "name",
+          "wait_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Waits until the debug session stops at a breakpoint or finishes a step, and returns the file, line and variables in scope. Returns immediately if already stopped. Requires a running debug session; use debugger_action to move on afterwards.",
+      "name": "await_breakpoint",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeout_seconds": {
+            "type": "integer",
+            "description": "How long to wait for the debugger to stop. Defaults to 60, maximum 600."
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "timeout_seconds"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Drives a paused debugger: resume, step_over, step_into, force_step_into, step_out, run_to_line (also takes path and line), pause, stop. Returns where execution stopped next and the variables in scope there.",
+      "name": "debugger_action",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "resume",
+              "step_over",
+              "step_into",
+              "force_step_into",
+              "step_out",
+              "run_to_line",
+              "pause",
+              "stop"
+            ],
+            "description": "resume: run until the next breakpoint. step_over: run this line, staying in this method. step_into: enter the call on this line. force_step_into: enter it even if the debugger would normally skip it (library or synthetic code). step_out: run until this method returns. run_to_line: run until a given line, without setting a breakpoint. pause: suspend a running program wherever it is. stop: end the debug session."
+          },
+          "path": {
+            "type": "string",
+            "description": "run_to_line only: file path relative to the project root"
+          },
+          "line": {
+            "type": "integer",
+            "description": "run_to_line only: 1-based line number to run to"
+          },
+          "wait_seconds": {
+            "type": "integer",
+            "description": "How long to wait for execution to stop again before handing back. Defaults to 15, maximum 300. Raise it for a resume that has to run a while, or call await_breakpoint afterwards instead."
+          }
+        },
+        "required": [
+          "action",
+          "path",
+          "line",
+          "wait_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "type": "function",
+      "description": "Evaluates an expression in the frame the debugger is stopped in and returns its value. The session must already be paused; pair with await_breakpoint. Write it in the debuggee's language. It runs for real, so prefer reading state over calling methods with side effects.",
+      "name": "evaluate_expression",
+      "output_schema": null,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "description": "The expression to evaluate, in the debuggee's language, e.g. \"user.orders.size\""
+          },
+          "timeout_seconds": {
+            "type": "integer",
+            "description": "How long to wait for the debugger to answer. Defaults to 20, maximum 120."
+          }
+        },
+        "required": [
+          "expression",
+          "timeout_seconds"
+        ],
+        "additionalProperties": false
+      },
+      "strict": true
+    }
+  ],
+  "top_logprobs": 0,
+  "top_p": 0.98,
+  "truncation": "disabled",
+  "usage": {
+    "input_tokens": 17685,
+    "input_tokens_details": {
+      "cache_write_tokens": 0,
+      "cached_tokens": 17536
+    },
+    "output_tokens": 25,
+    "output_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "total_tokens": 17710
+  },
+  "user": null,
+  "metadata": {}
+}
