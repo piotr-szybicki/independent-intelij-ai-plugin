@@ -31,6 +31,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodin
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentUsage
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.HistoryCompaction
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ReasoningOptions
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
@@ -572,6 +573,30 @@ class ChatToolWindowFactory : ToolWindowFactory {
             return if (line.length <= 90) line else line.take(89).trimEnd() + "…"
         }
 
+        /**
+         * Draws a compaction pass as a collapsed row, the same shape a finished tool call gets.
+         *
+         * Shown rather than done silently: it is why the model may go back and re-read a file it
+         * already read, and why the input count stops climbing the way it had been. Drawn as a tool
+         * row so it is stored, replayed and collapsed like everything else in the turn -- what it
+         * did is a detail, that it happened is the line.
+         */
+        private fun showCompaction(result: HistoryCompaction.Result) {
+            val summary = "freed ~${formatTokens(result.freedTokens)} tokens from " +
+                "${result.evicted} old tool result(s)"
+            val details = buildString {
+                append("The conversation had grown to roughly ${"%,d".format(result.beforeTokens)} tokens, ")
+                append("so the output of the ${result.evicted} oldest tool call(s) was replaced with a note ")
+                append("saying what had been there, bringing it to about ${"%,d".format(result.afterTokens)}.\n\n")
+                append("Only tool output was dropped, and only from the older part of the conversation -- ")
+                append("nothing you or the model wrote, and nothing from the last few calls. ")
+                append("This chat still shows all of it; it is the copy sent with each request that shrank.\n\n")
+                append("The threshold is the context window on the settings page.")
+            }
+            rows += StoredRow(StoredRow.TOOL, name = "compact_context", summary = summary, details = details)
+            transcript.addToolCall("compact_context", summary, details, ChatTranscript.ToolStatus.DONE)
+        }
+
         private fun showToolCall(name: String, summary: String, details: String, status: ChatTranscript.ToolStatus) {
             rows += StoredRow(StoredRow.TOOL, name = name, summary = summary, details = details, status = stored(status))
             transcript.addToolCall(name, summary, details, status)
@@ -767,6 +792,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             // still takes effect -- the raise is a floor this chat has earned, not a replacement.
             val maxTokens = maxOf(settings.maxTokens, raisedMaxTokens)
             val maxIterations = settings.maxIterations
+            val contextWindow = settings.contextWindowTokens
 
             cancelled.set(false)
 
@@ -784,7 +810,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
                 try {
                     val reasoning = ReasoningOptions.fromSettings()
-                    agent.run(endpoint, model, maxTokens, maxIterations, history, object : AICodingAgent.Listener {
+                    agent.run(endpoint, model, maxTokens, maxIterations, contextWindow, history, object : AICodingAgent.Listener {
                         override fun onAssistantText(text: String) {
                             if (text.isBlank()) return
                             ApplicationManager.getApplication().invokeLater { showAssistantMessage(text) }
@@ -798,6 +824,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
                         // rather than jumping once at the end of the turn.
                         override fun onUsage(usage: AICodingAgentUsage) {
                             ApplicationManager.getApplication().invokeLater { addUsage(usage) }
+                        }
+
+                        override fun onCompacted(result: HistoryCompaction.Result) {
+                            ApplicationManager.getApplication().invokeLater { showCompaction(result) }
                         }
 
                         override fun onToolStarted(name: String, input: JsonObject, interruptible: Boolean) {

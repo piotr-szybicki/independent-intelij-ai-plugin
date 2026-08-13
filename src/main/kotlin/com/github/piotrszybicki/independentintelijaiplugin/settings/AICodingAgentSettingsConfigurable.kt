@@ -37,6 +37,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
     private val modelField = JBTextField()
     private val maxTokensField = JBTextField()
     private val maxIterationsField = JBTextField()
+    private val contextWindowField = JBTextField()
     private val endpointField = JBTextField()
 
     /**
@@ -228,6 +229,17 @@ class AICodingAgentSettingsConfigurable : Configurable {
                     "whether to keep going. Answering yes buys another such run, so this is not a " +
                     "ceiling &mdash; it is the check that stops a loop running away unnoticed.",
             )
+            row("Context window:") {
+                cell(contextWindowField).columns(10)
+            }.rowComment(
+                "How much the model can hold at once, in tokens &mdash; 200000 on the current Claude " +
+                    "models, 128000 on many others. Set it to match the model you actually use: past " +
+                    "about 60% of it, the output of the oldest tool calls is replaced with a note " +
+                    "saying what was there, which is what stops a long chat from growing until the " +
+                    "provider refuses it. What the model read is dropped, never what it or you said, " +
+                    "and the chat window still shows all of it. Set to 0 to switch that off and let " +
+                    "the conversation grow without limit.",
+            )
         }
         group("Tools") {
             row {
@@ -293,6 +305,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
         return modelField.text != settings.model ||
             maxTokensField.positiveIntOr(settings.maxTokens) != settings.maxTokens ||
             maxIterationsField.positiveIntOr(settings.maxIterations) != settings.maxIterations ||
+            contextWindowField.nonNegativeIntOr(settings.contextWindowTokens) != settings.contextWindowTokens ||
             // Against what is actually in force rather than against what is saved: with the
             // environment variable set, the saved value is not what the field was filled from.
             endpointField.text != EndpointUrl.resolve() ||
@@ -313,10 +326,12 @@ class AICodingAgentSettingsConfigurable : Configurable {
         settings.model = modelField.text.trim().ifBlank { "claude-sonnet-5" }
         settings.maxTokens = maxTokensField.positiveIntOr(settings.maxTokens)
         settings.maxIterations = maxIterationsField.positiveIntOr(settings.maxIterations)
+        settings.contextWindowTokens = contextWindowField.nonNegativeIntOr(settings.contextWindowTokens)
         // Put the accepted numbers back, so a field that was left with something unusable in it
         // shows what actually got saved rather than the text that was ignored.
         maxTokensField.text = settings.maxTokens.toString()
         maxIterationsField.text = settings.maxIterations.toString()
+        contextWindowField.text = settings.contextWindowTokens.toString()
         applyEndpointUrl()
         settings.apiVersion = apiVersionField.text.trim()
         settings.extraHeaders = extraHeadersArea.text
@@ -372,6 +387,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
         modelField.text = settings.model
         maxTokensField.text = settings.maxTokens.toString()
         maxIterationsField.text = settings.maxIterations.toString()
+        contextWindowField.text = settings.contextWindowTokens.toString()
         // What requests will actually go to, which is not necessarily what is saved.
         endpointField.text = EndpointUrl.resolve()
         updateEndpointSource()
@@ -492,6 +508,10 @@ class AICodingAgentSettingsConfigurable : Configurable {
      */
     private fun JBTextField.positiveIntOr(fallback: Int): Int =
         text.trim().toIntOrNull()?.takeIf { it > 0 } ?: fallback
+
+    /** For a field where zero is a real answer rather than an empty one -- "off", not "unset". */
+    private fun JBTextField.nonNegativeIntOr(fallback: Int): Int =
+        text.trim().toIntOrNull()?.takeIf { it >= 0 } ?: fallback
 
     /**
      * Scans the directories in the field and reports what was found in each.

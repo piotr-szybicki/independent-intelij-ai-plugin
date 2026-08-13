@@ -98,6 +98,17 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
         var maxIterations: Int = 10,
 
         /**
+         * The model's context window, which is what
+         * [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.HistoryCompaction]
+         * measures a conversation against before deciding to drop old tool output.
+         *
+         * A setting rather than something read off the model name: the endpoint can be any provider
+         * and any gateway, the name is free text, and guessing 200k for a model that has 128k is
+         * a conversation that grows until the provider refuses it. Zero switches compaction off.
+         */
+        var contextWindowTokens: Int = 200_000,
+
+        /**
          * The full URL of the messages endpoint, path included, rather than a base URL with the path
          * appended: provider paths do not agree (Foundry's base already ends in `/v1`, gateways add
          * prefixes of their own), so guessing at it would break more setups than it saves typing on.

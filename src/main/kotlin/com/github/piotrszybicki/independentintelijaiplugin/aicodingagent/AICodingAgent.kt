@@ -98,6 +98,16 @@ class AICodingAgent(
          * worth of them; returning false ends the turn where it stands.
          */
         fun onMaxIterations(used: Int): Boolean = false
+
+        /**
+         * A compaction pass dropped old tool output to keep the conversation inside the context
+         * window. Only called when something was actually elided.
+         *
+         * Worth telling the user about rather than doing quietly: it is the reason the model may go
+         * back and re-read a file it already read, and the reason a chat's input token count stops
+         * climbing the way it had been.
+         */
+        fun onCompacted(result: HistoryCompaction.Result) {}
     }
 
     companion object {
@@ -192,12 +202,17 @@ class AICodingAgent(
      * reply doubles it up to [MAX_TOKENS_CEILING], and past that [Listener.onMaxTokens] chooses the
      * cap outright. The raise lasts as long as the turn does -- carrying it into the next one is the
      * caller's to do, from the value it returned there.
+     *
+     * [contextWindowTokens] is the model's context window, and what [HistoryCompaction] measures
+     * [history] against before each request. Zero turns compaction off and lets the conversation
+     * grow until the provider refuses it.
      */
     fun run(
         endpoint: AICodingAgentEndpoint,
         model: String,
         maxTokens: Int,
         maxIterations: Int,
+        contextWindowTokens: Int,
         history: MutableList<ChatMessage>,
         listener: Listener,
         isCancelled: () -> Boolean = { false },
@@ -212,6 +227,9 @@ class AICodingAgent(
         // Same reasoning as the tool list: resolved once for the whole turn, so the system prompt
         // cannot change underneath the loop between one iteration and the next.
         val system = systemPrompt()
+        // Both halves are fixed for the turn, so what they cost is measured once rather than on
+        // every iteration -- and it is not small: thirty tool schemas are most of a short request.
+        val overhead = HistoryCompaction.overheadTokens(system, toolDefinitions)
 
         // A budget rather than a fixed count: the cap is there to stop a runaway loop, not to end a
         // long piece of work, and only the user can tell the two apart. When it runs out the loop
@@ -235,6 +253,18 @@ class AICodingAgent(
                     budget += maxIterations
                 }
                 used++
+
+                // Before the request rather than after the response: what has to fit is what is
+                // about to be sent. And once per iteration rather than once per turn, because a
+                // long tool loop can add more to the history in one turn than the user did in the
+                // whole conversation before it -- the window runs out mid-turn or not at all.
+                HistoryCompaction.compact(history, contextWindowTokens, overhead).takeIf { !it.isEmpty }?.let {
+                    log.info(
+                        "Compacted the conversation: dropped ${it.evicted} tool result(s), " +
+                            "~${it.beforeTokens} tokens -> ~${it.afterTokens}",
+                    )
+                    listener.onCompacted(it)
+                }
 
                 if (isCancelled()) return
                 val turn = AICodingAgentClient.sendMessage(
