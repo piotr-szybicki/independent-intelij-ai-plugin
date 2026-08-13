@@ -582,14 +582,38 @@ class ChatToolWindowFactory : ToolWindowFactory {
          * did is a detail, that it happened is the line.
          */
         private fun showCompaction(result: HistoryCompaction.Result) {
-            val summary = "freed ~${formatTokens(result.freedTokens)} tokens from " +
-                "${result.evicted} old tool result(s)"
+            val what = buildList {
+                if (result.evicted > 0) add("${result.evicted} old tool result(s)")
+                if (result.summarized) add("${result.summarizedMessages} earlier message(s)")
+            }.joinToString(" and ")
+            val summary = "freed ~${formatTokens(result.freedTokens)} tokens from $what"
             val details = buildString {
                 append("The conversation had grown to roughly ${"%,d".format(result.beforeTokens)} tokens, ")
-                append("so the output of the ${result.evicted} oldest tool call(s) was replaced with a note ")
-                append("saying what had been there, bringing it to about ${"%,d".format(result.afterTokens)}.\n\n")
-                append("Only tool output was dropped, and only from the older part of the conversation -- ")
-                append("nothing you or the model wrote, and nothing from the last few calls. ")
+                if (result.evicted > 0) {
+                    append("so the output of the ${result.evicted} oldest tool call(s) was replaced with a note ")
+                    append("saying what had been there")
+                }
+                if (result.summarized) {
+                    // The two clauses have to read as one sentence in all three combinations: elided
+                    // only, summarised only, and both. What differs is why summarising was reached --
+                    // because eliding fell short, or because there was nothing to elide in the first
+                    // place.
+                    if (result.evicted > 0) append(", and that was not enough on its own, so ")
+                    else append("and none of it was old tool output that could simply be dropped, so ")
+                    append("the model was asked to summarise the ${result.summarizedMessages} oldest ")
+                    append("message(s) and the summary was put in their place")
+                }
+                append(", bringing it to about ${"%,d".format(result.afterTokens)}.\n\n")
+                if (result.summarized) {
+                    // The one part of compaction that loses something the user cannot get back by
+                    // asking the model to read a file again, so it is said outright.
+                    append("Summarising cost an extra request, and it is lossy: exact file contents, ")
+                    append("line numbers and wording from the early part of the conversation are no longer ")
+                    append("available to the model, only the summary's description of them. ")
+                } else {
+                    append("Only tool output was dropped, and only from the older part of the conversation -- ")
+                    append("nothing you or the model wrote, and nothing from the last few calls. ")
+                }
                 append("This chat still shows all of it; it is the copy sent with each request that shrank.\n\n")
                 append("The threshold is the context window on the settings page.")
             }

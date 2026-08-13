@@ -100,12 +100,14 @@ class AICodingAgent(
         fun onMaxIterations(used: Int): Boolean = false
 
         /**
-         * A compaction pass dropped old tool output to keep the conversation inside the context
-         * window. Only called when something was actually elided.
+         * A compaction pass dropped old tool output, or replaced the older part of the conversation
+         * with a summary of it, to keep the conversation inside the context window. Only called when
+         * something actually changed.
          *
          * Worth telling the user about rather than doing quietly: it is the reason the model may go
          * back and re-read a file it already read, and the reason a chat's input token count stops
-         * climbing the way it had been.
+         * climbing the way it had been. A pass that summarised is worth saying more loudly still --
+         * it spent a request of its own, and detail from the early conversation is now gone for good.
          */
         fun onCompacted(result: HistoryCompaction.Result) {}
     }
@@ -140,6 +142,17 @@ class AICodingAgent(
          * this constant cannot make.
          */
         const val MAX_TOKENS_CEILING = 12_000
+
+        /**
+         * The output cap for a summary request.
+         *
+         * Generous for a summary and small next to what it buys: a few thousand tokens of prose
+         * standing in for most of a context window. Capped rather than left at the turn's own limit
+         * because the two are unrelated -- a user who raised the reply cap to finish a long answer
+         * did not ask for a longer summary, and prose that runs to the cap is prose that failed to
+         * summarise.
+         */
+        private const val SUMMARY_MAX_TOKENS = 4_000
 
         /** Stands in for a tool that was skipped or interrupted when the user pressed Stop. */
         private const val CANCELLED_RESULT = "The user cancelled this turn before the tool finished."
@@ -253,18 +266,29 @@ class AICodingAgent(
                     budget += maxIterations
                 }
                 used++
-
                 // Before the request rather than after the response: what has to fit is what is
                 // about to be sent. And once per iteration rather than once per turn, because a
                 // long tool loop can add more to the history in one turn than the user did in the
                 // whole conversation before it -- the window runs out mid-turn or not at all.
-                HistoryCompaction.compact(history, contextWindowTokens, overhead).takeIf { !it.isEmpty }?.let {
-                    log.info(
-                        "Compacted the conversation: dropped ${it.evicted} tool result(s), " +
-                            "~${it.beforeTokens} tokens -> ~${it.afterTokens}",
-                    )
-                    listener.onCompacted(it)
+                //
+                // The summarizer is passed on every call but asked for nothing until eliding tool
+                // output has failed to get the conversation under target; see [HistoryCompaction].
+                val summarizer = HistoryCompaction.Summarizer { messages ->
+                    // A cancel between the decision to summarise and the request for it: the pass
+                    // reads null as "could not", leaves the history alone, and the loop stops at the
+                    // check below without having spent anything.
+                    if (isCancelled()) null
+                    else summarize(endpoint, model, messages, toolDefinitions, system, reasoning, listener)
                 }
+                HistoryCompaction.compact(history, contextWindowTokens, overhead, summarizer)
+                    .takeIf { !it.isEmpty }?.let {
+                        log.info(
+                            "Compacted the conversation: dropped ${it.evicted} tool result(s), " +
+                                "summarised ${it.summarizedMessages} message(s), " +
+                                "~${it.beforeTokens} tokens -> ~${it.afterTokens}",
+                        )
+                        listener.onCompacted(it)
+                    }
 
                 if (isCancelled()) return
                 val turn = AICodingAgentClient.sendMessage(
@@ -361,6 +385,55 @@ class AICodingAgent(
             answerDanglingToolUse(history)
         }
     }
+    /**
+     * Asks the model to describe [messages] in prose, for [HistoryCompaction] to put in their place.
+     * Null when the request failed or came back with nothing usable, which the pass reads as "leave
+     * the history alone".
+     *
+     * Sent with the same [system] prompt and [tools] as an ordinary turn, though it needs neither.
+     * That is deliberate: those two are the whole cacheable prefix, and asking with a different
+     * prefix would read every one of the tool schemas back at full price to save context. With them
+     * unchanged and the summary request appended as a final user turn, this is an ordinary
+     * cache-extending request -- the conversation in front of it is read at the cache rate, which
+     * is most of what makes a pass affordable at all.
+     *
+     * The cost of carrying the tools is that the model can call one. [HistoryCompaction.SUMMARY_REQUEST]
+     * tells it not to, and a reply that ignores that is handled by taking whatever text came with it
+     * and dropping the rest: the `tool_use` blocks are never executed and never reach the history, so
+     * the worst case is a wasted request rather than a tool call nobody asked for.
+     */
+    private fun summarize(
+        endpoint: AICodingAgentEndpoint,
+        model: String,
+        messages: List<ChatMessage>,
+        tools: List<ToolDefinition>,
+        system: String,
+        reasoning: ReasoningOptions,
+        listener: Listener,
+    ): String? {
+        log.info("Summarising ${messages.size} message(s) to make room in the context window")
+        val request = messages + ChatMessage.text("user", HistoryCompaction.SUMMARY_REQUEST)
+        val turn = try {
+            AICodingAgentClient.sendMessage(
+                endpoint, model, SUMMARY_MAX_TOKENS, request, tools, system, reasoning,
+            )
+        } catch (e: Exception) {
+            // Logged and swallowed. A summary that could not be had is a turn that goes out
+            // oversized, which is the provider's to complain about; failing here would turn it into
+            // a turn the user never gets an answer to.
+            log.info("Summarising the conversation failed, leaving the history as it is: ${e.message}")
+            return null
+        }
+        // Billed like any other request, so it goes through the same counter -- a pass that shows up
+        // as tokens from nowhere is the thing that makes the usage figures untrustworthy.
+        turn.usage?.let(listener::onUsage)
+
+        return turn.content
+            .filter { it.isJsonObject && it.asJsonObject.get("type")?.asString == "text" }
+            .joinToString("\n") { it.asJsonObject.get("text")?.asString.orEmpty() }
+            .takeIf { it.isNotBlank() }
+    }
+
 
     /**
      * Answers any `tool_use` blocks the loop did not get to, so the conversation stays sendable.

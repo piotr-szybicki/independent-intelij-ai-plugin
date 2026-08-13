@@ -180,6 +180,153 @@ class HistoryCompactionTest {
         assertTrue(withTools > HistoryCompaction.overheadTokens("s".repeat(400), emptyList()))
     }
 
+    // --- tier 2: summarising ----------------------------------------------------------------------
+
+    @Test
+    fun `does not summarise while eliding tool output is still enough`() {
+        val history = historyOf(turns = 20)
+        var asked = false
+
+        val result = HistoryCompaction.compact(history, WINDOW) { asked = true; "a summary" }
+
+        // The expensive tier stays unused as long as the cheap one can do the job: 20 turns of tool
+        // output is exactly the case eliding was written for.
+        assertFalse("summarised when eliding would have done", asked)
+        assertFalse(result.summarized)
+        assertTrue(result.evicted > 0)
+    }
+
+    @Test
+    fun `summarises when the conversation itself is what fills the window`() {
+        // No tool calls at all, so there is nothing for tier 1 to elide and the window is full of
+        // what the two of them wrote -- the case that used to have no answer.
+        val history = proseHistoryOf(turns = 12)
+
+        val result = HistoryCompaction.compact(history, WINDOW) { "the story so far" }
+
+        assertTrue(result.summarized)
+        assertEquals(0, result.evicted)
+        assertTrue("nothing was freed", result.freedTokens > 0)
+        assertTrue(textOf(history[0]).contains("the story so far"))
+    }
+
+    @Test
+    fun `keeps the summary out of the protected tail`() {
+        val history = proseHistoryOf(turns = 12)
+        val tailStart = history.size - HistoryCompaction.PROTECTED_TAIL_MESSAGES
+        val tail = history.subList(tailStart, history.size).toList()
+
+        HistoryCompaction.compact(history, WINDOW) { "the story so far" }
+
+        assertEquals(tail, history.takeLast(HistoryCompaction.PROTECTED_TAIL_MESSAGES))
+    }
+
+    @Test
+    fun `leaves the history untouched when the summary cannot be had`() {
+        val history = proseHistoryOf(turns = 12)
+        val before = history.toList()
+
+        val result = HistoryCompaction.compact(history, WINDOW) { null }
+
+        // A failed summary request must cost nothing but the request: the alternative is a
+        // conversation cut down on the strength of a summary that never arrived.
+        assertFalse(result.summarized)
+        assertEquals(before, history)
+    }
+
+    @Test
+    fun `leaves the history untouched when the summary comes back blank`() {
+        val history = proseHistoryOf(turns = 12)
+        val before = history.toList()
+
+        HistoryCompaction.compact(history, WINDOW) { "   \n  " }
+
+        assertEquals(before, history)
+    }
+
+    @Test
+    fun `cuts only at a turn boundary, so no tool result loses its tool use`() {
+        // Prose turns with a tool call inside each one: every cut but the turn boundaries would
+        // strand a tool_result whose tool_use it had just deleted, which the API refuses outright.
+        val history = mutableListOf(ChatMessage.text("user", "go"))
+        for (i in 0 until 12) {
+            history.add(ChatMessage("assistant", toolUse("toolu_$i")))
+            history.add(ChatMessage("user", toolResult("toolu_$i", "x".repeat(RESULT_CHARS))))
+            history.add(ChatMessage.text("assistant", "p".repeat(RESULT_CHARS)))
+            history.add(ChatMessage.text("user", "and now this: " + "q".repeat(RESULT_CHARS)))
+        }
+
+        HistoryCompaction.compact(history, WINDOW) { "the story so far" }
+
+        for (i in history.indices) {
+            val asked = idsOf(history[i], "tool_use", "id")
+            if (asked.isEmpty()) continue
+            assertEquals("message $i", asked, idsOf(history.getOrNull(i + 1), "tool_result", "tool_use_id"))
+        }
+        // And nothing is left answering a call that is no longer there.
+        for (i in history.indices) {
+            val answered = idsOf(history[i], "tool_result", "tool_use_id")
+            if (answered.isEmpty()) continue
+            assertEquals("message $i", answered, idsOf(history.getOrNull(i - 1), "tool_use", "id"))
+        }
+    }
+
+    @Test
+    fun `keeps the roles alternating across the splice`() {
+        val history = proseHistoryOf(turns = 12)
+
+        HistoryCompaction.compact(history, WINDOW) { "the story so far" }
+
+        // The summary goes in as a user/assistant pair for this reason: a lone user message would
+        // leave two user turns in a row where the kept half begins.
+        assertEquals("user", history[0].role)
+        assertEquals("assistant", history[1].role)
+        for (i in 1 until history.size) {
+            assertFalse("messages $i and ${i - 1} share a role", history[i].role == history[i - 1].role)
+        }
+    }
+
+    @Test
+    fun `declines to summarise a history too short to be worth it`() {
+        // Over the trigger on the strength of two enormous messages. There is no cut that leaves the
+        // tail protected and still takes enough with it, so a pass does nothing rather than
+        // summarising a single exchange.
+        val history = mutableListOf(
+            ChatMessage.text("user", "x".repeat(RESULT_CHARS * 10)),
+            ChatMessage.text("assistant", "y".repeat(RESULT_CHARS * 10)),
+        )
+        val before = history.toList()
+
+        val result = HistoryCompaction.compact(history, WINDOW) { "the story so far" }
+
+        assertTrue(result.isEmpty)
+        assertEquals(before, history)
+    }
+
+    @Test
+    fun `tells the model the summary is a summary`() {
+        val history = proseHistoryOf(turns = 12)
+
+        HistoryCompaction.compact(history, WINDOW) { "the story so far" }
+
+        // Not dressed up as something the user wrote: a model that thinks it still has the
+        // transcript will act on a paraphrase of it instead of re-reading.
+        val inserted = textOf(history[0]).lowercase()
+        assertTrue(inserted, inserted.contains("summary"))
+        assertTrue(inserted, inserted.contains("not a transcript"))
+    }
+
+    @Test
+    fun `asks for the things an agent mid-task needs kept`() {
+        val request = HistoryCompaction.SUMMARY_REQUEST.lowercase()
+
+        // A general "summarise this" drops exactly these first, and they are what the next turn is
+        // built on.
+        assertTrue(request.contains("outstanding"))
+        assertTrue(request.contains("paths exactly"))
+        assertTrue(request.contains("do not reproduce file contents"))
+    }
+
     // --- fixtures ---------------------------------------------------------------------------------
 
     /** [turns] rounds of "the assistant asks for a tool, the user answers it". */
@@ -191,6 +338,22 @@ class HistoryCompactionTest {
         }
         return history
     }
+    /**
+     * [turns] rounds of "the user writes at length, the assistant answers at length", with no tool
+     * call anywhere in it -- a conversation tier 1 can do nothing with.
+     */
+    private fun proseHistoryOf(turns: Int): MutableList<ChatMessage> {
+        val history = mutableListOf<ChatMessage>()
+        for (i in 0 until turns) {
+            history.add(ChatMessage.text("user", "ask $i: " + "q".repeat(RESULT_CHARS)))
+            history.add(ChatMessage.text("assistant", "answer $i: " + "a".repeat(RESULT_CHARS)))
+        }
+        return history
+    }
+
+    /** The text of a message built by [ChatMessage.text], whose block carries `text` and not `content`. */
+    private fun textOf(message: ChatMessage): String = message.content[0].asJsonObject.get("text").asString
+
 
     private fun toolUse(id: String): JsonArray = JsonArray().apply {
         add(JsonObject().apply {
