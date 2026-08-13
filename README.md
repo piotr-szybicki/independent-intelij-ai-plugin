@@ -21,9 +21,9 @@ build/distributions/IntelliJ Platform Plugin Template-0.0.1.zip
 ```
 
 Install that file into a real IDE with <kbd>Settings</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> >
-<kbd>Install Plugin from Disk…</kbd>, then restart. Remember the IDE only picks up `AI_API_KEY` at
-startup, so set it as a user environment variable rather than in a shell — an IDE launched from a
-desktop shortcut or Toolbox will not see a variable exported in your shell profile.
+<kbd>Install Plugin from Disk…</kbd>, then restart. Remember the IDE only picks up `AI_API_KEY` and
+`AI_API_URL` at startup, so set them as user environment variables rather than in a shell — an IDE
+launched from a desktop shortcut or Toolbox will not see a variable exported in your shell profile.
 ## Development
 
 ### Prerequisites
@@ -33,6 +33,11 @@ desktop shortcut or Toolbox will not see a variable exported in your shell profi
   depends on the bundled Terminal plugin and the VCS platform module, both of which ship with IDEA.
 - An API key for your provider in the **`AI_API_KEY`** environment variable. The plugin reads it from the
   environment at runtime — there is no field to paste it into.
+- Optionally, an endpoint in **`AI_API_URL`**. It wins over the URL saved under
+  <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>AICodingAgent</kbd>, so a run can be pointed at a
+  gateway or a local server without editing the project's settings. The settings field still shows
+  the URL that is actually in use, and editing it while the variable is set overrides it for that
+  IDE session only — nothing is saved, and clearing the field hands the URL back to the variable.
 
 ### Running it
 
@@ -50,7 +55,8 @@ the chat will start with no credentials:
 $env:AI_API_KEY = "sk-ant-..."; ./gradlew runIde
 ```
 
-The bash equivalent is `AI_API_KEY=sk-ant-... ./gradlew runIde`.
+The bash equivalent is `AI_API_KEY=sk-ant-... ./gradlew runIde`. `AI_API_URL` rides along the same
+way when the sandbox should talk to something other than the saved endpoint.
 
 First run downloads the target IDE (~1 GB) and takes a while; later runs reuse it.
 

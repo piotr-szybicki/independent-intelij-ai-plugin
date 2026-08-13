@@ -144,12 +144,10 @@ internal object OpenAiProtocol {
             content,
             stopReason(choice.string("finish_reason").takeIf { it.isNotEmpty() }, content),
             usage?.let {
-                AICodingAgentUsage(
-                    input_tokens = it.int("prompt_tokens"),
-                    output_tokens = it.int("completion_tokens"),
-                    // No equivalent of a cache write: the caching is automatic and unbilled, so a
-                    // read is the only half of it the response reports.
-                    cache_read_input_tokens = it.obj("prompt_tokens_details").int("cached_tokens"),
+                uncached(
+                    total = it.int("prompt_tokens"),
+                    cached = it.obj("prompt_tokens_details").int("cached_tokens"),
+                    output = it.int("completion_tokens"),
                 )
             },
         )
@@ -265,16 +263,40 @@ internal object OpenAiProtocol {
             content,
             if (truncated) "max_tokens" else stopReason(null, content),
             usage?.let {
-                AICodingAgentUsage(
-                    input_tokens = it.int("input_tokens"),
-                    output_tokens = it.int("output_tokens"),
-                    cache_read_input_tokens = it.obj("input_tokens_details").int("cached_tokens"),
+                uncached(
+                    total = it.int("input_tokens"),
+                    cached = it.obj("input_tokens_details").int("cached_tokens"),
+                    output = it.int("output_tokens"),
                 )
             },
         )
     }
 
     // --- shared -------------------------------------------------------------------------------------
+
+    /**
+     * Usage in the plugin's own shape, where the input figures do not overlap.
+     *
+     * The two APIs count on different bases. Anthropic reports what it charged full price for and
+     * counts the cached tokens separately, so its three input numbers add up to the whole prompt.
+     * Both OpenAI shapes report the *whole* prompt as the input count and then say how much of it
+     * came from the cache -- so `cached` is already inside `total`, and passing the two through
+     * unchanged makes [SessionUsage.totalInputTokens] count every cached token twice and halves the
+     * hit rate it reports. Subtracting here rather than teaching the totals about protocols keeps
+     * that arithmetic in one place.
+     *
+     * There is no cache-write figure to record. The models that cache implicitly do not charge for
+     * the write and do not report one; the newer ones that do report `cache_write_tokens` are also
+     * the ones that need explicit breakpoints, which nothing here sends.
+     *
+     * Floored at zero for the compatible servers that report the two disjointly after all. Getting
+     * that wrong understates the input; letting it go negative corrupts every total downstream.
+     */
+    private fun uncached(total: Int, cached: Int, output: Int) = AICodingAgentUsage(
+        input_tokens = (total - cached).coerceAtLeast(0),
+        output_tokens = output,
+        cache_read_input_tokens = cached,
+    )
 
     private class ToolCall(val id: String, val name: String, val arguments: JsonObject)
 

@@ -1,11 +1,12 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
+import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelTrafficLog
+import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageLog
 import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
 import com.google.gson.Gson
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.intellij.openapi.diagnostic.Logger
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -107,7 +108,8 @@ private data class AICodingAgentResponse(
 
 object AICodingAgentClient {
 
-    private val LOG = Logger.getInstance(AICodingAgentClient::class.java)
+    /** The wire traffic goes to a file of its own rather than into idea.log -- see [ModelTrafficLog]. */
+    private val LOG = ModelTrafficLog
 
     private val gson = Gson()
     private val httpClient: HttpClient = HttpClient.newBuilder()
@@ -200,6 +202,14 @@ object AICodingAgentClient {
             LOG.info(
                 "usage: input=${it.input_tokens} output=${it.output_tokens} " +
                     "cache_write=${it.cache_creation_input_tokens} cache_read=${it.cache_read_input_tokens}",
+            )
+            ModelUsageLog.record(
+                endpoint.protocol.name,
+                model,
+                it.input_tokens,
+                it.cache_creation_input_tokens,
+                it.cache_read_input_tokens,
+                it.output_tokens,
             )
         }
         return turn

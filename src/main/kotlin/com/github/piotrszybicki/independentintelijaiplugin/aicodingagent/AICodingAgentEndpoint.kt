@@ -3,6 +3,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentCredentials
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AuthScheme
+import com.github.piotrszybicki.independentintelijaiplugin.settings.EndpointUrl
 import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
 import java.net.URI
 
@@ -62,11 +63,15 @@ data class AICodingAgentEndpoint(
 
     companion object {
 
-        /** Reads the configured endpoint, including the token from the environment. */
+        /**
+         * Reads the configured endpoint, including the two things that come from outside the
+         * settings file: the token, and -- when [EndpointUrl.ENV_VAR] is set or this session has
+         * been pointed elsewhere -- the URL.
+         */
         fun fromSettings(): AICodingAgentEndpoint {
             val settings = AICodingAgentSettingsState.getInstance().state
             return AICodingAgentEndpoint(
-                url = settings.endpointUrl.trim().ifBlank { AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL },
+                url = EndpointUrl.resolve(),
                 token = AICodingAgentCredentials.apiKey.orEmpty(),
                 authScheme = settings.authScheme,
                 protocol = settings.wireProtocol,

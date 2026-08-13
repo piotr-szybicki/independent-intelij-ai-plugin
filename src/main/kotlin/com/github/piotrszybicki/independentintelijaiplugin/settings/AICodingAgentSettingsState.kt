@@ -99,6 +99,9 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
          * The full URL of the messages endpoint, path included, rather than a base URL with the path
          * appended: provider paths do not agree (Foundry's base already ends in `/v1`, gateways add
          * prefixes of their own), so guessing at it would break more setups than it saves typing on.
+         *
+         * The fallback rather than the answer: [EndpointUrl] takes the environment first, and this
+         * only stands when nothing outside the settings file has anything to say.
          */
         var endpointUrl: String = DEFAULT_ENDPOINT_URL,
         var authScheme: AuthScheme = AuthScheme.X_API_KEY,

@@ -5,7 +5,7 @@
     <vendor>piotr-szybicki</vendor>
     <description><![CDATA[
         <p><b>AICodingAgent</b> is a simple chat tool window backed by the Anthropic Messages API, or by any provider speaking OpenAI's Chat Completions or Responses API &mdash; OpenAI, Azure, Microsoft Foundry, OpenRouter, or a local vLLM or Ollama server.</p>
-        <p>Set the <code>AI_API_KEY</code> environment variable to your API key and restart the IDE, then chat from the tool window. Model, endpoint, API protocol and MCP servers are configured under Settings | Tools | AICodingAgent.</p>
+        <p>Set the <code>AI_API_KEY</code> environment variable to your API key and restart the IDE, then chat from the tool window. Model, endpoint, API protocol and MCP servers are configured under Settings | Tools | AICodingAgent, and <code>AI_API_URL</code> points a run at a different endpoint without editing them.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

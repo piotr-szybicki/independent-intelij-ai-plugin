@@ -151,16 +151,34 @@ class OpenAiProtocolTest {
         assertEquals(1, turn.content.size())
     }
 
+    /**
+     * `prompt_tokens` is the whole prompt, cached part included, where the plugin's own shape keeps
+     * the two apart. Passing both through unchanged would count the cached tokens twice in every
+     * total built out of them.
+     */
     @Test
-    fun `reads usage including the cached half of it`() {
+    fun `takes the cached tokens out of the input count`() {
         val turn = OpenAiProtocol.parseChatCompletions(json("""
             {"choices":[{"finish_reason":"stop","message":{"content":"hi"}}],
              "usage":{"prompt_tokens":120,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":64}}}
         """))
 
-        assertEquals(120, turn.usage?.input_tokens)
+        assertEquals(56, turn.usage?.input_tokens)
         assertEquals(7, turn.usage?.output_tokens)
         assertEquals(64, turn.usage?.cache_read_input_tokens)
+        // The point of the subtraction: the parts add back up to what the server billed.
+        assertEquals(120, turn.usage?.input_tokens!! + turn.usage?.cache_read_input_tokens!!)
+    }
+
+    /** A server that reports the two disjointly would otherwise drive the input count negative. */
+    @Test
+    fun `never reports a negative input count`() {
+        val turn = OpenAiProtocol.parseChatCompletions(json("""
+            {"choices":[{"finish_reason":"stop","message":{"content":"hi"}}],
+             "usage":{"prompt_tokens":8,"completion_tokens":1,"prompt_tokens_details":{"cached_tokens":64}}}
+        """))
+
+        assertEquals(0, turn.usage?.input_tokens)
     }
 
     @Test
@@ -289,8 +307,29 @@ class OpenAiProtocolTest {
         """))
 
         assertEquals("end_turn", turn.stopReason)
-        assertEquals(9, turn.usage?.input_tokens)
+        assertEquals(1, turn.usage?.input_tokens)
         assertEquals(8, turn.usage?.cache_read_input_tokens)
+    }
+
+    /**
+     * A real warm-cache response off a Foundry deployment, kept as recorded. The shape is the whole
+     * reason for the subtraction: 4771 billed, of which 4608 came from the cache, leaving 163 paid
+     * for in full -- and `total_tokens` agreeing with `input_tokens + output_tokens` is what proves
+     * the cached count is inside the input rather than beside it.
+     */
+    @Test
+    fun `splits a recorded Foundry usage block the way the bill reads`() {
+        val turn = OpenAiProtocol.parseResponses(json("""
+            {"status":"completed",
+             "output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"ok"}]}],
+             "usage":{"input_tokens":4771,"input_tokens_details":{"cache_write_tokens":0,"cached_tokens":4608},
+                      "output_tokens":165,"total_tokens":4936}}
+        """))
+
+        assertEquals(163, turn.usage?.input_tokens)
+        assertEquals(4608, turn.usage?.cache_read_input_tokens)
+        assertEquals(0, turn.usage?.cache_creation_input_tokens)
+        assertEquals(165, turn.usage?.output_tokens)
     }
 
     @Test

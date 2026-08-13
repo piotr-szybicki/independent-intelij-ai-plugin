@@ -17,6 +17,7 @@ import com.intellij.ui.dsl.builder.AlignX
 import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpConfigException
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpServerConfig
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
@@ -35,6 +36,17 @@ class AICodingAgentSettingsConfigurable : Configurable {
     private val maxTokensField = JBTextField()
     private val maxIterationsField = JBTextField()
     private val endpointField = JBTextField()
+
+    /**
+     * Which of the three sources the URL in the field above is currently coming from. A live label
+     * rather than part of the static row comment, because the answer changes as the page is used --
+     * applying an edit while [EndpointUrl.ENV_VAR] is set turns it into a session override.
+     */
+    private val endpointSourceLabel = JBLabel().apply {
+        setComponentStyle(UIUtil.ComponentStyle.SMALL)
+        setFontColor(UIUtil.FontColor.BRIGHTER)
+    }
+
     private val apiVersionField = JBTextField()
 
     private val authSchemeCombo = ComboBox(DefaultComboBoxModel(AuthScheme.entries.toTypedArray())).apply {
@@ -95,12 +107,19 @@ class AICodingAgentSettingsConfigurable : Configurable {
             )
             row("Endpoint URL:") {
                 cell(endpointField).align(AlignX.FILL)
+            }
+            row("") {
+                cell(endpointSourceLabel).align(AlignX.FILL)
             }.rowComment(
                 "The full endpoint, path included. Anthropic's own is " +
                     "<code>${AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL}</code>; an Azure or " +
                     "Foundry one looks like " +
                     "<code>https://&lt;resource&gt;.services.ai.azure.com/openai/v1/responses</code>. " +
-                    "Point this at a gateway or proxy to route through it.",
+                    "Point this at a gateway or proxy to route through it.<br/>" +
+                    "The <code>${EndpointUrl.ENV_VAR}</code> environment variable overrides what is " +
+                    "saved here, so a run can be pointed elsewhere without editing the project's " +
+                    "settings. While it is set, an edit made here holds for this IDE session only " +
+                    "and is not saved &mdash; clear the field to hand the URL back to the variable.",
             )
             row("API token:") {
                 cell(apiKeyStatusLabel).align(AlignX.FILL)
@@ -230,7 +249,9 @@ class AICodingAgentSettingsConfigurable : Configurable {
         return modelField.text != settings.model ||
             maxTokensField.positiveIntOr(settings.maxTokens) != settings.maxTokens ||
             maxIterationsField.positiveIntOr(settings.maxIterations) != settings.maxIterations ||
-            endpointField.text != settings.endpointUrl ||
+            // Against what is actually in force rather than against what is saved: with the
+            // environment variable set, the saved value is not what the field was filled from.
+            endpointField.text != EndpointUrl.resolve() ||
             apiVersionField.text != settings.apiVersion ||
             extraHeadersArea.text != settings.extraHeaders ||
             mcpServersArea.text != settings.mcpServers ||
@@ -252,9 +273,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // shows what actually got saved rather than the text that was ignored.
         maxTokensField.text = settings.maxTokens.toString()
         maxIterationsField.text = settings.maxIterations.toString()
-        // Blanking the endpoint means "back to Anthropic" rather than an unusable configuration.
-        settings.endpointUrl = endpointField.text.trim()
-            .ifBlank { AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL }
+        applyEndpointUrl()
         settings.apiVersion = apiVersionField.text.trim()
         settings.extraHeaders = extraHeadersArea.text
         settings.authScheme = authSchemeCombo.selectedItem as? AuthScheme ?: AuthScheme.X_API_KEY
@@ -288,7 +307,9 @@ class AICodingAgentSettingsConfigurable : Configurable {
         modelField.text = settings.model
         maxTokensField.text = settings.maxTokens.toString()
         maxIterationsField.text = settings.maxIterations.toString()
-        endpointField.text = settings.endpointUrl
+        // What requests will actually go to, which is not necessarily what is saved.
+        endpointField.text = EndpointUrl.resolve()
+        updateEndpointSource()
         apiVersionField.text = settings.apiVersion
         extraHeadersArea.text = settings.extraHeaders
         authSchemeCombo.selectedItem = settings.authScheme
@@ -300,6 +321,45 @@ class AICodingAgentSettingsConfigurable : Configurable {
         skillPathsArea.text = settings.skillPaths
         pendingTools = ToolCatalog.parse(settings.enabledTools)
         updateToolsSummary()
+    }
+
+    /**
+     * Files the typed URL wherever it can still be read from.
+     *
+     * With [EndpointUrl.ENV_VAR] set, that is not the settings file: the variable wins over it, so
+     * saving there would put the value somewhere nothing looks. It becomes this session's URL
+     * instead. Blanking the field -- or typing the variable's own value back in -- drops the
+     * override rather than saving an empty endpoint, which is the way back to the variable.
+     */
+    private fun applyEndpointUrl() {
+        val typed = endpointField.text.trim()
+        val fromEnvironment = EndpointUrl.fromEnvironment
+        if (fromEnvironment != null) {
+            EndpointUrl.overrideForSession(typed.takeIf { it != fromEnvironment })
+        } else {
+            // Blanking the endpoint means "back to Anthropic" rather than an unusable configuration.
+            AICodingAgentSettingsState.getInstance().state.endpointUrl =
+                typed.ifBlank { AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL }
+        }
+        // Put back what is in force, like the numeric fields do: a field cleared to give up an
+        // override should not be left sitting empty when the URL it dropped back to is not.
+        endpointField.text = EndpointUrl.resolve()
+        updateEndpointSource()
+    }
+
+    /** Says which of the three sources the field is showing, so an ignored edit cannot look applied. */
+    private fun updateEndpointSource() {
+        val fromEnvironment = EndpointUrl.fromEnvironment
+        endpointSourceLabel.text = when {
+            fromEnvironment == null ->
+                "Saved with the project -- ${EndpointUrl.ENV_VAR} is unset in the IDE's environment."
+            EndpointUrl.sessionUrl != null ->
+                "Overriding ${EndpointUrl.ENV_VAR} ($fromEnvironment) until the IDE restarts. " +
+                    "Clear the field to go back to it."
+            else ->
+                "Set from ${EndpointUrl.ENV_VAR}. An edit here applies to this IDE session only; " +
+                    "the variable is read again on the next launch."
+        }
     }
 
     /**
