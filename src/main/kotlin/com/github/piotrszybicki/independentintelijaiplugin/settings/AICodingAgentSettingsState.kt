@@ -24,6 +24,44 @@ enum class AuthScheme(val headerName: String, val displayName: String) {
     fun headerValue(token: String): String = if (this == BEARER) "Bearer $token" else token
 }
 
+/**
+ * How much the model may spend on thinking and tool calls before it answers.
+ *
+ * Sent as `output_config.effort`, and worth setting rather than leaving to the provider: the current
+ * models default to `high`, thinking is billed at the output rate, and a chat that is mostly small
+ * edits pays that on every request of every tool-call round. Medium is the balance point on the
+ * current models -- roughly where the previous generation sat at high.
+ *
+ * [PROVIDER_DEFAULT] sends nothing, which is the escape hatch for the older models and the gateways
+ * that reject the field outright rather than ignoring it.
+ */
+enum class Effort(val wireValue: String?, val displayName: String) {
+    PROVIDER_DEFAULT(null, "Provider default (field not sent)"),
+    LOW("low", "Low -- short, scoped work"),
+    MEDIUM("medium", "Medium (recommended)"),
+    HIGH("high", "High -- the provider's own default"),
+    XHIGH("xhigh", "Extra high -- hard agentic work"),
+    MAX("max", "Maximum -- correctness over cost"),
+}
+
+/**
+ * Whether the model thinks before answering.
+ *
+ * Worth stating rather than leaving out: on the current models an absent `thinking` field means
+ * adaptive thinking is *on*, which reverses what the same request did a generation ago. Thinking is
+ * billed at the output rate and shares [AICodingAgentSettingsState.State.maxTokens] with the answer
+ * itself, so leaving it unsaid is neither free nor obviously the default it looks like.
+ *
+ * [OFF] is the cheaper setting for a chat of small mechanical edits, at the price of a model that
+ * reaches for its tools less readily. [PROVIDER_DEFAULT] sends nothing, for endpoints that reject
+ * the field.
+ */
+enum class ThinkingMode(val displayName: String) {
+    PROVIDER_DEFAULT("Provider default (field not sent)"),
+    ADAPTIVE("On -- the model decides how much (recommended)"),
+    OFF("Off"),
+}
+
 @Service(Service.Level.APP)
 @State(name = "AICodingAgentChatSettings", storages = [Storage("aiCodingAgentChatSettings.xml")])
 class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSettingsState.State> {
@@ -34,8 +72,20 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
          * The starting cap on a single reply. A starting point rather than a fixed one: saying yes
          * to continuing a cut-off reply doubles it for the rest of that chat, so a conversation that
          * needs longer answers finds its own level without the user editing this.
+         *
+         * Set high enough that hitting it is unusual, because a cap is not a budget: only the tokens
+         * actually written are billed, while every reply cut off by this spends a second request
+         * that re-sends the whole conversation to say the rest. Room the model does not use is free;
+         * room it needed and did not have is charged for twice. It also has to cover the thinking,
+         * which shares the cap with the answer -- see [ThinkingMode].
          */
-        var maxTokens: Int = 3000,
+        var maxTokens: Int = 8000,
+
+        /** How hard the model is asked to work per request. See [Effort]. */
+        var effort: Effort = Effort.MEDIUM,
+
+        /** Whether the model thinks before answering. See [ThinkingMode]. */
+        var thinkingMode: ThinkingMode = ThinkingMode.ADAPTIVE,
 
         /**
          * How many request/tool-call rounds one message gets before the agent stops and asks whether

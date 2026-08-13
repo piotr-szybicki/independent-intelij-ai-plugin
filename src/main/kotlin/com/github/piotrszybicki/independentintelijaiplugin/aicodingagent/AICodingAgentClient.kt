@@ -94,6 +94,9 @@ private data class AICodingAgentRequest(
     val system: JsonArray?,
     val messages: List<ChatMessage>,
     val tools: List<ToolDefinition>?,
+    /** Null when left to the provider; Gson drops the field rather than sending a null. */
+    val thinking: JsonObject?,
+    val output_config: JsonObject?,
 )
 
 private data class AICodingAgentResponse(
@@ -118,6 +121,7 @@ object AICodingAgentClient {
         messages: List<ChatMessage>,
         tools: List<ToolDefinition> = emptyList(),
         system: String? = null,
+        reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
     ): AICodingAgentTurn {
         endpoint.validate()?.let { throw AICodingAgentApiException("Cannot send the request: $it") }
 
@@ -127,9 +131,9 @@ object AICodingAgentClient {
         val repaired = withOrphanedToolUsesAnswered(messages)
 
         val requestBody = when (endpoint.protocol) {
-            // Cache breakpoints go on only here. They are Anthropic's, and OpenAI's APIs reject an
-            // unknown field inside a content block rather than ignoring it -- so marking a request
-            // bound for one of them would fail it outright.
+            // Cache breakpoints go on only here, and so do `thinking` and `output_config`. All of
+            // them are Anthropic's, and OpenAI's APIs reject an unknown field rather than ignoring
+            // it -- so a request bound for one of them would fail outright.
             WireProtocol.ANTHROPIC_MESSAGES -> gson.toJson(
                 AICodingAgentRequest(
                     model,
@@ -137,6 +141,8 @@ object AICodingAgentClient {
                     systemBlocks(system),
                     withCacheBreakpoints(repaired),
                     tools.ifEmpty { null },
+                    reasoning.thinkingJson(),
+                    reasoning.outputConfigJson(),
                 )
             )
 
@@ -331,7 +337,24 @@ object AICodingAgentClient {
      */
     private val CACHEABLE_BLOCK_TYPES = setOf("text", "tool_use", "tool_result", "image", "document")
 
-    private fun ephemeral(): JsonObject = JsonObject().apply { addProperty("type", "ephemeral") }
+    /**
+     * A breakpoint that keeps what it caches for an hour rather than the default five minutes.
+     *
+     * The gap it has to survive is the user reading an answer and editing code before sending the
+     * next message, which is routinely longer than five minutes -- and an entry that expires in
+     * that gap is re-read at full price, tool schemas and conversation alike. Writing the longer
+     * one costs twice the base price instead of 1.25x, so it takes three requests to pay for itself
+     * rather than two; a single turn answering a round of tool calls already sends more than that.
+     *
+     * On every breakpoint rather than only the system one, so a returning user reads back the
+     * conversation as well as the prefix in front of it. The extra write is smaller than it sounds:
+     * after the first request what is written is only the blocks appended since, and it is the
+     * whole history before them that is read.
+     */
+    private fun ephemeral(): JsonObject = JsonObject().apply {
+        addProperty("type", "ephemeral")
+        addProperty("ttl", "1h")
+    }
 
     /**
      * Wraps the system prompt in a single text block carrying a cache breakpoint.
@@ -342,8 +365,9 @@ object AICodingAgentClient {
      * for the life of the conversation -- and without this it is re-read at full price on every
      * iteration of every turn.
      *
-     * Nothing is cached until the prefix passes the model's minimum, which is around a thousand
-     * tokens and differs per model. Below it the marker is simply ignored: no error, no cache.
+     * Nothing is cached until the prefix passes the model's minimum, which differs per model and
+     * is not ordered by how new it is -- between 512 and 4096 tokens across the current ones. Below
+     * it the marker is simply ignored: no error, no cache, which is what the usage counters are for.
      */
     private fun systemBlocks(system: String?): JsonArray? {
         if (system.isNullOrEmpty()) return null
@@ -382,7 +406,11 @@ object AICodingAgentClient {
         var blocks = 0
         for (i in tail downTo 0) {
             blocks += messages[i].content.size()
-            if (blocks >= LOOKBACK_BLOCKS && markableBlock(messages[i]) >= 0) {
+            // The tail is excluded because it already carries a breakpoint. Without that, a message
+            // wide enough to satisfy the lookback on its own -- the user turn answering a round of
+            // tool calls, which is several blocks at once -- ends the search on itself and leaves
+            // the second breakpoint unplaced, in exactly the case it exists for.
+            if (i < tail && blocks >= LOOKBACK_BLOCKS && markableBlock(messages[i]) >= 0) {
                 marked.add(i)
                 break
             }

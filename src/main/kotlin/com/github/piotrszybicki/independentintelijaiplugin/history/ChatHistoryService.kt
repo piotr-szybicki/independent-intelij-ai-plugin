@@ -39,6 +39,9 @@ data class StoredRow(
         const val TOOL = "tool"
         const val ERROR = "error"
 
+        /** A summary of what the model thought before answering, drawn like a finished tool call. */
+        const val THINKING = "thinking"
+
         /** Values for [status]. Success is the absent one. */
         const val FAILED = "failed"
         const val CANCELLED = "cancelled"

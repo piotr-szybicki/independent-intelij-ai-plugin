@@ -69,6 +69,21 @@ class AICodingAgentClientCacheTest {
         assertEquals(1, marked.single().breakpoints())
     }
 
+    /**
+     * A wide last message is the reason the second breakpoint exists, not a reason to skip it: the
+     * turn that answers several tool calls at once is what puts the tail out of the previous
+     * request's reach.
+     */
+    @Test
+    fun `still marks an older message when the last one covers the lookback alone`() {
+        val messages = listOf(message("user", 2), message("assistant", 2), message("user", 20))
+
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
+
+        assertEquals(MAX_MESSAGE_BREAKPOINTS, marked.sumOf { it.breakpoints() })
+        assertEquals(1, marked[1].breakpoints())
+    }
+
     @Test
     fun `marks the final block, not an earlier one`() {
         val messages = listOf(message("user", 3))
@@ -78,6 +93,19 @@ class AICodingAgentClientCacheTest {
         assertFalse(content[0].asJsonObject.has("cache_control"))
         assertFalse(content[1].asJsonObject.has("cache_control"))
         assertTrue(content[2].asJsonObject.has("cache_control"))
+    }
+
+    /**
+     * The default five minutes is shorter than the gap between one message and the next, so a
+     * breakpoint that lost its TTL would expire unnoticed and cost the whole prefix every turn.
+     */
+    @Test
+    fun `caches for an hour rather than the default`() {
+        val marked = AICodingAgentClient.withCacheBreakpoints(listOf(message("user", 1)))
+
+        val control = marked.single().content[0].asJsonObject.getAsJsonObject("cache_control")
+        assertEquals("ephemeral", control.get("type").asString)
+        assertEquals("1h", control.get("ttl").asString)
     }
 
     @Test

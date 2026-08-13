@@ -32,6 +32,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodin
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentUsage
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ReasoningOptions
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeTrackingTool
@@ -70,8 +71,34 @@ import kotlin.math.roundToInt
 
 class ChatToolWindowFactory : ToolWindowFactory {
 
+    companion object {
+        private const val TOOL_WINDOW_ID = "AICodingAgent"
+
+        /**
+         * The chat panel for each project. Stored here so that [ChatAboutSelectionAction] can
+         * attach code from the editor without walking the Swing tree or the Disposer hierarchy.
+         * Cleared when the panel is disposed.
+         */
+        private val panels = java.util.WeakHashMap<Project, ChatPanel>()
+
+        /**
+         * Opens the tool window, starts a fresh chat, and attaches the given code snippet so the
+         * user can immediately ask about it. Called from [ChatAboutSelectionAction] when the user
+         * clicks the floating toolbar icon on a selection.
+         */
+        fun openSideChat(project: Project, code: String, displayPath: String, extension: String, lineRange: String) {
+            val toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
+                .getToolWindow(TOOL_WINDOW_ID) ?: return
+            toolWindow.show {
+                val panel = panels[project] ?: return@show
+                panel.startSideChat(code, displayPath, extension, lineRange)
+            }
+        }
+    }
+
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
         val chatPanel = ChatPanel(project)
+        panels[project] = chatPanel
         val content = ContentFactory.getInstance().createContent(chatPanel.component, null, false)
         Disposer.register(content, chatPanel)
         toolWindow.contentManager.addContent(content)
@@ -87,7 +114,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
     }
 
     override fun shouldBeAvailable(project: Project) = true
-
     private class ChatPanel(private val project: Project) : Disposable {
 
         private val history = mutableListOf<ChatMessage>()
@@ -384,6 +410,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         override fun dispose() {
+            panels.remove(project)
             session.removeListener(sessionListener)
             // Synchronously, unlike every other save: the panel is going away, and a pooled thread
             // started here is not guaranteed to get to run before the project closes.
@@ -532,6 +559,25 @@ class ChatToolWindowFactory : ToolWindowFactory {
             transcript.addAssistantMessage(markdown)
         }
 
+        /**
+         * Draws a thinking summary as a collapsed row, the same shape a finished tool call gets.
+         *
+         * Collapsed because it is background rather than the answer, and drawn at all because it is
+         * charged for at the output rate: a turn whose token count looks out of proportion to what
+         * it said is explained here.
+         */
+        private fun showThinking(summary: String) {
+            val headline = headlineOf(summary)
+            rows += StoredRow(StoredRow.THINKING, summary = headline, details = summary)
+            transcript.addToolCall("thinking", headline, summary, ChatTranscript.ToolStatus.DONE)
+        }
+
+        /** The collapsed row's one line: the first thing the summary says, cut to fit. */
+        private fun headlineOf(summary: String): String {
+            val line = summary.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+            return if (line.length <= 90) line else line.take(89).trimEnd() + "…"
+        }
+
         private fun showToolCall(name: String, summary: String, details: String, status: ChatTranscript.ToolStatus) {
             rows += StoredRow(StoredRow.TOOL, name = name, summary = summary, details = details, status = stored(status))
             transcript.addToolCall(name, summary, details, status)
@@ -582,6 +628,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 StoredRow.USER -> transcript.addUserMessage(row.text)
                 StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
                 StoredRow.TOOL -> transcript.addToolCall(row.name, row.summary, row.details, toolStatus(row.status))
+                StoredRow.THINKING ->
+                    transcript.addToolCall("thinking", row.summary, row.details, ChatTranscript.ToolStatus.DONE)
                 else -> transcript.addError(row.text)
             }
         }
@@ -741,10 +789,15 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 }
 
                 try {
+                    val reasoning = ReasoningOptions.fromSettings()
                     agent.run(endpoint, model, maxTokens, maxIterations, history, object : AICodingAgent.Listener {
                         override fun onAssistantText(text: String) {
                             if (text.isBlank()) return
                             ApplicationManager.getApplication().invokeLater { showAssistantMessage(text) }
+                        }
+
+                        override fun onThinking(summary: String) {
+                            ApplicationManager.getApplication().invokeLater { showThinking(summary) }
                         }
 
                         // Per request, so the count climbs while a long tool loop is still running
@@ -806,7 +859,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             }
                             return extend
                         }
-                    }, isCancelled = cancelled::get)
+                    }, isCancelled = cancelled::get, reasoning = reasoning)
                     ApplicationManager.getApplication().invokeLater { endTurn() }
                 } catch (e: Throwable) {
                     // Throwable, not Exception: whatever comes out of a turn, the composer has to be
@@ -1002,6 +1055,21 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 summary = "$displayPath ($lineRange)",
             )
         }
+
+        /**
+         * Saves the current conversation, starts a fresh one, attaches the given code snippet and
+         * focuses the input so the user can immediately type a question about it. Called from the
+         * floating toolbar action via [ChatToolWindowFactory.openSideChat].
+         */
+        fun startSideChat(code: String, displayPath: String, extension: String, lineRange: String) {
+            startNewChat()
+            addAttachment(
+                body = fence("Selected code from $displayPath ($lineRange)", extension, code),
+                summary = "$displayPath ($lineRange)",
+            )
+            input.requestFocusInWindow()
+        }
+
 
         private fun fence(heading: String, extension: String, code: String): String = buildString {
             append(heading).append(":\n")

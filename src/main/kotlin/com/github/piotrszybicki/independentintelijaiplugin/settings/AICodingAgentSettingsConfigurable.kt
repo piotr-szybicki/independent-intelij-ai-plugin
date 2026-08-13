@@ -38,11 +38,19 @@ class AICodingAgentSettingsConfigurable : Configurable {
     private val apiVersionField = JBTextField()
 
     private val authSchemeCombo = ComboBox(DefaultComboBoxModel(AuthScheme.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create { label, scheme, _ -> label.text = scheme?.displayName.orEmpty() }
+        renderer = SimpleListCellRenderer.create<AuthScheme>("") { it.displayName }
     }
 
     private val protocolCombo = ComboBox(DefaultComboBoxModel(WireProtocol.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create { label, protocol, _ -> label.text = protocol?.displayName.orEmpty() }
+        renderer = SimpleListCellRenderer.create<WireProtocol>("") { it.displayName }
+    }
+
+    private val effortCombo = ComboBox(DefaultComboBoxModel(Effort.entries.toTypedArray())).apply {
+        renderer = SimpleListCellRenderer.create<Effort>("") { it.displayName }
+    }
+
+    private val thinkingCombo = ComboBox(DefaultComboBoxModel(ThinkingMode.entries.toTypedArray())).apply {
+        renderer = SimpleListCellRenderer.create<ThinkingMode>("") { it.displayName }
     }
 
     private val extraHeadersArea = JBTextArea(4, 40).apply {
@@ -121,13 +129,34 @@ class AICodingAgentSettingsConfigurable : Configurable {
             row("Model:") {
                 cell(modelField).align(AlignX.FILL)
             }
+            row("Thinking:") {
+                cell(thinkingCombo).align(AlignX.FILL)
+            }.rowComment(
+                "Whether the model works a problem out before answering. Thinking is charged at the " +
+                    "reply rate and shares the token limit below with the reply itself, so this is " +
+                    "a cost setting as much as a quality one &mdash; but note that leaving it to the " +
+                    "provider does not mean off: the current models think by default. Turning it " +
+                    "off also makes them reach for tools less readily.",
+            )
+            row("Effort:") {
+                cell(effortCombo).align(AlignX.FILL)
+            }.rowComment(
+                "How much work the model puts into each request. The providers default to high; " +
+                    "medium is the better balance for a chat that is mostly small edits, and on the " +
+                    "current models is roughly where the previous generation sat at high. Older " +
+                    "models and some gateways reject this field &mdash; choose the provider default " +
+                    "if a request comes back complaining about <code>output_config</code>.",
+            )
             row("Max tokens:") {
                 cell(maxTokensField).columns(10)
             }.rowComment(
-                "The longest single reply the model may write. Past it the answer is cut off " +
-                    "mid-sentence and you are asked whether to spend another request continuing it " +
-                    "&mdash; saying yes doubles the limit for the rest of that chat, so this is " +
-                    "where a conversation starts rather than a fixed ceiling.",
+                "The longest single reply the model may write, thinking included. Past it the answer " +
+                    "is cut off mid-sentence and you are asked whether to spend another request " +
+                    "continuing it &mdash; saying yes doubles the limit for the rest of that chat, " +
+                    "so this is where a conversation starts rather than a fixed ceiling. Room that " +
+                    "goes unused is not charged for, so setting this low saves nothing: a reply cut " +
+                    "off here costs a whole extra request, which re-sends the conversation to say " +
+                    "the rest.",
             )
             row("Tool calls per message:") {
                 cell(maxIterationsField).columns(10)
@@ -209,7 +238,9 @@ class AICodingAgentSettingsConfigurable : Configurable {
             skillPathsArea.text != settings.skillPaths ||
             pendingTools != ToolCatalog.parse(settings.enabledTools) ||
             authSchemeCombo.selectedItem != settings.authScheme ||
-            protocolCombo.selectedItem != settings.wireProtocol
+            protocolCombo.selectedItem != settings.wireProtocol ||
+            effortCombo.selectedItem != settings.effort ||
+            thinkingCombo.selectedItem != settings.thinkingMode
     }
 
     override fun apply() {
@@ -228,6 +259,8 @@ class AICodingAgentSettingsConfigurable : Configurable {
         settings.extraHeaders = extraHeadersArea.text
         settings.authScheme = authSchemeCombo.selectedItem as? AuthScheme ?: AuthScheme.X_API_KEY
         settings.wireProtocol = protocolCombo.selectedItem as? WireProtocol ?: WireProtocol.ANTHROPIC_MESSAGES
+        settings.effort = effortCombo.selectedItem as? Effort ?: Effort.MEDIUM
+        settings.thinkingMode = thinkingCombo.selectedItem as? ThinkingMode ?: ThinkingMode.ADAPTIVE
         // Nothing to notify: the roots are rescanned on the next turn, so a path added here is read
         // the next time the user sends a message.
         settings.skillPaths = skillPathsArea.text
@@ -260,6 +293,8 @@ class AICodingAgentSettingsConfigurable : Configurable {
         extraHeadersArea.text = settings.extraHeaders
         authSchemeCombo.selectedItem = settings.authScheme
         protocolCombo.selectedItem = settings.wireProtocol
+        effortCombo.selectedItem = settings.effort
+        thinkingCombo.selectedItem = settings.thinkingMode
         mcpServersArea.text = settings.mcpServers
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths

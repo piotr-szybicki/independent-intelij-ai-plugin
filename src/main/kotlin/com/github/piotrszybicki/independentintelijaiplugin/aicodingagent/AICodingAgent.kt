@@ -42,6 +42,16 @@ class AICodingAgent(
         fun onAssistantText(text: String)
 
         /**
+         * A summary of what the model thought before answering, when thinking is on and the request
+         * asked for the summary.
+         *
+         * Worth drawing rather than dropping: thinking is billed at the output rate whether or not
+         * it is asked for, so a turn whose token count looks far larger than its answer is usually
+         * explained here and nowhere else.
+         */
+        fun onThinking(summary: String) {}
+
+        /**
          * A tool has finished, whatever [outcome] it finished with. Paired with [onToolStarted] for
          * every tool the loop actually ran -- but not only those: a tool skipped by a cancel is
          * reported here without ever having been started.
@@ -179,6 +189,7 @@ class AICodingAgent(
         history: MutableList<ChatMessage>,
         listener: Listener,
         isCancelled: () -> Boolean = { false },
+        reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
     ) {
         // Once for the whole turn, not once per iteration: connecting to an MCP server is not free,
         // and a tool list that changed underneath the loop would leave the model calling a tool
@@ -214,8 +225,9 @@ class AICodingAgent(
                 used++
 
                 if (isCancelled()) return
-                val turn =
-                    AICodingAgentClient.sendMessage(endpoint, model, tokenCap, history, toolDefinitions, system)
+                val turn = AICodingAgentClient.sendMessage(
+                    endpoint, model, tokenCap, history, toolDefinitions, system, reasoning,
+                )
                 turn.usage?.let(listener::onUsage)
                 val truncated = turn.stopReason == "max_tokens"
                 val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
@@ -228,8 +240,15 @@ class AICodingAgent(
 
                 for (block in content) {
                     val obj = block.asJsonObject
-                    if (obj.get("type")?.asString == "text") {
-                        listener.onAssistantText(obj.get("text")?.asString.orEmpty())
+                    when (obj.get("type")?.asString) {
+                        "text" -> listener.onAssistantText(obj.get("text")?.asString.orEmpty())
+                        // Empty unless the request asked for the summary, and empty is the default:
+                        // the models return the block either way and blank the text when not asked.
+                        "thinking" -> obj.get("thinking")
+                            ?.takeIf { it.isJsonPrimitive }
+                            ?.asString
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let(listener::onThinking)
                     }
                 }
 

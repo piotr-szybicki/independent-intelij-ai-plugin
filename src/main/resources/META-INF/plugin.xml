@@ -26,4 +26,14 @@
             id="com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable"
             displayName="AICodingAgent"/>
     </extensions>
+
+    <actions>
+        <action id="AICodingAgent.OpenSideChat"
+                class="com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatAboutSelectionAction"
+                text="Open a Side Chat"
+                description="Start a new AI chat about the selected code"
+                icon="/icons/chatAboutCode.svg">
+            <add-to-group group-id="Floating.CodeToolbar" anchor="last"/>
+        </action>
+    </actions>
 </idea-plugin>
