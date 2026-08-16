@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
@@ -8,7 +9,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Messages
-import com.intellij.ui.DocumentAdapter
+import com.intellij.openapi.util.text.StringUtil
+import com.intellij.ui.JBColor
 import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
@@ -19,6 +21,7 @@ import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpConfigException
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpServerConfig
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
@@ -26,71 +29,51 @@ import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCategory
+import java.awt.event.ItemEvent
 import java.io.File
 import javax.swing.DefaultComboBoxModel
 import javax.swing.JComponent
-import javax.swing.event.DocumentEvent
 
 class AICodingAgentSettingsConfigurable : Configurable {
 
-    private val apiKeyStatusLabel = JBLabel()
-    private val modelField = JBTextField()
-    private val maxTokensField = JBTextField()
-    private val maxIterationsField = JBTextField()
-    private val contextWindowField = JBTextField()
-    private val endpointField = JBTextField()
-
     /**
-     * Which of the three sources the URL in the field above is currently coming from. A live label
-     * rather than part of the static row comment, because the answer changes as the page is used --
-     * applying an edit while [EndpointUrl.ENV_VAR] is set turns it into a session override.
-     */
-    private val endpointSourceLabel = JBLabel().apply {
-        setComponentStyle(UIUtil.ComponentStyle.SMALL)
-        setFontColor(UIUtil.FontColor.BRIGHTER)
-    }
-
-    /** What the URL in the field above says the provider is, and what was set to match it. */
-    private val providerLabel = JBLabel().apply {
-        setComponentStyle(UIUtil.ComponentStyle.SMALL)
-        setFontColor(UIUtil.FontColor.BRIGHTER)
-    }
-
-    /**
-     * The last profile the URL was read as, so a re-detection that says the same thing as before
-     * leaves the three settings alone.
+     * The dropdown the whole provider section reduces to.
      *
-     * Without it, discovery would fight the user: every keystroke in the endpoint field re-detects,
-     * and re-applying an unchanged answer would undo a deliberate change to any of the three
-     * settings the moment the URL was touched again.
+     * Holds the configurations themselves rather than their names, so the summary below it can be
+     * drawn from the selection without going back to the file for it -- and so a file edited while
+     * this page is open cannot leave the two disagreeing.
      */
-    private var lastDetected: ProviderProfile? = null
-
-    /** Held while [reset] fills the page, so restoring saved settings does not look like an edit. */
-    private var suppressDiscovery = false
-
-    private val apiVersionField = JBTextField()
-
-    private val authSchemeCombo = ComboBox(DefaultComboBoxModel(AuthScheme.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create<AuthScheme> { label, value, _ -> label.text = value?.displayName.orEmpty() }
+    private val configurationCombo = ComboBox(DefaultComboBoxModel<AgentConfiguration>()).apply {
+        renderer = SimpleListCellRenderer.create<AgentConfiguration> { label, value, _ ->
+            label.text = value?.name.orEmpty()
+        }
     }
 
-    private val protocolCombo = ComboBox(DefaultComboBoxModel(WireProtocol.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create<WireProtocol> { label, value, _ -> label.text = value?.displayName.orEmpty() }
+    /** What the selected configuration says, so picking one does not mean opening the file to check. */
+    private val configurationSummaryLabel = JBLabel().apply {
+        setComponentStyle(UIUtil.ComponentStyle.SMALL)
+        setFontColor(UIUtil.FontColor.BRIGHTER)
     }
 
-    private val effortCombo = ComboBox(DefaultComboBoxModel(Effort.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create<Effort> { label, value, _ -> label.text = value?.displayName.orEmpty() }
+    /**
+     * Why the selection cannot be used, when it cannot -- an unreadable file, a missing token, a URL
+     * whose path disagrees with the protocol. Here rather than left to the first message, because
+     * all of it is knowable now and none of it is legible in the provider's answer to it.
+     */
+    private val configurationProblemLabel = JBLabel().apply {
+        foreground = JBColor.namedColor("Label.errorForeground", JBColor.RED)
     }
 
-    private val thinkingCombo = ComboBox(DefaultComboBoxModel(ThinkingMode.entries.toTypedArray())).apply {
-        renderer = SimpleListCellRenderer.create<ThinkingMode> { label, value, _ -> label.text = value?.displayName.orEmpty() }
-    }
+    /** Where the selected configuration's token comes from, and whether it resolves to anything. */
+    private val tokenStatusLabel = JBLabel()
 
-    private val extraHeadersArea = JBTextArea(4, 40).apply {
-        lineWrap = false
-        font = JBUI.Fonts.create("Monospaced", font.size)
-    }
+    /**
+     * The file as it was last read, held so [isModified] and [apply] work against the same list the
+     * dropdown was filled from rather than re-reading the file between them.
+     */
+    private var loaded: AgentConfigurations.Loaded = AgentConfigurations.Loaded(emptyList(), null)
+
+    private val maxIterationsField = JBTextField()
 
     private val mcpServersArea = JBTextArea(10, 40).apply {
         lineWrap = false
@@ -114,131 +97,68 @@ class AICodingAgentSettingsConfigurable : Configurable {
         font = JBUI.Fonts.create("Monospaced", font.size)
     }
 
-    /**
-     * Last, rather than in [endpointField]'s own initialiser: the listener reads the three combos
-     * the URL configures, and they are built further down this class. Registering it here is what
-     * keeps a stray write to the field during construction from reaching them before they exist.
-     */
     init {
-        endpointField.document.addDocumentListener(object : DocumentAdapter() {
-            override fun textChanged(e: DocumentEvent) = endpointChanged()
-        })
+        configurationCombo.addItemListener { event ->
+            if (event.stateChange == ItemEvent.SELECTED) updateConfigurationSummary()
+        }
     }
 
     override fun getDisplayName(): String = "AICodingAgent"
 
     override fun createComponent(): JComponent = panel {
-        group("Connection") {
-            row("API protocol:") {
-                cell(protocolCombo).align(AlignX.FILL)
-            }.rowComment(
-                "Which API the endpoint speaks. The request body differs between them, not just the " +
-                    "headers &mdash; a Foundry or Azure deployment answers a Messages-API request " +
-                    "with <i>Unsupported parameter: 'messages'</i>, which is this setting rather " +
-                    "than anything wrong with the request.<br/>" +
-                    "Set from the URL below as it is typed, along with the token header and the " +
-                    "thinking setting, whenever the URL says enough to tell &mdash; the path picks " +
-                    "the protocol (<code>/messages</code>, <code>/chat/completions</code>, " +
-                    "<code>/responses</code>) and the host picks the header. Change it afterwards " +
-                    "and the change stands until the URL is edited again.",
-            )
-            row("Endpoint URL:") {
-                cell(endpointField).align(AlignX.FILL)
+        group("Provider") {
+            row("Configuration:") {
+                cell(configurationCombo).align(AlignX.FILL)
             }
             row("") {
-                cell(providerLabel).align(AlignX.FILL)
+                cell(configurationSummaryLabel).align(AlignX.FILL)
             }
             row("") {
-                cell(endpointSourceLabel).align(AlignX.FILL)
+                cell(configurationProblemLabel).align(AlignX.FILL)
             }.rowComment(
-                "The full endpoint, path included. Anthropic's own is " +
-                    "<code>${AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL}</code>; an Azure or " +
-                    "Foundry one looks like " +
-                    "<code>https://&lt;resource&gt;.services.ai.azure.com/openai/v1/responses</code>. " +
-                    "Point this at a gateway or proxy to route through it.<br/>" +
-                    "The <code>${EndpointUrl.ENV_VAR}</code> environment variable overrides what is " +
-                    "saved here, so a run can be pointed elsewhere without editing the project's " +
-                    "settings. While it is set, an edit made here holds for this IDE session only " +
-                    "and is not saved &mdash; clear the field to hand the URL back to the variable.",
+                "Which entry of <code>${AgentConfiguration.FILE_NAME}</code> requests go out with. " +
+                    "The file sits in the project root and holds one entry per provider &mdash; " +
+                    "name, model, URL, token and token header &mdash; so switching model or " +
+                    "provider is this dropdown rather than four fields that are briefly wrong " +
+                    "between edits. It is written with three example entries the first time a " +
+                    "project is opened, and is never rewritten afterwards.<br/>" +
+                    "A <code>token</code> starting with <code>\$</code> names an environment " +
+                    "variable (<code>\$${AICodingAgentCredentials.ENV_VAR}</code>) and anything " +
+                    "else is the token itself &mdash; the file is plain text and is usually in " +
+                    "version control, so the variable is the one to use for anything real. " +
+                    "<code>anthropic-version</code> and extra headers live under that entry's " +
+                    "<code>additional-customizations</code>.<br/>" +
+                    "The URL is the entry's own: <code>${EndpointUrl.ENV_VAR}</code> only says where " +
+                    "requests go when there is no usable file, since replacing one entry's URL would " +
+                    "leave that entry's protocol and token header pointing at a provider the URL no " +
+                    "longer does.",
             )
-            row("API token:") {
-                cell(apiKeyStatusLabel).align(AlignX.FILL)
-            }.rowComment(
-                "Read from the <code>${AICodingAgentCredentials.ENV_VAR}</code> environment variable. " +
-                    "The IDE only sees variables set when it was launched, so set it and then " +
-                    "restart the IDE.",
-            )
-            row("Send token as:") {
-                cell(authSchemeCombo).align(AlignX.FILL)
+            row("Token:") {
+                cell(tokenStatusLabel).align(AlignX.FILL)
             }
-            row("anthropic-version:") {
-                cell(apiVersionField).align(AlignX.FILL)
+            row {
+                button("Reload File") { reloadConfigurations() }
+                button("Edit File") { openConfigurationFile() }
+                button("Fill In Defaults") { fillInDefaults() }
             }.rowComment(
-                "Leave empty to omit the header, which some gateways require. Sent only when the " +
-                    "protocol above is the Messages API &mdash; no other provider knows it.",
-            )
-            row("Extra headers:") {
-                cell(extraHeadersArea).align(AlignX.FILL)
-            }.rowComment(
-                "One <code>Name: Value</code> per line, for routing or tenancy headers a gateway " +
-                    "needs. Stored in plain text &mdash; keep secrets in the environment instead.",
+                "<b>Fill In Defaults</b> writes the file back with every optional field spelled out " +
+                    "&mdash; <code>thinking</code>, <code>effort</code>, <code>max-tokens</code>, " +
+                    "<code>context-window</code>, the token header and the protocol. Nothing is " +
+                    "invented: an entry that leaves a field out is already running on the value it " +
+                    "would be given, and this is what puts that value where it can be seen and " +
+                    "changed. It reformats the file, so it asks first.",
             )
         }
-        group("Model") {
-            row("Model:") {
-                cell(modelField).align(AlignX.FILL)
-            }
-            row("Thinking:") {
-                cell(thinkingCombo).align(AlignX.FILL)
-            }.rowComment(
-                "Whether the model works a problem out before answering. Thinking is charged at the " +
-                    "reply rate and shares the token limit below with the reply itself, so this is " +
-                    "a cost setting as much as a quality one &mdash; but note that leaving it to the " +
-                    "provider does not mean off: on the Messages API the current models think by " +
-                    "default, while an OpenAI deployment may default to no reasoning at all, which " +
-                    "is what makes a model announce what it is about to do and then stop. Turning " +
-                    "it off makes them reach for tools less readily either way.<br/>" +
-                    "Sent as <code>thinking</code> on the Messages API and as <code>reasoning</code> " +
-                    "on OpenAI Responses. Nothing is sent on Chat Completions, where too many of " +
-                    "the compatible servers reject the field &mdash; the setting has no effect there.",
-            )
-            row("Effort:") {
-                cell(effortCombo).align(AlignX.FILL)
-            }.rowComment(
-                "How much work the model puts into each request. The providers default to high; " +
-                    "medium is the better balance for a chat that is mostly small edits, and on the " +
-                    "current models is roughly where the previous generation sat at high. Older " +
-                    "models and some gateways reject this field &mdash; choose the provider default " +
-                    "if a request comes back complaining about <code>output_config</code>.",
-            )
-            row("Max tokens:") {
-                cell(maxTokensField).columns(10)
-            }.rowComment(
-                "The longest single reply the model may write, thinking included. Past it the answer " +
-                    "is cut off mid-sentence and you are asked whether to spend another request " +
-                    "continuing it &mdash; saying yes doubles the limit for the rest of that chat, " +
-                    "so this is where a conversation starts rather than a fixed ceiling. Room that " +
-                    "goes unused is not charged for, so setting this low saves nothing: a reply cut " +
-                    "off here costs a whole extra request, which re-sends the conversation to say " +
-                    "the rest.",
-            )
+        group("Conversation") {
             row("Tool calls per message:") {
                 cell(maxIterationsField).columns(10)
             }.rowComment(
                 "How many rounds of tool calls one message gets before the assistant stops and asks " +
                     "whether to keep going. Answering yes buys another such run, so this is not a " +
-                    "ceiling &mdash; it is the check that stops a loop running away unnoticed.",
-            )
-            row("Context window:") {
-                cell(contextWindowField).columns(10)
-            }.rowComment(
-                "How much the model can hold at once, in tokens &mdash; 200000 on the current Claude " +
-                    "models, 128000 on many others. Set it to match the model you actually use: past " +
-                    "about 60% of it, the output of the oldest tool calls is replaced with a note " +
-                    "saying what was there, which is what stops a long chat from growing until the " +
-                    "provider refuses it. What the model read is dropped, never what it or you said, " +
-                    "and the chat window still shows all of it. Set to 0 to switch that off and let " +
-                    "the conversation grow without limit.",
+                    "ceiling &mdash; it is the check that stops a loop running away unnoticed.<br/>" +
+                    "The rest of what a request is made of &mdash; thinking, effort, the reply limit " +
+                    "and the context window &mdash; belongs to the model rather than to the loop, and " +
+                    "is set per entry in <code>${AgentConfiguration.FILE_NAME}</code>.",
             )
         }
         group("Tools") {
@@ -302,43 +222,26 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     override fun isModified(): Boolean {
         val settings = AICodingAgentSettingsState.getInstance().state
-        return modelField.text != settings.model ||
-            maxTokensField.positiveIntOr(settings.maxTokens) != settings.maxTokens ||
+        // Against the entry the saved name actually resolves to, not the name itself: a name the
+        // file no longer has resolves to its first entry, and the page showing that is not an edit.
+        return selectedConfiguration()?.name !=
+            AgentConfigurations.select(loaded.configurations, settings.activeConfiguration)?.name ||
             maxIterationsField.positiveIntOr(settings.maxIterations) != settings.maxIterations ||
-            contextWindowField.nonNegativeIntOr(settings.contextWindowTokens) != settings.contextWindowTokens ||
-            // Against what is actually in force rather than against what is saved: with the
-            // environment variable set, the saved value is not what the field was filled from.
-            endpointField.text != EndpointUrl.resolve() ||
-            apiVersionField.text != settings.apiVersion ||
-            extraHeadersArea.text != settings.extraHeaders ||
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
             skillPathsArea.text != settings.skillPaths ||
-            pendingTools != ToolCatalog.parse(settings.enabledTools) ||
-            authSchemeCombo.selectedItem != settings.authScheme ||
-            protocolCombo.selectedItem != settings.wireProtocol ||
-            effortCombo.selectedItem != settings.effort ||
-            thinkingCombo.selectedItem != settings.thinkingMode
+            pendingTools != ToolCatalog.parse(settings.enabledTools)
     }
 
     override fun apply() {
         val settings = AICodingAgentSettingsState.getInstance().state
-        settings.model = modelField.text.trim().ifBlank { "claude-sonnet-5" }
-        settings.maxTokens = maxTokensField.positiveIntOr(settings.maxTokens)
+        // The name rather than the entry: the file is the record of what the entry says, and saving
+        // a copy of it here would be a second answer that goes stale the moment the file is edited.
+        settings.activeConfiguration = selectedConfiguration()?.name.orEmpty()
         settings.maxIterations = maxIterationsField.positiveIntOr(settings.maxIterations)
-        settings.contextWindowTokens = contextWindowField.nonNegativeIntOr(settings.contextWindowTokens)
-        // Put the accepted numbers back, so a field that was left with something unusable in it
+        // Put the accepted number back, so a field that was left with something unusable in it
         // shows what actually got saved rather than the text that was ignored.
-        maxTokensField.text = settings.maxTokens.toString()
         maxIterationsField.text = settings.maxIterations.toString()
-        contextWindowField.text = settings.contextWindowTokens.toString()
-        applyEndpointUrl()
-        settings.apiVersion = apiVersionField.text.trim()
-        settings.extraHeaders = extraHeadersArea.text
-        settings.authScheme = authSchemeCombo.selectedItem as? AuthScheme ?: AuthScheme.X_API_KEY
-        settings.wireProtocol = protocolCombo.selectedItem as? WireProtocol ?: WireProtocol.ANTHROPIC_MESSAGES
-        settings.effort = effortCombo.selectedItem as? Effort ?: Effort.MEDIUM
-        settings.thinkingMode = thinkingCombo.selectedItem as? ThinkingMode ?: ThinkingMode.ADAPTIVE
         // Nothing to notify: the roots are rescanned on the next turn, so a path added here is read
         // the next time the user sends a message.
         settings.skillPaths = skillPathsArea.text
@@ -356,135 +259,162 @@ class AICodingAgentSettingsConfigurable : Configurable {
         }
     }
 
-    /**
-     * Fills the page from what is saved, with discovery held off for the duration.
-     *
-     * Filling the endpoint field is not an edit, and letting it re-detect here would overwrite the
-     * three saved settings with whatever the URL implies -- turning a deliberate choice the user
-     * made once into something that silently reverts every time the page is opened. What is saved
-     * wins; discovery only has a say when the URL is actually changed.
-     */
     override fun reset() {
-        suppressDiscovery = true
-        try {
-            resetFields()
-        } finally {
-            suppressDiscovery = false
-        }
-        // Seeded rather than applied, so the first real edit is compared against the URL that was
-        // already in force instead of re-applying the profile the saved settings came from.
-        lastDetected = ProviderProfile.detect(endpointField.text)
-        updateProviderLabel(lastDetected)
-    }
-
-    private fun resetFields() {
         val settings = AICodingAgentSettingsState.getInstance().state
-        apiKeyStatusLabel.text = if (AICodingAgentCredentials.apiKey == null) {
-            "Not set -- ${AICodingAgentCredentials.ENV_VAR} is empty or undefined in the IDE's environment."
-        } else {
-            "Set from ${AICodingAgentCredentials.ENV_VAR}."
-        }
-        modelField.text = settings.model
-        maxTokensField.text = settings.maxTokens.toString()
         maxIterationsField.text = settings.maxIterations.toString()
-        contextWindowField.text = settings.contextWindowTokens.toString()
-        // What requests will actually go to, which is not necessarily what is saved.
-        endpointField.text = EndpointUrl.resolve()
-        updateEndpointSource()
-        apiVersionField.text = settings.apiVersion
-        extraHeadersArea.text = settings.extraHeaders
-        authSchemeCombo.selectedItem = settings.authScheme
-        protocolCombo.selectedItem = settings.wireProtocol
-        effortCombo.selectedItem = settings.effort
-        thinkingCombo.selectedItem = settings.thinkingMode
         mcpServersArea.text = settings.mcpServers
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths
         pendingTools = ToolCatalog.parse(settings.enabledTools)
         updateToolsSummary()
+        reloadConfigurations()
     }
 
     /**
-     * Files the typed URL wherever it can still be read from.
+     * Re-reads the file and refills the dropdown, keeping the selection where it points at something
+     * that is still there.
      *
-     * With [EndpointUrl.ENV_VAR] set, that is not the settings file: the variable wins over it, so
-     * saving there would put the value somewhere nothing looks. It becomes this session's URL
-     * instead. Blanking the field -- or typing the variable's own value back in -- drops the
-     * override rather than saving an empty endpoint, which is the way back to the variable.
+     * The file is edited in the editor behind this dialog, so this is both the reset path and the
+     * button next to the dropdown: an entry added while the page is open should be one click away
+     * rather than a reason to close the dialog and open it again.
      */
-    private fun applyEndpointUrl() {
-        val typed = endpointField.text.trim()
-        val fromEnvironment = EndpointUrl.fromEnvironment
-        if (fromEnvironment != null) {
-            EndpointUrl.overrideForSession(typed.takeIf { it != fromEnvironment })
-        } else {
-            // Blanking the endpoint means "back to Anthropic" rather than an unusable configuration.
-            AICodingAgentSettingsState.getInstance().state.endpointUrl =
-                typed.ifBlank { AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL }
+    private fun reloadConfigurations() {
+        val settings = AICodingAgentSettingsState.getInstance().state
+        val wanted = selectedConfiguration()?.name ?: settings.activeConfiguration
+        loaded = project()?.let { AgentConfigurations.getInstance(it).load() }
+            ?: AgentConfigurations.Loaded(emptyList(), "no project is open, so there is no file to read")
+
+        configurationCombo.model = DefaultComboBoxModel(loaded.configurations.toTypedArray())
+        configurationCombo.isEnabled = loaded.configurations.isNotEmpty()
+        configurationCombo.selectedItem = AgentConfigurations.select(loaded.configurations, wanted)
+        updateConfigurationSummary()
+    }
+
+    private fun selectedConfiguration(): AgentConfiguration? =
+        configurationCombo.selectedItem as? AgentConfiguration
+
+    /**
+     * Says what the selection will actually send, and what stops it if anything does.
+     *
+     * The same check the agent runs before a turn, so a configuration that cannot work says so here
+     * instead of a provider saying it in a 400 that names a parameter rather than a setting.
+     */
+    private fun updateConfigurationSummary() {
+        val selected = selectedConfiguration()
+        if (selected == null) {
+            configurationSummaryLabel.text = ""
+            tokenStatusLabel.text = "No configuration is selected."
+            configurationProblemLabel.text = loaded.error?.let { "Falling back to the built-in default: $it" }
+                ?: "No configurations were found."
+            return
         }
-        // Put back what is in force, like the numeric fields do: a field cleared to give up an
-        // override should not be left sitting empty when the URL it dropped back to is not.
-        endpointField.text = EndpointUrl.resolve()
-        updateEndpointSource()
+
+        val headers = selected.extraHeaders.keys.joinToString(", ").ifBlank { "none" }
+        // Everything interpolated here came out of a file the user wrote, so it is escaped one value
+        // at a time rather than left to a label that would read a stray < as markup.
+        configurationSummaryLabel.text = buildString {
+            append("<html>")
+            append("Model: <b>").append(escape(selected.model)).append("</b>")
+            append(" &nbsp;&middot;&nbsp; API: ").append(escape(selected.protocol.displayName.substringBefore(" (")))
+            append(" &nbsp;&middot;&nbsp; Token header: <code>").append(escape(selected.authScheme.headerName)).append("</code>")
+            append("<br/>URL: <code>").append(escape(selected.url)).append("</code>")
+            append("<br/>Thinking: ").append(escape(selected.thinking.fileName))
+            append(" &nbsp;&middot;&nbsp; Effort: ").append(escape(selected.effort.fileName))
+            append(" &nbsp;&middot;&nbsp; Max tokens: ").append(selected.maxTokens)
+            append(" &nbsp;&middot;&nbsp; Context window: ")
+            append(if (selected.contextWindowTokens == 0) "unlimited" else selected.contextWindowTokens.toString())
+            append("<br/>anthropic-version: <code>").append(escape(selected.apiVersion.ifBlank { "not sent" })).append("</code>")
+            append(" &nbsp;&middot;&nbsp; Extra headers: ").append(escape(headers))
+            append("</html>")
+        }
+        tokenStatusLabel.text = selected.tokenDescription
+
+        val problem = AICodingAgentEndpoint.from(selected).validate()
+        configurationProblemLabel.text =
+            problem?.let { "This configuration cannot be used: $it" } ?: loaded.error.orEmpty()
+    }
+
+    private fun escape(value: String): String = StringUtil.escapeXmlEntities(value)
+
+    /**
+     * Opens the file in the editor, creating it first if this project has never had one.
+     *
+     * Behind the settings dialog rather than in it: it is JSON that is edited by hand, and the
+     * editor is better at that than any field this page could offer.
+     */
+    private fun openConfigurationFile() {
+        val project = project() ?: run {
+            Messages.showInfoMessage("Open a project first -- the file lives in the project root.", "Configuration File")
+            return
+        }
+        val file = AgentConfigurations.getInstance(project).virtualFile() ?: run {
+            Messages.showErrorDialog(
+                "Could not create ${AgentConfiguration.FILE_NAME} in ${project.basePath}.",
+                "Configuration File",
+            )
+            return
+        }
+        FileEditorManager.getInstance(project).openFile(file, true)
     }
 
     /**
-     * Reads the URL as it is typed and sets the settings that follow from it.
+     * Rewrites the file with the defaults every entry is already running on written out.
      *
-     * Only when the answer has changed, and only ever the three things the URL genuinely decides:
-     * which API shape the body needs, which header the token goes in, and whether a thinking field
-     * can be sent at all. Everything it sets stays editable underneath -- this is here to stop the
-     * common combinations having to be assembled by hand from three dropdowns, not to hold them.
+     * Runs off what was last read rather than re-reading, so what gets written is what the dropdown
+     * and the summary above were showing -- a file edited behind this dialog since then is caught by
+     * the no-op check, which compares the text it would write against the text that is there.
      */
-    private fun endpointChanged() {
-        if (suppressDiscovery) return
-        val detected = ProviderProfile.detect(endpointField.text)
-        updateProviderLabel(detected)
-        if (detected == null || detected == lastDetected) return
-        lastDetected = detected
-
-        protocolCombo.selectedItem = detected.protocol
-        // Null means the host was not one of the ones whose header is a fact rather than a guess.
-        // Leaving it alone is the point: a gateway's token header is the user's to know, not ours.
-        detected.authScheme?.let { authSchemeCombo.selectedItem = it }
-        thinkingCombo.selectedItem = detected.thinking
-    }
-
-    /** Says what the URL was recognised as, so a setting that moved on its own is accounted for. */
-    private fun updateProviderLabel(detected: ProviderProfile?) {
-        providerLabel.text = when {
-            detected == null ->
-                "Endpoint not recognised -- set the protocol and token header below to match it."
-            detected.authScheme != null ->
-                "Recognised as ${detected.displayName}. Protocol, token header and thinking are set " +
-                    "to match; change any of them below to override."
-            else ->
-                "Recognised as ${detected.displayName} from the URL's path. Protocol and thinking " +
-                    "are set to match -- check the token header below, which the URL does not say."
+    private fun fillInDefaults() {
+        val project = project() ?: run {
+            Messages.showInfoMessage("Open a project first -- the file lives in the project root.", "Configuration File")
+            return
         }
+        val service = AgentConfigurations.getInstance(project)
+        val current = service.load()
+        if (current.configurations.isEmpty()) {
+            Messages.showErrorDialog(
+                current.error ?: "There is nothing in ${AgentConfiguration.FILE_NAME} to write back.",
+                "Configuration File",
+            )
+            return
+        }
+        if (service.text() == AgentConfiguration.render(current.configurations)) {
+            Messages.showInfoMessage(
+                "${AgentConfiguration.FILE_NAME} already spells out every field.",
+                "Configuration File",
+            )
+            return
+        }
+
+        val confirmed = Messages.showYesNoDialog(
+            project,
+            "This rewrites ${AgentConfiguration.FILE_NAME} with every optional field written out. " +
+                "The values you have set are kept -- only the ones you left out are added, at the " +
+                "defaults they are already running on. Your formatting and the order of the fields " +
+                "are not.",
+            "Fill In Defaults",
+            "Rewrite File",
+            "Cancel",
+            Messages.getQuestionIcon(),
+        )
+        if (confirmed != Messages.YES) return
+
+        val failure = service.rewrite(current.configurations)
+        if (failure != null) {
+            Messages.showErrorDialog(failure, "Configuration File")
+            return
+        }
+        reloadConfigurations()
     }
 
-    /** Says which of the three sources the field is showing, so an ignored edit cannot look applied. */
-    private fun updateEndpointSource() {
-        val fromEnvironment = EndpointUrl.fromEnvironment
-        endpointSourceLabel.text = when {
-            fromEnvironment == null ->
-                "Saved with the project -- ${EndpointUrl.ENV_VAR} is unset in the IDE's environment."
-            EndpointUrl.sessionUrl != null ->
-                "Overriding ${EndpointUrl.ENV_VAR} ($fromEnvironment) until the IDE restarts. " +
-                    "Clear the field to go back to it."
-            else ->
-                "Set from ${EndpointUrl.ENV_VAR}. An edit here applies to this IDE session only; " +
-                    "the variable is read again on the next launch."
-        }
-    }
+    private fun project(): Project? = ProjectManager.getInstance().openProjects.firstOrNull()
 
     /**
      * Opens the picker on what is pending rather than on what is saved, so cancelling this page
      * after choosing tools discards them along with every other unapplied edit.
      */
     private fun chooseTools() {
-        val dialog = ToolSelectionDialog(ProjectManager.getInstance().openProjects.firstOrNull(), pendingTools)
+        val dialog = ToolSelectionDialog(project(), pendingTools)
         if (dialog.showAndGet()) {
             pendingTools = dialog.selectedTools
             updateToolsSummary()
@@ -502,16 +432,12 @@ class AICodingAgentSettingsConfigurable : Configurable {
     }
 
     /**
-     * The number typed into a field, or [fallback] when it is not a usable one. Both numbers here
-     * are budgets the code counts down, so anything but a positive integer -- empty, a word, a zero
-     * -- is treated as "leave it alone" rather than saved and acted on.
+     * The number typed into the field, or [fallback] when it is not a usable one. It is a budget the
+     * code counts down, so anything but a positive integer -- empty, a word, a zero -- is treated as
+     * "leave it alone" rather than saved and acted on.
      */
     private fun JBTextField.positiveIntOr(fallback: Int): Int =
         text.trim().toIntOrNull()?.takeIf { it > 0 } ?: fallback
-
-    /** For a field where zero is a real answer rather than an empty one -- "off", not "unset". */
-    private fun JBTextField.nonNegativeIntOr(fallback: Int): Int =
-        text.trim().toIntOrNull()?.takeIf { it >= 0 } ?: fallback
 
     /**
      * Scans the directories in the field and reports what was found in each.
@@ -521,7 +447,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
      * out as a skill that silently never gets used.
      */
     private fun scanSkills() {
-        val project: Project? = ProjectManager.getInstance().openProjects.firstOrNull()
+        val project: Project? = project()
         val roots = SkillRoot.parseAll(skillPathsArea.text, project?.basePath?.let(::File))
         if (roots.isEmpty()) {
             Messages.showInfoMessage("No skill directories are configured.", "Skills")
@@ -565,7 +491,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
             return
         }
 
-        val project: Project? = ProjectManager.getInstance().openProjects.firstOrNull()
+        val project: Project? = project()
         // Modal rather than background: connecting starts processes and can take a while, and the
         // result only makes sense next to the field it was read from.
         val task = object : Task.Modal(project, "Connecting to MCP Servers", true) {

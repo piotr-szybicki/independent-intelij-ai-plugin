@@ -1,6 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
 import com.github.piotrszybicki.independentintelijaiplugin.settings.Effort
 import com.github.piotrszybicki.independentintelijaiplugin.settings.ThinkingMode
 import com.google.gson.JsonObject
@@ -85,9 +85,8 @@ data class ReasoningOptions(
         /** Sends neither field, leaving both to whatever the endpoint does on its own. */
         val PROVIDER_DEFAULT = ReasoningOptions(Effort.PROVIDER_DEFAULT, ThinkingMode.PROVIDER_DEFAULT)
 
-        fun fromSettings(): ReasoningOptions {
-            val settings = AICodingAgentSettingsState.getInstance().state
-            return ReasoningOptions(settings.effort, settings.thinkingMode)
-        }
+        /** Both settings belong to the configuration, for the reason [ThinkingMode] gives. */
+        fun from(configuration: AgentConfiguration): ReasoningOptions =
+            ReasoningOptions(configuration.effort, configuration.thinking)
     }
 }

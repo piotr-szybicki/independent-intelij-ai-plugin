@@ -1,12 +1,20 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
+/**
+ * The environment variable the starter configuration file points its token at.
+ *
+ * A default rather than the rule: since [AgentConfiguration] arrived, each configuration says where
+ * its own token comes from, and a file with three providers in it needs three variables. This is the
+ * one [AgentConfiguration.DEFAULT] and the Anthropic starter entry name, so a setup that predates
+ * the file keeps working without its token being moved anywhere.
+ */
 object AICodingAgentCredentials {
 
-    /** The environment variable the API token is read from. */
+    /** The environment variable the API token is read from by default. */
     const val ENV_VAR = "AI_API_KEY"
 
     /**
-     * The API token, taken from the [ENV_VAR] environment variable, or null when it is unset or blank.
+     * The token that variable holds, or null when it is unset or blank.
      *
      * Read on every access rather than cached: the value is cheap to fetch, and caching would only
      * mean a stale token surviving until the IDE restarts.

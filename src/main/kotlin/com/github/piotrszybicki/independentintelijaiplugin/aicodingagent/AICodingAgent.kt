@@ -219,6 +219,10 @@ class AICodingAgent(
      * [contextWindowTokens] is the model's context window, and what [HistoryCompaction] measures
      * [history] against before each request. Zero turns compaction off and lets the conversation
      * grow until the provider refuses it.
+     *
+     * [conversationId] identifies the chat this turn belongs to, and is carried no further than the
+     * logs: it is what files the turn's request and response bodies under a directory of their own,
+     * and what the usage rows are grouped by. Nothing is sent to the provider.
      */
     fun run(
         endpoint: AICodingAgentEndpoint,
@@ -230,6 +234,7 @@ class AICodingAgent(
         listener: Listener,
         isCancelled: () -> Boolean = { false },
         reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
+        conversationId: String = "",
     ) {
         // Once for the whole turn, not once per iteration: connecting to an MCP server is not free,
         // and a tool list that changed underneath the loop would leave the model calling a tool
@@ -278,7 +283,9 @@ class AICodingAgent(
                     // reads null as "could not", leaves the history alone, and the loop stops at the
                     // check below without having spent anything.
                     if (isCancelled()) null
-                    else summarize(endpoint, model, messages, toolDefinitions, system, reasoning, listener)
+                    else summarize(
+                        endpoint, model, messages, toolDefinitions, system, reasoning, listener, conversationId,
+                    )
                 }
                 HistoryCompaction.compact(history, contextWindowTokens, overhead, summarizer)
                     .takeIf { !it.isEmpty }?.let {
@@ -292,7 +299,7 @@ class AICodingAgent(
 
                 if (isCancelled()) return
                 val turn = AICodingAgentClient.sendMessage(
-                    endpoint, model, tokenCap, history, toolDefinitions, system, reasoning,
+                    endpoint, model, tokenCap, history, toolDefinitions, system, reasoning, conversationId,
                 )
                 turn.usage?.let(listener::onUsage)
                 val truncated = turn.stopReason == "max_tokens"
@@ -410,12 +417,13 @@ class AICodingAgent(
         system: String,
         reasoning: ReasoningOptions,
         listener: Listener,
+        conversationId: String,
     ): String? {
         log.info("Summarising ${messages.size} message(s) to make room in the context window")
         val request = messages + ChatMessage.text("user", HistoryCompaction.SUMMARY_REQUEST)
         val turn = try {
             AICodingAgentClient.sendMessage(
-                endpoint, model, SUMMARY_MAX_TOKENS, request, tools, system, reasoning,
+                endpoint, model, SUMMARY_MAX_TOKENS, request, tools, system, reasoning, conversationId,
             )
         } catch (e: Exception) {
             // Logged and swallowed. A summary that could not be had is a turn that goes out

@@ -31,13 +31,63 @@ launched from a desktop shortcut or Toolbox will not see a variable exported in 
 - **JDK 25** — the 2026.2 platform targets it, and Gradle builds with whatever JVM it runs on.
 - **IntelliJ IDEA 2026.2.x** to install into. The plugin is built against `2026.2.1`; it also
   depends on the bundled Terminal plugin and the VCS platform module, both of which ship with IDEA.
-- An API key for your provider in the **`AI_API_KEY`** environment variable. The plugin reads it from the
-  environment at runtime — there is no field to paste it into.
-- Optionally, an endpoint in **`AI_API_URL`**. It wins over the URL saved under
-  <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>AICodingAgent</kbd>, so a run can be pointed at a
-  gateway or a local server without editing the project's settings. The settings field still shows
-  the URL that is actually in use, and editing it while the variable is set overrides it for that
-  IDE session only — nothing is saved, and clearing the field hands the URL back to the variable.
+- An API key for your provider in the **`AI_API_KEY`** environment variable, which is what the
+  starter configuration file's Anthropic entry points its token at. Each entry names its own
+  variable, so a file with three providers in it can use three.
+- Optionally, an endpoint in **`AI_API_URL`**. It says where requests go only when there is no usable
+  configuration file — it does **not** override the `url` of a configuration you have selected.
+  Replacing one entry's URL would leave that entry's protocol, token header and token describing a
+  provider the URL no longer points at, which is a request that cannot be sent rather than an
+  override. Switching endpoint is the dropdown.
+
+Which provider a request goes to is read from **`independent-ai-plugin-settings.json`** in the
+project root, written with three example entries the first time a project is opened:
+
+```json
+{
+  "configurations": [
+    {
+      "name": "Anthropic Claude",
+      "model": "claude-sonnet-5",
+      "url": "https://api.anthropic.com/v1/messages",
+      "token": "$AI_API_KEY",
+      "header-type": "x-api-key",
+      "protocol": "anthropic-messages",
+      "thinking": "on",
+      "effort": "medium",
+      "max-tokens": 8000,
+      "context-window": 200000,
+      "additional-customizations": {
+        "anthropic-version": "2023-06-01",
+        "extra-headers": {}
+      }
+    }
+  ]
+}
+```
+
+A `token` starting with `$` names an environment variable; anything else is used as the token
+itself, which the file being plain text and usually in version control is the argument against.
+
+Everything after `token` is optional and has a default:
+
+| Field | Values | Default |
+| --- | --- | --- |
+| `header-type` | `x-api-key`, `Authorization`, `api-key` | read off the URL |
+| `protocol` | `anthropic-messages`, `openai-responses`, `openai-chat-completions` | read off the URL |
+| `thinking` | `on`, `off`, `provider-default` (or a JSON boolean) | `on`, or `provider-default` on Chat Completions, which cannot carry it |
+| `effort` | `low`, `medium`, `high`, `xhigh`, `max`, `provider-default` | `medium` |
+| `max-tokens` | the reply cap, thinking included | `8000` |
+| `context-window` | what compaction measures against; `0` switches it off | `200000` |
+| `additional-customizations.anthropic-version` | sent only on the Messages API; empty omits the header | `2023-06-01` there, nothing elsewhere |
+| `additional-customizations.extra-headers` | routing or tenancy headers for a gateway | none |
+
+Pick which entry is in force from the dropdown under <kbd>Settings</kbd> > <kbd>Tools</kbd> >
+<kbd>AICodingAgent</kbd>, which also says what the selection will send and what stops it if anything
+does. **Fill In Defaults** there rewrites the file with every optional field written out at the value
+it is already running on — which is how a file written before a field existed gets that field back.
+Only **Tool calls per message** stays on that page — it guards the agent loop rather than
+describing the model — along with tools, MCP servers and skills.
 
 ### Running it
 
@@ -55,8 +105,10 @@ the chat will start with no credentials:
 $env:AI_API_KEY = "sk-ant-..."; ./gradlew runIde
 ```
 
-The bash equivalent is `AI_API_KEY=sk-ant-... ./gradlew runIde`. `AI_API_URL` rides along the same
-way when the sandbox should talk to something other than the saved endpoint.
+The bash equivalent is `AI_API_KEY=sk-ant-... ./gradlew runIde`. Any variable a configuration's
+`token` names rides along the same way. `AI_API_URL` also rides along, but only matters in a sandbox
+whose project has no configuration file — clear it from that shell if a configuration is meant to
+decide the endpoint.
 
 First run downloads the target IDE (~1 GB) and takes a while; later runs reuse it.
 

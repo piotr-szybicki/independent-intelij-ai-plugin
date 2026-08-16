@@ -40,9 +40,10 @@ import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistorySe
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredRow
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentCredentials
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
 import com.github.piotrszybicki.independentintelijaiplugin.tools.PsiTargets
@@ -810,30 +811,36 @@ class ChatToolWindowFactory : ToolWindowFactory {
             clearAttachments()
             setBusy(true)
 
-            val settings = AICodingAgentSettingsState.getInstance().state
-            val model = settings.model
+            // Read once, here, rather than separately for each thing it decides: model, endpoint,
+            // limits and reasoning all come from the same entry, and a file saved between two reads
+            // would send one provider's model to another provider's URL.
+            val configuration = AgentConfigurations.getInstance(project).active()
+            val model = configuration.model
             // maxOf rather than the raised value alone, so raising the setting mid-conversation
             // still takes effect -- the raise is a floor this chat has earned, not a replacement.
-            val maxTokens = maxOf(settings.maxTokens, raisedMaxTokens)
-            val maxIterations = settings.maxIterations
-            val contextWindow = settings.contextWindowTokens
+            val maxTokens = maxOf(configuration.maxTokens, raisedMaxTokens)
+            val maxIterations = AICodingAgentSettingsState.getInstance().state.maxIterations
+            val contextWindow = configuration.contextWindowTokens
+            // Read here rather than on the pooled thread, for the same reason as the settings above:
+            // it is what the turn's log files are filed under, and a chat switched part-way through
+            // would scatter one turn's requests across two directories.
+            val conversationId = chatId
 
             cancelled.set(false)
 
-            // Resolving the endpoint happens here on the pooled thread, alongside the network call.
             turn = ApplicationManager.getApplication().executeOnPooledThread {
-                val endpoint = AICodingAgentEndpoint.fromSettings()
+                val endpoint = AICodingAgentEndpoint.from(configuration)
                 if (endpoint.token.isBlank()) {
                     ApplicationManager.getApplication().invokeLater {
                         rollbackHistoryTo(sizeBeforeTurn)
                         setBusy(false)
-                        promptForMissingApiKey()
+                        promptForMissingApiKey(configuration)
                     }
                     return@executeOnPooledThread
                 }
 
                 try {
-                    val reasoning = ReasoningOptions.fromSettings()
+                    val reasoning = ReasoningOptions.from(configuration)
                     agent.run(endpoint, model, maxTokens, maxIterations, contextWindow, history, object : AICodingAgent.Listener {
                         override fun onAssistantText(text: String) {
                             if (text.isBlank()) return
@@ -907,7 +914,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             }
                             return extend
                         }
-                    }, isCancelled = cancelled::get, reasoning = reasoning)
+                    }, isCancelled = cancelled::get, reasoning = reasoning, conversationId = conversationId)
                     ApplicationManager.getApplication().invokeLater { endTurn() }
                 } catch (e: Throwable) {
                     // Throwable, not Exception: whatever comes out of a turn, the composer has to be
@@ -1207,11 +1214,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
         }
 
-        private fun promptForMissingApiKey() {
+        private fun promptForMissingApiKey(configuration: AgentConfiguration) {
+            val message = configuration.tokenEnvVar?.let { variable ->
+                "The \"${configuration.name}\" configuration reads its token from the $variable " +
+                    "environment variable, which is empty or undefined. Set it and restart the IDE, " +
+                    "which only sees the variables it was launched with."
+            } ?: "The \"${configuration.name}\" configuration in ${AgentConfiguration.FILE_NAME} has " +
+                "no token. Put one there, or write \$NAME to read it from an environment variable."
+
             val openSettings = Messages.showYesNoDialog(
                 project,
-                "Set the ${AICodingAgentCredentials.ENV_VAR} environment variable to your provider's API " +
-                    "key, then restart the IDE so it picks the value up.",
+                message,
                 "API Key Missing",
                 "Open Settings",
                 "Cancel",

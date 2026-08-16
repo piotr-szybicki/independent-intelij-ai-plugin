@@ -16,12 +16,33 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
  * what keeps the token out of here: the secret comes from the environment and is never part of the
  * settings XML.
  */
-enum class AuthScheme(val headerName: String, val displayName: String) {
-    X_API_KEY("x-api-key", "x-api-key (Anthropic API)"),
-    BEARER("Authorization", "Authorization: Bearer (OAuth, most gateways)"),
-    API_KEY("api-key", "api-key (Microsoft Foundry)");
+enum class AuthScheme(val headerName: String, val displayName: String, val aliases: List<String>) {
+    X_API_KEY("x-api-key", "x-api-key (Anthropic API)", listOf("anthropic")),
+    BEARER("Authorization", "Authorization: Bearer (OAuth, most gateways)", listOf("bearer", "oauth")),
+    API_KEY("api-key", "api-key (Microsoft Foundry)", listOf("foundry"));
 
     fun headerValue(token: String): String = if (this == BEARER) "Bearer $token" else token
+
+    companion object {
+
+        /**
+         * The scheme a `header-type` in [AgentConfiguration] names, or null when it names none.
+         *
+         * Matched against the header itself as well as the enum's own name, because the header is
+         * what the file is really saying and what a provider's documentation calls it -- the enum
+         * name is only there so a file written from the settings XML's vocabulary still reads.
+         */
+        fun parse(value: String): AuthScheme? {
+            // "Authorization: Bearer" is how the header is usually written down, and the half before
+            // the colon is the part that names it.
+            val wanted = value.trim().lowercase().substringBefore(':').trim()
+            return entries.firstOrNull { scheme ->
+                wanted == scheme.headerName.lowercase() ||
+                    wanted == scheme.name.lowercase() ||
+                    wanted in scheme.aliases
+            }
+        }
+    }
 }
 
 /**
@@ -44,24 +65,58 @@ enum class Effort(val wireValue: String?, val openAiValue: String?, val displayN
     // clamped one -- so the two levels above it are clamped here instead.
     XHIGH("xhigh", "high", "Extra high -- hard agentic work"),
     MAX("max", "high", "Maximum -- correctness over cost"),
+    ;
+
+    /** What this level is called in the [AgentConfiguration] file. */
+    val fileName: String get() = wireValue ?: PROVIDER_DEFAULT_NAME
+
+    companion object {
+
+        /** The level an `effort` field names, or null when it names none. */
+        fun parse(value: String): Effort? {
+            val wanted = value.trim().lowercase().replace('_', '-').replace(' ', '-')
+            return entries.firstOrNull { effort ->
+                wanted == effort.fileName || wanted == effort.name.lowercase().replace('_', '-')
+            } ?: PROVIDER_DEFAULT.takeIf { wanted in PROVIDER_DEFAULT_ALIASES }
+        }
+    }
 }
+
+/** What the file calls "send nothing and let the endpoint decide", shared by both settings below. */
+internal const val PROVIDER_DEFAULT_NAME = "provider-default"
+internal val PROVIDER_DEFAULT_ALIASES = listOf(PROVIDER_DEFAULT_NAME, "default", "provider", "unset")
 
 /**
  * Whether the model thinks before answering.
  *
  * Worth stating rather than leaving out: on the current models an absent `thinking` field means
  * adaptive thinking is *on*, which reverses what the same request did a generation ago. Thinking is
- * billed at the output rate and shares [AICodingAgentSettingsState.State.maxTokens] with the answer
- * itself, so leaving it unsaid is neither free nor obviously the default it looks like.
+ * billed at the output rate and shares [AgentConfiguration.maxTokens] with the answer itself, so
+ * leaving it unsaid is neither free nor obviously the default it looks like.
  *
  * [OFF] is the cheaper setting for a chat of small mechanical edits, at the price of a model that
  * reaches for its tools less readily. [PROVIDER_DEFAULT] sends nothing, for endpoints that reject
  * the field.
  */
-enum class ThinkingMode(val displayName: String) {
-    PROVIDER_DEFAULT("Provider default (field not sent)"),
-    ADAPTIVE("On -- the model decides how much (recommended)"),
-    OFF("Off"),
+enum class ThinkingMode(val displayName: String, val fileName: String, private val aliases: List<String>) {
+    PROVIDER_DEFAULT("Provider default (field not sent)", PROVIDER_DEFAULT_NAME, emptyList()),
+    ADAPTIVE("On -- the model decides how much (recommended)", "on", listOf("adaptive", "true", "yes", "enabled")),
+    OFF("Off", "off", listOf("false", "no", "disabled", "none")),
+    ;
+
+    companion object {
+
+        /**
+         * The mode a `thinking` field names, or null when it names none. `true` and `false` are
+         * among the aliases so that writing the field as a JSON boolean reads the way it looks.
+         */
+        fun parse(value: String): ThinkingMode? {
+            val wanted = value.trim().lowercase().replace('_', '-').replace(' ', '-')
+            return entries.firstOrNull { mode ->
+                wanted == mode.fileName || wanted == mode.name.lowercase() || wanted in mode.aliases
+            } ?: PROVIDER_DEFAULT.takeIf { wanted in PROVIDER_DEFAULT_ALIASES }
+        }
+    }
 }
 
 @Service(Service.Level.APP)
@@ -69,71 +124,28 @@ enum class ThinkingMode(val displayName: String) {
 class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSettingsState.State> {
 
     data class State(
-        var model: String = "claude-sonnet-5",
         /**
-         * The starting cap on a single reply. A starting point rather than a fixed one: saying yes
-         * to continuing a cut-off reply doubles it for the rest of that chat, so a conversation that
-         * needs longer answers finds its own level without the user editing this.
+         * Which entry of the project's [AgentConfiguration] file requests go out with, by name.
          *
-         * Set high enough that hitting it is unusual, because a cap is not a budget: only the tokens
-         * actually written are billed, while every reply cut off by this spends a second request
-         * that re-sends the whole conversation to say the rest. Room the model does not use is free;
-         * room it needed and did not have is charged for twice. It also has to cover the thinking,
-         * which shares the cap with the answer -- see [ThinkingMode].
+         * The name rather than the configuration itself: model, URL, token and token header live in
+         * the file, and copying them here would be two answers to the same question. A name that
+         * the file does not have falls back to its first entry -- see [AgentConfigurations.select]
+         * -- which is what makes this survive a file being edited, renamed or swapped for another
+         * project's.
          */
-        var maxTokens: Int = 8000,
-
-        /** How hard the model is asked to work per request. See [Effort]. */
-        var effort: Effort = Effort.MEDIUM,
-
-        /** Whether the model thinks before answering. See [ThinkingMode]. */
-        var thinkingMode: ThinkingMode = ThinkingMode.ADAPTIVE,
+        var activeConfiguration: String = "",
 
         /**
          * How many request/tool-call rounds one message gets before the agent stops and asks whether
          * to carry on. A stop, not a ceiling -- saying yes buys another run of that many -- so this
          * is really "how long before I get asked", and it is only here to catch a loop that has run
          * away with itself.
+         *
+         * Here rather than in the configuration file, unlike everything else about a request: it is
+         * a guard on the agent loop rather than a property of the model, and the answer to "how long
+         * before I get asked" does not change when the provider does.
          */
         var maxIterations: Int = 10,
-
-        /**
-         * The model's context window, which is what
-         * [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.HistoryCompaction]
-         * measures a conversation against before deciding to drop old tool output.
-         *
-         * A setting rather than something read off the model name: the endpoint can be any provider
-         * and any gateway, the name is free text, and guessing 200k for a model that has 128k is
-         * a conversation that grows until the provider refuses it. Zero switches compaction off.
-         */
-        var contextWindowTokens: Int = 200_000,
-
-        /**
-         * The full URL of the messages endpoint, path included, rather than a base URL with the path
-         * appended: provider paths do not agree (Foundry's base already ends in `/v1`, gateways add
-         * prefixes of their own), so guessing at it would break more setups than it saves typing on.
-         *
-         * The fallback rather than the answer: [EndpointUrl] takes the environment first, and this
-         * only stands when nothing outside the settings file has anything to say.
-         */
-        var endpointUrl: String = DEFAULT_ENDPOINT_URL,
-        var authScheme: AuthScheme = AuthScheme.X_API_KEY,
-
-        /**
-         * Which API shape the endpoint speaks. Defaults to Anthropic's, which is what every
-         * settings file written before this field existed was configured for -- an absent value
-         * reads back as the default, so upgrading leaves those setups exactly where they were.
-         */
-        var wireProtocol: WireProtocol = WireProtocol.ANTHROPIC_MESSAGES,
-
-        /** Ignored unless [wireProtocol] is the Messages API: no other provider knows the header. */
-        var apiVersion: String = DEFAULT_API_VERSION,
-
-        /**
-         * Extra headers as `Name: Value`, one per line. Stored in plain XML, so this is for routing
-         * and tenancy headers a gateway needs -- never for secrets, which belong in the token field.
-         */
-        var extraHeaders: String = "",
 
         /**
          * MCP servers, in the `mcpServers` JSON every other MCP client uses, so an entry can be
@@ -178,9 +190,6 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
     }
 
     companion object {
-        const val DEFAULT_ENDPOINT_URL = "https://api.anthropic.com/v1/messages"
-        const val DEFAULT_API_VERSION = "2023-06-01"
-
         fun getInstance(): AICodingAgentSettingsState = service()
     }
 }

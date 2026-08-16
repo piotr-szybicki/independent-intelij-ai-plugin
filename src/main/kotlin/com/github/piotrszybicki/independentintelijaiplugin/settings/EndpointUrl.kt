@@ -1,29 +1,23 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 /**
- * Where requests go, from the three places it can be said, in the order they win.
+ * Where requests go when there is no configuration file to say.
  *
- * The environment beats the saved setting for the same reason the token does -- see
- * [AICodingAgentCredentials]. Which gateway or proxy a run goes through is a property of how the IDE
- * was launched rather than of the project, and putting it in [ENV_VAR] should be enough to take
- * effect without the settings page being edited to match.
+ * Narrower than it once was, and deliberately. It used to beat the configured URL outright, which
+ * made sense while there was one URL to beat: pointing a run at a gateway was a property of how the
+ * IDE was launched rather than of the project. Against a file of entries it stopped making sense --
+ * it replaced the URL of whichever entry was picked while that entry's protocol, token header and
+ * token stayed behind, describing a provider the URL no longer pointed at. A Foundry entry with the
+ * variable set to Anthropic's URL is not an override, it is a request that cannot be sent.
  *
- * The session override is the way back out of that. Without it the endpoint field would be a
- * read-only display whenever the variable is set -- whatever it saved would never be read again --
- * so an edit made while the variable is in force is kept here instead: in memory, for this IDE
- * session, and never written to the settings XML. The next launch reads the environment afresh.
+ * So it now says only what [AgentConfiguration.fallback] runs on -- the built-in configuration used
+ * when the file is missing, empty or unreadable, where there is no entry for it to contradict.
+ * Switching provider is the dropdown, and the URL is the entry's own.
  */
 object EndpointUrl {
 
     /** The environment variable the endpoint URL is read from. */
     const val ENV_VAR = "AI_API_URL"
-
-    /**
-     * Written from the settings page on the EDT and read from the agent's pooled thread on every
-     * turn, which is what the volatile is for.
-     */
-    @Volatile
-    private var sessionOverride: String? = null
 
     /**
      * The URL the environment names, or null when [ENV_VAR] is unset or blank.
@@ -35,25 +29,11 @@ object EndpointUrl {
     val fromEnvironment: String?
         get() = System.getenv(ENV_VAR)?.trim()?.takeIf { it.isNotBlank() }
 
-    /** The URL typed on the settings page this session, or null while nothing overrides. */
-    val sessionUrl: String?
-        get() = sessionOverride
-
-    /** Takes an override for the rest of this IDE session. Null or blank gives the override up. */
-    fun overrideForSession(url: String?) {
-        sessionOverride = url?.trim()?.takeIf { it.isNotBlank() }
-    }
-
     /** The URL a request should go to, resolved per turn so a chat never runs on a stale one. */
-    fun resolve(): String = resolve(
-        override = sessionOverride,
-        environment = fromEnvironment,
-        configured = AICodingAgentSettingsState.getInstance().state.endpointUrl,
-    )
+    fun resolve(configured: String): String = resolve(fromEnvironment, configured)
 
     /** The precedence on its own, so it can be tested without a running IDE behind it. */
-    fun resolve(override: String?, environment: String?, configured: String): String =
-        override?.trim()?.takeIf { it.isNotBlank() }
-            ?: environment?.trim()?.takeIf { it.isNotBlank() }
-            ?: configured.trim().ifBlank { AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL }
+    fun resolve(environment: String?, configured: String): String =
+        environment?.trim()?.takeIf { it.isNotBlank() }
+            ?: configured.trim().ifBlank { AgentConfiguration.DEFAULT_ENDPOINT_URL }
 }

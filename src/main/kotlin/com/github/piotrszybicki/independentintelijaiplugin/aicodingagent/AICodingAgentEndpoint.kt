@@ -1,9 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentCredentials
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AuthScheme
-import com.github.piotrszybicki.independentintelijaiplugin.settings.EndpointUrl
 import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
 import java.net.URI
 
@@ -21,6 +19,10 @@ data class AICodingAgentEndpoint(
     val protocol: WireProtocol,
     val apiVersion: String,
     val extraHeaders: Map<String, String>,
+    /** Which entry of the configuration file this came from, for naming it in an error. */
+    val configurationName: String = "",
+    /** The variable the token was meant to come from, when it names one and the name is unset. */
+    val tokenEnvVar: String? = null,
 ) {
 
     /** The headers to send, with the token's header last so a stray extra header cannot shadow it. */
@@ -38,8 +40,16 @@ data class AICodingAgentEndpoint(
     /** A human-readable reason the endpoint cannot be used, or null when it looks usable. */
     fun validate(): String? {
         if (token.isBlank()) {
-            return "no API token is configured -- set the ${AICodingAgentCredentials.ENV_VAR} " +
-                "environment variable and restart the IDE"
+            val configuration = configurationName.takeIf { it.isNotBlank() }?.let { " \"$it\"" }.orEmpty()
+            return if (tokenEnvVar != null) {
+                "the token for configuration$configuration is read from \$$tokenEnvVar, which is " +
+                    "empty or undefined in the IDE's environment -- set it and restart the IDE, " +
+                    "which only sees the variables it was launched with"
+            } else {
+                "configuration$configuration has no \"token\" -- put the token in " +
+                    "${AgentConfiguration.FILE_NAME}, or write \$NAME there to read it from an " +
+                    "environment variable"
+            }
         }
         if (url.isBlank()) return "no endpoint URL is configured"
         val uri = runCatching { URI(url) }.getOrNull()
@@ -51,12 +61,12 @@ data class AICodingAgentEndpoint(
 
         // Caught here rather than left to the provider, because the provider's answer to it is a
         // 400 about a parameter that "has moved", which reads like a bug in the request rather than
-        // a setting one dropdown away.
+        // one line of the configuration file.
         val implied = WireProtocol.impliedBy(uri.path.orEmpty())
         if (implied != null && implied != protocol) {
             return "the endpoint URL looks like a ${implied.displayName.substringBefore(" (")} " +
                 "endpoint, but the API protocol is set to ${protocol.displayName.substringBefore(" (")}" +
-                " -- change one of the two in Settings | Tools | AICodingAgent"
+                " -- change the \"url\" or the \"protocol\" of this entry in ${AgentConfiguration.FILE_NAME}"
         }
         return null
     }
@@ -64,36 +74,26 @@ data class AICodingAgentEndpoint(
     companion object {
 
         /**
-         * Reads the configured endpoint, including the two things that come from outside the
-         * settings file: the token, and -- when [EndpointUrl.ENV_VAR] is set or this session has
-         * been pointed elsewhere -- the URL.
+         * The transport one [AgentConfiguration] describes, with the one thing it names rather than
+         * holds resolved: the token, read from the environment when the field starts with `$`.
+         *
+         * The URL is the entry's own and nothing overrides it. An environment variable that replaced
+         * it would leave the protocol, the token header and the token itself behind, all of which
+         * belong to the provider the URL just stopped pointing at -- and the first of those is a
+         * refusal from [validate] rather than anything the user could read as an override. The
+         * environment still has a say, but only over
+         * [com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration.fallback]
+         * -- the configuration used when there is no file.
          */
-        fun fromSettings(): AICodingAgentEndpoint {
-            val settings = AICodingAgentSettingsState.getInstance().state
-            return AICodingAgentEndpoint(
-                url = EndpointUrl.resolve(),
-                token = AICodingAgentCredentials.apiKey.orEmpty(),
-                authScheme = settings.authScheme,
-                protocol = settings.wireProtocol,
-                apiVersion = settings.apiVersion.trim(),
-                extraHeaders = parseHeaders(settings.extraHeaders),
-            )
-        }
-
-        /**
-         * Parses `Name: Value` lines. Anything unparseable is dropped rather than failing the turn:
-         * a typo in an optional routing header should not be the reason a conversation stops.
-         */
-        fun parseHeaders(raw: String): Map<String, String> = raw.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
-            .mapNotNull { line ->
-                val separator = line.indexOf(':')
-                if (separator <= 0) return@mapNotNull null
-                val name = line.substring(0, separator).trim()
-                val value = line.substring(separator + 1).trim()
-                if (name.isEmpty() || value.isEmpty()) null else name to value
-            }
-            .toMap()
+        fun from(configuration: AgentConfiguration): AICodingAgentEndpoint = AICodingAgentEndpoint(
+            url = configuration.url,
+            token = configuration.resolvedToken,
+            authScheme = configuration.authScheme,
+            protocol = configuration.protocol,
+            apiVersion = configuration.apiVersion.trim(),
+            extraHeaders = configuration.extraHeaders,
+            configurationName = configuration.name,
+            tokenEnvVar = configuration.tokenEnvVar,
+        )
     }
 }

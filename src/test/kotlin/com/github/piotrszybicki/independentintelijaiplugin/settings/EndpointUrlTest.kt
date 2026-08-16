@@ -4,49 +4,46 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * The precedence between the three places the endpoint can be said. Worth pinning down, because
- * getting it wrong is invisible: requests keep working, they just go somewhere other than where the
- * user thinks they told them to.
+ * The precedence behind [AgentConfiguration.fallback] -- what a project with no usable configuration
+ * file runs on. Worth pinning down, because getting it wrong is invisible: requests keep working,
+ * they just go somewhere other than where the user thinks they told them to.
+ *
+ * Note that this decides nothing for a configuration the user picked: an entry's URL is its own, and
+ * the environment does not replace it. See [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint.from].
  */
 class EndpointUrlTest {
 
     private val configured = "https://saved.example/v1/messages"
     private val environment = "https://from-env.example/v1/messages"
-    private val override = "https://this-session.example/v1/messages"
 
     @Test
-    fun `the saved setting is used when nothing else is set`() {
-        assertEquals(configured, EndpointUrl.resolve(null, null, configured))
+    fun `the built-in default is used when the environment says nothing`() {
+        assertEquals(configured, EndpointUrl.resolve(null, configured))
     }
 
     @Test
-    fun `the environment beats the saved setting`() {
-        assertEquals(environment, EndpointUrl.resolve(null, environment, configured))
+    fun `the environment beats the built-in default`() {
+        assertEquals(environment, EndpointUrl.resolve(environment, configured))
     }
 
-    @Test
-    fun `this session's override beats the environment`() {
-        assertEquals(override, EndpointUrl.resolve(override, environment, configured))
-    }
-
-    /** Blank is not an answer from any of them: an empty variable means unset, not "no endpoint". */
+    /** Blank is not an answer from either: an empty variable means unset, not "no endpoint". */
     @Test
     fun `treats blank as unset at every level`() {
-        assertEquals(configured, EndpointUrl.resolve("  ", "", configured))
-        assertEquals(environment, EndpointUrl.resolve("", environment, configured))
+        assertEquals(configured, EndpointUrl.resolve("", configured))
+        assertEquals(configured, EndpointUrl.resolve("  ", configured))
     }
 
-    /** The same fallback the settings page applies, so a cleared field is never an unusable one. */
+    /** The same fallback the configuration file's default carries, so nothing is ever unusable. */
     @Test
     fun `falls back to Anthropic when nothing is configured at all`() {
         assertEquals(
-            AICodingAgentSettingsState.DEFAULT_ENDPOINT_URL,
-            EndpointUrl.resolve(null, null, "   "),
+            AgentConfiguration.DEFAULT_ENDPOINT_URL,
+            EndpointUrl.resolve(null, "   "),
         )
     }
 
     @Test
     fun `trims whatever it takes`() {
-        assertEquals(environment, EndpointUrl.resolve(null, "  $environment  ", configured))
+        assertEquals(environment, EndpointUrl.resolve("  $environment  ", configured))
     }
 }

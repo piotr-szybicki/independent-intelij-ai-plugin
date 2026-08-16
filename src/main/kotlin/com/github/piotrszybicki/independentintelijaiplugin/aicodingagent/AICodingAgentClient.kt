@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
+import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelExchangeLog
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelTrafficLog
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageLog
 import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
@@ -124,6 +125,12 @@ object AICodingAgentClient {
         tools: List<ToolDefinition> = emptyList(),
         system: String? = null,
         reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
+        /**
+         * Which conversation this request belongs to, which is what files it under a directory of
+         * its own in [ModelExchangeLog] and what its [ModelUsageLog] row is grouped by. Blank for a
+         * caller with no conversation to name, which lands under `unassigned` rather than nowhere.
+         */
+        conversationId: String = "",
     ): AICodingAgentTurn {
         endpoint.validate()?.let { throw AICodingAgentApiException("Cannot send the request: $it") }
 
@@ -158,6 +165,12 @@ object AICodingAgentClient {
         }
         // Headers are deliberately not logged: one of them is the token.
         LOG.info("${endpoint.protocol.name} request -> ${endpoint.url}: $requestBody")
+        // Minted before the request goes out, not after it comes back: it names the directory the
+        // request body is written to, which has to happen whether or not there is ever a response.
+        val requestId = ModelExchangeLog.newRequestId()
+        ModelExchangeLog.recordRequest(
+            conversationId, requestId, endpoint.protocol.name, endpoint.url, model, requestBody,
+        )
 
         val request = HttpRequest.newBuilder()
             .uri(URI.create(endpoint.url))
@@ -166,10 +179,14 @@ object AICodingAgentClient {
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build()
 
+        val startedAt = System.currentTimeMillis()
         val response = try {
             httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         } catch (e: Exception) {
             LOG.info("API request failed: ${e.message}")
+            ModelExchangeLog.recordFailure(
+                conversationId, requestId, System.currentTimeMillis() - startedAt, e.toString(),
+            )
             throw AICodingAgentApiException("Could not reach ${endpoint.url}: ${e.message}")
         }
 
@@ -179,6 +196,18 @@ object AICodingAgentClient {
             .getOrNull()
             ?.takeIf { it.isJsonObject }
             ?.asJsonObject
+
+        // Before the status check, so a rejected request is a directory holding both halves of what
+        // happened rather than a request and a silence.
+        val responseId = providerResponseId(root)
+        ModelExchangeLog.recordResponse(
+            conversationId,
+            requestId,
+            responseId,
+            response.statusCode(),
+            System.currentTimeMillis() - startedAt,
+            response.body(),
+        )
 
         if (response.statusCode() !in 200..299) {
             // Anthropic and OpenAI both nest the message under `error`, so one path covers the
@@ -206,6 +235,9 @@ object AICodingAgentClient {
                     "cache_write=${it.cache_creation_input_tokens} cache_read=${it.cache_read_input_tokens}",
             )
             ModelUsageLog.record(
+                conversationId,
+                requestId,
+                responseId,
                 endpoint.protocol.name,
                 model,
                 it.input_tokens,
@@ -216,6 +248,19 @@ object AICodingAgentClient {
         }
         return turn
     }
+
+    /**
+     * The provider's own id for the message, or blank when the body carried none.
+     *
+     * One field covers all three protocols: Anthropic's `msg_...`, chat completions' `chatcmpl_...`
+     * and the responses API's `resp_...` are all at the top level under `id`. It is worth recording
+     * because it is the only identifier the provider also has -- a request that came back wrong is
+     * asked about by quoting this, and nothing else in the row means anything on their side.
+     *
+     * Blank rather than absent for an error body, which generally has no id at all.
+     */
+    private fun providerResponseId(root: JsonObject?): String =
+        root?.get("id")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
 
     /**
      * The human-readable half of an error body, whichever of the two shapes it arrived in.

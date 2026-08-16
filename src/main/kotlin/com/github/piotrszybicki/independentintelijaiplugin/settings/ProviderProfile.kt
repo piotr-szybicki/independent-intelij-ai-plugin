@@ -72,12 +72,13 @@ data class ProviderProfile(
                 displayName = known?.displayName ?: protocol.displayName.substringBefore(" ("),
                 protocol = protocol,
                 authScheme = known?.authScheme,
-                thinking = thinkingFor(protocol),
+                thinking = defaultThinking(protocol),
             )
         }
 
         /**
-         * What the thinking setting can honestly be for a protocol.
+         * What the thinking setting can honestly be for a protocol, which is what an entry that
+         * leaves `thinking` out gets.
          *
          * Tied to the protocol rather than to the provider because it is the request builder, not
          * the endpoint, that decides whether anything is sent: the Messages API carries `thinking`
@@ -85,7 +86,7 @@ data class ProviderProfile(
          * all. Offering "on" there would be a setting that reads as applied and does nothing --
          * see [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ReasoningOptions].
          */
-        private fun thinkingFor(protocol: WireProtocol): ThinkingMode = when (protocol) {
+        fun defaultThinking(protocol: WireProtocol): ThinkingMode = when (protocol) {
             WireProtocol.ANTHROPIC_MESSAGES -> ThinkingMode.ADAPTIVE
             WireProtocol.OPENAI_RESPONSES -> ThinkingMode.ADAPTIVE
             WireProtocol.OPENAI_CHAT_COMPLETIONS -> ThinkingMode.PROVIDER_DEFAULT
