@@ -42,6 +42,18 @@ data class StoredRow(
         /** A summary of what the model thought before answering, drawn like a finished tool call. */
         const val THINKING = "thinking"
 
+        /**
+         * What one reply cost, as the estimate shown under it.
+         *
+         * Draws nothing on its own -- it is a footnote applied to the AI bubble the rows before it
+         * built -- so it is written last in a turn and read back in the same place. [text] is the
+         * amount in dollars, [name] the model it was priced at and [summary] how many requests went
+         * into it, all three so a reopened chat can rebuild the line and its tooltip without
+         * re-pricing anything. A chat saved before this existed simply has none of these rows and
+         * comes back without the figures, which are not recoverable after the fact.
+         */
+        const val COST = "cost"
+
         /** Values for [status]. Success is the absent one. */
         const val FAILED = "failed"
         const val CANCELLED = "cancelled"
@@ -62,6 +74,18 @@ data class StoredChat(
      * no recovering it after the fact, so those come back at zero and count on from there.
      */
     val usage: SessionUsage? = null,
+
+    /**
+     * Which entry of the configuration file this chat was sending to, and which of that entry's
+     * models -- both by name, both null for a chat saved before the two were per-conversation.
+     *
+     * Names rather than the configuration itself, for the same reason the settings XML holds a name:
+     * the file is the record of what an entry means, and a copy taken at save time would be a second
+     * answer that goes stale the moment the entry is edited. A name the file no longer has falls
+     * back the same way a live selection does.
+     */
+    val configurationName: String? = null,
+    val model: String? = null,
 )
 
 /** What the history popup lists, so opening it does not have to parse every transcript. */

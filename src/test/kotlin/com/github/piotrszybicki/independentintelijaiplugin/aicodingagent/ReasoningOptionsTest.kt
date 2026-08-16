@@ -132,7 +132,7 @@ class ReasoningOptionsTest {
     fun `carries the field into the Responses request body`() {
         val body = OpenAiProtocol.responsesRequest(
             "gpt-5.3-codex", 8000, null, listOf(ChatMessage.text("user", "hi")), emptyList(),
-            ReasoningOptions(Effort.MEDIUM, ThinkingMode.ADAPTIVE).reasoningJson(),
+            reasoning = ReasoningOptions(Effort.MEDIUM, ThinkingMode.ADAPTIVE).reasoningJson(),
         )
 
         assertEquals("medium", body.getAsJsonObject("reasoning").get("effort").asString)
@@ -141,7 +141,8 @@ class ReasoningOptionsTest {
     @Test
     fun `leaves the field out of the body when there is nothing to say`() {
         val body = OpenAiProtocol.responsesRequest(
-            "gpt-5.3-codex", 8000, null, listOf(ChatMessage.text("user", "hi")), emptyList(), null,
+            "gpt-5.3-codex", 8000, null, listOf(ChatMessage.text("user", "hi")), emptyList(),
+            reasoning = null,
         )
 
         assertFalse(body.has("reasoning"))

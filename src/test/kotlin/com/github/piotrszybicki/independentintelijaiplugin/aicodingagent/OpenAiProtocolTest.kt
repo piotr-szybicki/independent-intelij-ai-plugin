@@ -93,6 +93,32 @@ class OpenAiProtocolTest {
         assertEquals("object", declared.getAsJsonObject("function").getAsJsonObject("parameters").get("type").asString)
     }
 
+    /**
+     * The key is what routes the request to the machine holding this chat's cached prefix. Without
+     * it every conversation hashes alike -- one system prompt, one set of tool schemas -- and they
+     * compete for a single machine's cache instead of each keeping their own.
+     */
+    @Test
+    fun `names the conversation so the cached prefix can be found again`() {
+        val body = OpenAiProtocol.chatCompletionsRequest(
+            "gpt-5", 100, "be brief", listOf(user("hi")), listOf(tool), cacheKey = "chat-1",
+        )
+
+        assertEquals("chat-1", body.get("prompt_cache_key").asString)
+    }
+
+    /** A placeholder shared by every caller would route them all back onto one machine. */
+    @Test
+    fun `leaves the cache key out when there is no conversation to name`() {
+        val blank = OpenAiProtocol.chatCompletionsRequest(
+            "gpt-5", 100, null, listOf(user("hi")), emptyList(), cacheKey = "",
+        )
+        val absent = OpenAiProtocol.chatCompletionsRequest("gpt-5", 100, null, listOf(user("hi")), emptyList())
+
+        assertFalse(blank.has("prompt_cache_key"))
+        assertFalse(absent.has("prompt_cache_key"))
+    }
+
     @Test
     fun `drops a thinking block rather than sending it on`() {
         val thinking = ChatMessage("assistant", JsonArray().apply {
@@ -256,6 +282,18 @@ class OpenAiProtocolTest {
         assertEquals("function_call_output", input[1].asJsonObject.get("type").asString)
         assertEquals("call_1", input[1].asJsonObject.get("call_id").asString)
         assertEquals("contents", input[1].asJsonObject.get("output").asString)
+    }
+
+    /** Same field and same reason as on Chat Completions -- both shapes route caching by it. */
+    @Test
+    fun `sends the cache key on the Responses shape too`() {
+        val named = OpenAiProtocol.responsesRequest(
+            "gpt-5", 100, "be brief", listOf(user("hi")), listOf(tool), cacheKey = "chat-1",
+        )
+        val anonymous = OpenAiProtocol.responsesRequest("gpt-5", 100, null, listOf(user("hi")), emptyList())
+
+        assertEquals("chat-1", named.get("prompt_cache_key").asString)
+        assertFalse(anonymous.has("prompt_cache_key"))
     }
 
     @Test

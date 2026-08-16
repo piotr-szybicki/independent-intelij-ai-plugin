@@ -14,6 +14,7 @@ import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.StartupManager
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
@@ -39,6 +40,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeTrackin
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryService
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredRow
+import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelPricing
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
@@ -60,9 +62,11 @@ import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.math.BigDecimal
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.BorderFactory
+import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -95,6 +99,15 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 panel.startSideChat(code, displayPath, extension, lineRange)
             }
         }
+
+        /**
+         * Re-reads the configuration file into every open chat panel's provider bar.
+         *
+         * Called from the settings page when it applies, because the two show the same two settings
+         * and the page is where a provider can be added as well as picked -- a bar still offering
+         * yesterday's list is the same staleness as a bar that never refreshed at all.
+         */
+        fun refreshProviderBars() = panels.values.forEach { it.refreshProviderBar() }
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -212,6 +225,89 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 "(press again with another file open to attach several)",
             AllIcons.Actions.AddFile,
         ) { attachFromEditor() }
+
+        /**
+         * True while [refreshProviderBar] is refilling the two combos below, so the listeners that
+         * save a choice do not fire for a choice the user did not make.
+         */
+        private var refillingProviderBar = false
+
+        /**
+         * The entries in the configuration file as [refreshProviderBar] last read them, so a name
+         * picked below can be turned back into the configuration it came from.
+         */
+        private var providers: List<AgentConfiguration> = emptyList()
+
+        /**
+         * Which provider and model *this conversation* is on, by name. Empty means "whatever the
+         * file's first entry is" and "whatever that entry's default model is", which is what a chat
+         * started before either was recorded comes back as.
+         *
+         * Per conversation rather than per IDE, because it is a property of the chat: a reply is
+         * answered by one model, and a transcript that was half Sonnet and half Opus with no record
+         * of where the change happened is a transcript that cannot be read back honestly. They are
+         * saved with the chat and restored with it -- see [snapshot] and [applyChat] -- while the
+         * application-wide setting behind them is only the default a *new* chat starts on.
+         *
+         * Changing either still applies from the next message, not retroactively: the history is
+         * provider-agnostic, so the conversation so far carries over to whatever is picked.
+         */
+        private var chatConfiguration: String = ""
+        private var chatModel: String = ""
+
+        /**
+         * Which entry of the configuration file this chat sends to.
+         *
+         * Holds names rather than configurations, which is what lets it go without a cell renderer:
+         * both of the ones that would draw an object are deprecated, and a combo of the strings it
+         * was going to display anyway needs neither.
+         */
+        private val providerCombo = ComboBox(DefaultComboBoxModel<String>()).apply {
+            font = JBFont.small()
+            toolTipText = "Which provider in ${AgentConfiguration.FILE_NAME} to send to"
+            addActionListener { if (!refillingProviderBar) providerChosen() }
+        }
+
+        /**
+         * Which of that entry's `models` to ask for. Its own control rather than one list of
+         * provider-and-model pairs: the token, the URL and the protocol do not change when only the
+         * model does, and a provider offering six models would otherwise be six entries in the file.
+         */
+        private val modelCombo = ComboBox(DefaultComboBoxModel<String>()).apply {
+            font = JBFont.small()
+            toolTipText = "Which model to ask this provider for"
+            addActionListener { if (!refillingProviderBar) modelChosen() }
+        }
+
+        /**
+         * Sits above the transcript, because it is the one setting that is worth changing mid-chat
+         * and reading without changing -- what a conversation is costing depends on it, and the
+         * settings dialog is a poor place to keep checking.
+         *
+         * Takes effect on the next message: the history is provider-agnostic, so switching partway
+         * hands the conversation so far to the model picked here.
+         */
+        private val providerBar = JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
+            isOpaque = false
+            border = BorderFactory.createCompoundBorder(
+                JBUI.Borders.customLineBottom(ChatColors.separator),
+                JBUI.Borders.empty(4, 8),
+            )
+            add(
+                JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+                    isOpaque = false
+                    add(providerCombo)
+                    add(modelCombo)
+                },
+                BorderLayout.CENTER,
+            )
+            add(
+                InplaceButton("Re-read ${AgentConfiguration.FILE_NAME}", AllIcons.Actions.Refresh) {
+                    refreshProviderBar()
+                },
+                BorderLayout.EAST,
+            )
+        }
 
         private val statusLabel = JBLabel(" ").apply {
             font = JBFont.small()
@@ -372,6 +468,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         val component: JComponent = JPanel(BorderLayout()).apply {
             isOpaque = true
             background = ChatColors.background
+            add(providerBar, BorderLayout.NORTH)
             add(transcript.component, BorderLayout.CENTER)
             add(composer, BorderLayout.SOUTH)
         }
@@ -402,7 +499,95 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             session.addListener(sessionListener)
             updateChangesBar(session.changedFileCount)
+            seedSelectionFromDefault()
             restoreLastChat()
+        }
+
+        /**
+         * Starts this conversation on the application-wide default -- the last provider and model
+         * chosen in any chat, see [rememberAsDefault] -- and shows it.
+         *
+         * Both the first chat of a session and every new one after it come through here. A chat
+         * being *reopened* overwrites the result in [applyChat] with what it was saved on.
+         */
+        private fun seedSelectionFromDefault() {
+            val settings = AICodingAgentSettingsState.getInstance().state
+            chatConfiguration = settings.activeConfiguration
+            chatModel = settings.activeModel
+            refreshProviderBar()
+        }
+
+        /**
+         * Refills both combos from the file and from what was last chosen.
+         *
+         * Called at construction, after either choice, and from the refresh button beside them. Not
+         * on a file watcher: the file is edited in the editor a few centimetres away, and a chat
+         * whose provider changed underneath it while a message was being typed would be worse than
+         * one that waits to be asked.
+         */
+        fun refreshProviderBar() {
+            refillingProviderBar = true
+            try {
+                providers = AgentConfigurations.getInstance(project).load().configurations
+                // This conversation's own selection, resolved the same way the turn will resolve it,
+                // so the bar cannot show one thing while the next message goes to another.
+                val active = AgentConfigurations.select(providers, chatConfiguration)
+                    ?: AgentConfiguration.fallback()
+
+                providerCombo.model = DefaultComboBoxModel(providers.map { it.name }.toTypedArray())
+                providerCombo.isEnabled = providers.isNotEmpty()
+                providerCombo.selectedItem = active.name
+
+                modelCombo.model = DefaultComboBoxModel(active.models.toTypedArray())
+                // Enabled whenever it has anything in it, even a list of one. Greying it out for a
+                // single model says "nothing to choose here", which is indistinguishable from "this
+                // control is broken" when the list is short because the file was read stale.
+                modelCombo.isEnabled = active.models.isNotEmpty()
+                modelCombo.selectedItem = active.withModel(chatModel).model
+            } finally {
+                refillingProviderBar = false
+            }
+        }
+
+        /**
+         * Saves the provider and gives up the chosen model with it, because the model list belongs
+         * to the entry: keeping a name the new provider has never heard of would either send it or
+         * silently ignore it, and neither reads as what the dropdown just said.
+         */
+        private fun providerChosen() {
+            val chosen = providers.firstOrNull { it.name == providerCombo.selectedItem } ?: return
+            if (chosen.name == chatConfiguration) return
+            chatConfiguration = chosen.name
+            // Given up with the provider, because the model list belongs to the entry: keeping a
+            // name the new provider has never heard of would either send it or be silently ignored,
+            // and neither reads as what the dropdown just said.
+            chatModel = ""
+            rememberAsDefault()
+            refreshProviderBar()
+            statusLabel.text = "Sending to ${chosen.name} (${chosen.model}) from the next message."
+        }
+
+        private fun modelChosen() {
+            val chosen = modelCombo.selectedItem as? String ?: return
+            if (chosen == chatModel) return
+            chatModel = chosen
+            rememberAsDefault()
+            statusLabel.text = "Asking for $chosen from the next message."
+        }
+
+        /**
+         * Carries this chat's choice into the application-wide default, so the *next* new chat picks
+         * up where this one left off.
+         *
+         * Per-chat would otherwise mean every new conversation snapping back to whatever the
+         * settings page last said, which is not what switching to a better model for the afternoon
+         * is meant to do. A reopened chat still restores its own -- that is the part the default
+         * must not overrule.
+         */
+        private fun rememberAsDefault() {
+            val settings = AICodingAgentSettingsState.getInstance().state
+            settings.activeConfiguration = chatConfiguration
+            settings.activeModel = chatModel
         }
 
         override fun dispose() {
@@ -478,7 +663,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
             resetConversation(chat.id, chat.createdAt)
             history.addAll(chat.messages)
             rows.addAll(chat.transcript)
-            // After the reset, which has just zeroed it.
+            // After the reset, which has just seeded these from the default. A chat saved before
+            // they were recorded has null for both and keeps the default, which is the closest
+            // thing to the truth still available: what it actually ran on was never written down.
+            chat.configurationName?.let { chatConfiguration = it }
+            chat.model?.let { chatModel = it }
+            refreshProviderBar()
+            // Reopening is not choosing, so the default is left alone: coming back to an old chat on
+            // a cheap model must not quietly make that the model every new chat starts on.
             setUsage(chat.usage ?: SessionUsage())
             chat.transcript.forEach { render(it) }
             ApplicationManager.getApplication().executeOnPooledThread { chatHistory.setActiveId(chat.id) }
@@ -499,7 +691,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
             shellTool?.forgetApprovals()
             mcp.forgetApprovals()
             raisedMaxTokens = 0
+            seedSelectionFromDefault()
             setUsage(SessionUsage())
+            beginTurnCost()
             transcript.clear()
             clearAttachments()
         }
@@ -515,6 +709,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 messages = history.toList(),
                 transcript = rows.toList(),
                 usage = usage,
+                configurationName = chatConfiguration,
+                model = chatModel,
             )
         }
 
@@ -674,6 +870,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 StoredRow.TOOL -> transcript.addToolCall(row.name, row.summary, row.details, toolStatus(row.status))
                 StoredRow.THINKING ->
                     transcript.addToolCall("thinking", row.summary, row.details, ChatTranscript.ToolStatus.DONE)
+                // Draws nothing of its own: it puts the figure back under the bubble the rows before
+                // it just built. A number that will not parse is skipped rather than shown as zero.
+                StoredRow.COST -> row.text.toBigDecimalOrNull()?.let {
+                    transcript.setTurnCost(costLabel(it), costTooltip(row.name, row.summary.toIntOrNull() ?: 1))
+                }
                 else -> transcript.addError(row.text)
             }
         }
@@ -814,7 +1015,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
             // Read once, here, rather than separately for each thing it decides: model, endpoint,
             // limits and reasoning all come from the same entry, and a file saved between two reads
             // would send one provider's model to another provider's URL.
-            val configuration = AgentConfigurations.getInstance(project).active()
+            //
+            // This conversation's own choice, not the application-wide default -- the two agree
+            // until a second chat picks something else.
+            val configuration = AgentConfigurations.getInstance(project).resolve(chatConfiguration, chatModel)
             val model = configuration.model
             // maxOf rather than the raised value alone, so raising the setting mid-conversation
             // still takes effect -- the raise is a floor this chat has earned, not a replacement.
@@ -827,6 +1031,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val conversationId = chatId
 
             cancelled.set(false)
+            beginTurnCost()
 
             turn = ApplicationManager.getApplication().executeOnPooledThread {
                 val endpoint = AICodingAgentEndpoint.from(configuration)
@@ -851,10 +1056,16 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             ApplicationManager.getApplication().invokeLater { showThinking(summary) }
                         }
 
-                        // Per request, so the count climbs while a long tool loop is still running
-                        // rather than jumping once at the end of the turn.
+                        // Per request, so the count and the cost climb while a long tool loop is
+                        // still running rather than jumping once at the end of the turn.
                         override fun onUsage(usage: AICodingAgentUsage) {
-                            ApplicationManager.getApplication().invokeLater { addUsage(usage) }
+                            ApplicationManager.getApplication().invokeLater {
+                                addUsage(usage)
+                                // The model this turn was actually sent to, read before it started:
+                                // switching the dropdown mid-turn must not reprice what is already
+                                // in flight at the new model's rates.
+                                addTurnCost(model, usage)
+                            }
                         }
 
                         override fun onCompacted(result: HistoryCompaction.Result) {
@@ -981,11 +1192,85 @@ class ChatToolWindowFactory : ToolWindowFactory {
             // A turn that died between starting a tool and reporting it would otherwise leave that
             // row spinning for the rest of the conversation -- and save it that way.
             finishToolCall(rows.getOrNull(runningToolIndex)?.details.orEmpty(), ChatTranscript.ToolStatus.FAILED)
+            // Stored last, after everything the turn drew and before whatever the user says next, so
+            // replaying the rows in order puts it back on the same bubble it was under. Written here
+            // rather than as it climbs because the row is what a reopened chat is rebuilt from, and
+            // one row per request would draw five costs under one reply.
+            // Taken rather than read, so a turn that manages to end twice -- a cancel racing the
+            // pooled thread unwinding -- leaves one row and not two. What is drawn is unaffected:
+            // the transcript is holding the figure itself by now.
+            turnCost?.let {
+                rows += StoredRow(
+                    StoredRow.COST,
+                    text = it.toPlainString(),
+                    name = turnCostModel,
+                    summary = turnCostRequests.toString(),
+                )
+                turnCost = null
+            }
             // The model has nothing left to do, so its bubble is closed: the next thing it says
             // belongs to a new turn, not to this one.
             transcript.endAiTurn()
             setBusy(false)
             saveCurrentChat(active = true)
+        }
+
+        // --- what a reply cost -------------------------------------------------------------------
+
+        /**
+         * The reply being drawn: what it has cost so far, on which model, over how many requests.
+         *
+         * Per turn rather than per request, because a turn is what the user sees as one reply --
+         * however many tool-call round trips went into it, and each one re-sends the conversation.
+         * Showing a figure per request would put five numbers under one answer and none of them
+         * would be the one worth knowing.
+         *
+         * EDT only, like the transcript it draws into.
+         */
+        private var turnCost: BigDecimal? = null
+        private var turnCostModel = ""
+        private var turnCostRequests = 0
+
+        /** Starts a fresh reply with no cost against it, and clears whatever the last one showed. */
+        private fun beginTurnCost() {
+            turnCost = null
+            turnCostModel = ""
+            turnCostRequests = 0
+            transcript.setTurnCost(null)
+        }
+
+        /**
+         * Adds one request to what this reply has cost, and redraws the line under it.
+         *
+         * A model with no price simply adds nothing and leaves the line as it was: half a reply's
+         * cost drawn as if it were all of it would be worse than the honest blank, and this is the
+         * same rule the `cost_usd` column follows.
+         */
+        private fun addTurnCost(model: String, reported: AICodingAgentUsage) {
+            val cost = ModelPricing.costUsd(
+                model,
+                reported.input_tokens,
+                reported.cache_creation_input_tokens,
+                reported.cache_read_input_tokens,
+                reported.output_tokens,
+            ) ?: return
+            val total = (turnCost ?: BigDecimal.ZERO).add(cost)
+            turnCost = total
+            turnCostModel = model
+            turnCostRequests++
+            transcript.setTurnCost(costLabel(total), costTooltip(model, turnCostRequests))
+        }
+
+        /** `≈` because it is: list prices, and only what the token counts cover. */
+        private fun costLabel(cost: BigDecimal): String = "≈ ${ModelPricing.format(cost)}"
+
+        private fun costTooltip(model: String, requests: Int): String = buildString {
+            append("<html>Estimated cost of this reply")
+            if (model.isNotBlank()) append(" on $model")
+            append(", over $requests request(s).<br><br>")
+            append("Worked out from the tokens the provider reported, at its published list ")
+            append("prices. It is an estimate, not a bill: discounts, negotiated rates and ")
+            append("anything charged outside the token counts are not in it.</html>")
         }
 
         // --- token usage -------------------------------------------------------------------------

@@ -46,6 +46,70 @@ class AgentConfigurationTest {
         assertEquals(AgentConfiguration.DEFAULT_API_VERSION, configuration.apiVersion)
     }
 
+    /** The list is what the chat window's model dropdown offers, so it is never empty. */
+    @Test
+    fun `a configuration with one model offers a list of one`() {
+        assertEquals(listOf("claude-sonnet-5"), AgentConfiguration.parseAll(minimal).single().models)
+    }
+
+    @Test
+    fun `reads the model list and takes its first entry as the default`() {
+        val configuration = AgentConfiguration.parseAll(
+            """
+            [{
+              "name": "One", "url": "https://x/v1/messages", "token": "t",
+              "models": ["claude-sonnet-5", "claude-opus-5"]
+            }]
+            """.trimIndent(),
+        ).single()
+
+        assertEquals("claude-sonnet-5", configuration.model)
+        assertEquals(listOf("claude-sonnet-5", "claude-opus-5"), configuration.models)
+    }
+
+    /** Writing both and forgetting to repeat the default in the list is the obvious way to get it wrong. */
+    @Test
+    fun `keeps a default that is not in the list, at the front of it`() {
+        val configuration = AgentConfiguration.parseAll(
+            """
+            [{
+              "name": "One", "model": "gpt-5.6-sol", "url": "https://x/v1/responses", "token": "t",
+              "models": ["gpt-5", "gpt-5-mini"]
+            }]
+            """.trimIndent(),
+        ).single()
+
+        assertEquals("gpt-5.6-sol", configuration.model)
+        assertEquals(listOf("gpt-5.6-sol", "gpt-5", "gpt-5-mini"), configuration.models)
+    }
+
+    @Test
+    fun `refuses a configuration with neither a model nor a list`() {
+        assertThrows(AgentConfigurationException::class.java) {
+            AgentConfiguration.parseAll("""[{"name": "One", "url": "https://x/v1/messages", "token": "t"}]""")
+        }
+    }
+
+    /**
+     * The two dropdowns are chosen independently and the model is remembered application-wide, so a
+     * name the newly picked provider has never heard of has to fall back rather than be sent.
+     */
+    @Test
+    fun `selects a model only when the configuration offers it`() {
+        val configuration = AgentConfiguration.parseAll(
+            """
+            [{
+              "name": "One", "url": "https://x/v1/messages", "token": "t",
+              "models": ["claude-sonnet-5", "claude-opus-5"]
+            }]
+            """.trimIndent(),
+        ).single()
+
+        assertEquals("claude-opus-5", configuration.withModel("claude-opus-5").model)
+        assertEquals("claude-sonnet-5", configuration.withModel("gpt-5").model)
+        assertEquals("claude-sonnet-5", configuration.withModel("").model)
+    }
+
     @Test
     fun `defaults the model parameters when they are not given`() {
         val configuration = AgentConfiguration.parseAll(minimal).single()

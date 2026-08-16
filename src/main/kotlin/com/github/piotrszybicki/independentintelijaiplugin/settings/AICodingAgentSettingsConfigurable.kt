@@ -11,7 +11,6 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.text.StringUtil
 import com.intellij.ui.JBColor
-import com.intellij.ui.SimpleListCellRenderer
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBTextArea
@@ -22,6 +21,7 @@ import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
+import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpConfigException
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpServerConfig
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
@@ -29,6 +29,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCategory
+import com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory
 import java.awt.event.ItemEvent
 import java.io.File
 import javax.swing.DefaultComboBoxModel
@@ -39,15 +40,21 @@ class AICodingAgentSettingsConfigurable : Configurable {
     /**
      * The dropdown the whole provider section reduces to.
      *
-     * Holds the configurations themselves rather than their names, so the summary below it can be
-     * drawn from the selection without going back to the file for it -- and so a file edited while
-     * this page is open cannot leave the two disagreeing.
+     * Holds names rather than the configurations themselves, so it needs no cell renderer: the two
+     * that would draw one are both deprecated, and a combo of the strings it was going to display
+     * anyway is less code than either. Names are unique within a file -- the parser refuses a
+     * duplicate -- so [selectedConfiguration] can look the entry back up exactly.
      */
-    private val configurationCombo = ComboBox(DefaultComboBoxModel<AgentConfiguration>()).apply {
-        renderer = SimpleListCellRenderer.create<AgentConfiguration> { label, value, _ ->
-            label.text = value?.name.orEmpty()
-        }
-    }
+    private val configurationCombo = ComboBox(DefaultComboBoxModel<String>())
+
+    /**
+     * Which of the selected configuration's `models` to ask for.
+     *
+     * The same choice the chat window's own dropdown makes, and the same setting behind it -- this
+     * is here so that the page showing what a configuration sends is not missing the one part of it
+     * that can be changed without editing the file.
+     */
+    private val modelCombo = ComboBox(DefaultComboBoxModel<String>())
 
     /** What the selected configuration says, so picking one does not mean opening the file to check. */
     private val configurationSummaryLabel = JBLabel().apply {
@@ -97,6 +104,12 @@ class AICodingAgentSettingsConfigurable : Configurable {
         font = JBUI.Fonts.create("Monospaced", font.size)
     }
 
+    private val usageDatabaseCheckBox = JBCheckBox("Record each request in the database below")
+
+    private val usageDatabaseUrlField = JBTextField().apply {
+        font = JBUI.Fonts.create("Monospaced", font.size)
+    }
+
     init {
         configurationCombo.addItemListener { event ->
             if (event.stateChange == ItemEvent.SELECTED) updateConfigurationSummary()
@@ -107,9 +120,18 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     override fun createComponent(): JComponent = panel {
         group("Provider") {
-            row("Configuration:") {
+            row("Default configuration:") {
                 cell(configurationCombo).align(AlignX.FILL)
             }
+            row("Default model:") {
+                cell(modelCombo).align(AlignX.FILL)
+            }.rowComment(
+                "What a <b>new</b> chat starts on. Each conversation then keeps its own provider and " +
+                    "model &mdash; the two dropdowns above the transcript change that chat alone, " +
+                    "and a chat reopened from the history comes back on what it was sent to.<br/>" +
+                    "Changing either dropdown in a chat also updates the default here, so the next " +
+                    "new chat carries on where the last one left off rather than snapping back.",
+            )
             row("") {
                 cell(configurationSummaryLabel).align(AlignX.FILL)
             }
@@ -218,6 +240,44 @@ class AICodingAgentSettingsConfigurable : Configurable {
                 button("Scan for Skills") { scanSkills() }
             }
         }
+        group("Logging") {
+            row("Usage database:") {
+                cell(usageDatabaseUrlField).align(AlignX.FILL)
+            }.rowComment(
+                "A MySQL JDBC URL. Leave it empty and nothing is recorded &mdash; there is no " +
+                    "sensible guess to make about where a server is.<br/>" +
+                    "<code>jdbc:mysql://localhost:3306/ai_usage?user=root&amp;password=\${env:MYSQL_PASSWORD}</code><br/>" +
+                    "Write <code>\${env:NAME}</code> for anything secret &mdash; this field is " +
+                    "stored in plain text. The database and the <code>${ModelUsageDatabase.TABLE}</code> " +
+                    "table are created if they are not there, so the URL may name a database that " +
+                    "does not exist yet.",
+            )
+            row {
+                cell(usageDatabaseCheckBox)
+            }.rowComment(
+                "One row per request &mdash; when it was sent, which conversation, to which " +
+                    "provider, model and URL, the status code, how long it took, the error if it " +
+                    "never came back, and the input, cached and output token counts. What a chat " +
+                    "cost, or which model is missing its cache, is then one query.<br/>" +
+                    "<code>cost_usd</code> holds the same estimate the chat shows under each reply, " +
+                    "so <code>SUM(cost_usd)</code> compares chats across models rather than comparing " +
+                    "tokens that are not worth the same. The rates are list prices kept in the " +
+                    "plugin, so it is an estimate and not a bill, and it is empty for a model with " +
+                    "no price listed &mdash; a local one, or one newer than the plugin.<br/>" +
+                    "The request and response bodies go in too, as <code>JSON</code> columns, so " +
+                    "<code>request_body-&gt;&gt;'\$.model'</code> is a column expression rather than " +
+                    "a file to open. <b>The table grows roughly by the size of the conversation per " +
+                    "request</b> because of them. The same bodies are still written as files under " +
+                    "<code>exchanges/</code>, which <code>conversation_id</code> and " +
+                    "<code>request_id</code> name the directory of.<br/>" +
+                    "Writes happen on a background thread, so a server that is down slows nothing " +
+                    "up: the rows are dropped and a line goes to <code>idea.log</code>. Turning this " +
+                    "off keeps the URL but stops the writing.",
+            )
+            row {
+                button("Test Connection") { testUsageDatabase() }
+            }
+        }
     }.also { reset() }
 
     override fun isModified(): Boolean {
@@ -226,10 +286,15 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // file no longer has resolves to its first entry, and the page showing that is not an edit.
         return selectedConfiguration()?.name !=
             AgentConfigurations.select(loaded.configurations, settings.activeConfiguration)?.name ||
+            // Against the model in force rather than against the saved name, which is empty while
+            // the entry's own default is what is being used.
+            modelCombo.selectedItem != selectedConfiguration()?.withModel(settings.activeModel)?.model ||
             maxIterationsField.positiveIntOr(settings.maxIterations) != settings.maxIterations ||
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
             skillPathsArea.text != settings.skillPaths ||
+            usageDatabaseCheckBox.isSelected != settings.logUsageToDatabase ||
+            usageDatabaseUrlField.text != settings.usageDatabaseUrl ||
             pendingTools != ToolCatalog.parse(settings.enabledTools)
     }
 
@@ -238,6 +303,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // The name rather than the entry: the file is the record of what the entry says, and saving
         // a copy of it here would be a second answer that goes stale the moment the file is edited.
         settings.activeConfiguration = selectedConfiguration()?.name.orEmpty()
+        settings.activeModel = modelCombo.selectedItem as? String ?: ""
         settings.maxIterations = maxIterationsField.positiveIntOr(settings.maxIterations)
         // Put the accepted number back, so a field that was left with something unusable in it
         // shows what actually got saved rather than the text that was ignored.
@@ -249,6 +315,15 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // send each turn, so this lands on the next message without rebuilding anything.
         settings.enabledTools = ToolCatalog.format(pendingTools)
 
+        val databaseChanged = settings.usageDatabaseUrl != usageDatabaseUrlField.text ||
+            settings.logUsageToDatabase != usageDatabaseCheckBox.isSelected
+        settings.logUsageToDatabase = usageDatabaseCheckBox.isSelected
+        settings.usageDatabaseUrl = usageDatabaseUrlField.text
+        // The writer picks both up on its own -- it re-reads them per request and reconnects when the
+        // URL has changed under it. Dropping the session here is so that a server the plugin has
+        // just been told to stop writing to does not keep an open connection until the IDE exits.
+        if (databaseChanged) ModelUsageDatabase.close()
+
         val serversChanged = settings.mcpServers != mcpServersArea.text
         settings.mcpServers = mcpServersArea.text
         settings.confirmMcpToolCalls = confirmMcpCheckBox.isSelected
@@ -257,6 +332,10 @@ class AICodingAgentSettingsConfigurable : Configurable {
         if (serversChanged) {
             ProjectManager.getInstance().openProjects.forEach { McpService.getInstance(it).reload() }
         }
+        // Not to change what the open chats are on -- this page sets the default for the next new
+        // one -- but so a provider added or renamed in the file appears in their dropdowns, which
+        // each read the file for themselves.
+        ChatToolWindowFactory.refreshProviderBars()
     }
 
     override fun reset() {
@@ -265,6 +344,8 @@ class AICodingAgentSettingsConfigurable : Configurable {
         mcpServersArea.text = settings.mcpServers
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths
+        usageDatabaseCheckBox.isSelected = settings.logUsageToDatabase
+        usageDatabaseUrlField.text = settings.usageDatabaseUrl
         pendingTools = ToolCatalog.parse(settings.enabledTools)
         updateToolsSummary()
         reloadConfigurations()
@@ -280,18 +361,20 @@ class AICodingAgentSettingsConfigurable : Configurable {
      */
     private fun reloadConfigurations() {
         val settings = AICodingAgentSettingsState.getInstance().state
-        val wanted = selectedConfiguration()?.name ?: settings.activeConfiguration
+        // Off the combo directly rather than through selectedConfiguration(), which resolves against
+        // the list that is about to be replaced.
+        val wanted = configurationCombo.selectedItem as? String ?: settings.activeConfiguration
         loaded = project()?.let { AgentConfigurations.getInstance(it).load() }
             ?: AgentConfigurations.Loaded(emptyList(), "no project is open, so there is no file to read")
 
-        configurationCombo.model = DefaultComboBoxModel(loaded.configurations.toTypedArray())
+        configurationCombo.model = DefaultComboBoxModel(loaded.configurations.map { it.name }.toTypedArray())
         configurationCombo.isEnabled = loaded.configurations.isNotEmpty()
-        configurationCombo.selectedItem = AgentConfigurations.select(loaded.configurations, wanted)
+        configurationCombo.selectedItem = AgentConfigurations.select(loaded.configurations, wanted)?.name
         updateConfigurationSummary()
     }
 
     private fun selectedConfiguration(): AgentConfiguration? =
-        configurationCombo.selectedItem as? AgentConfiguration
+        loaded.configurations.firstOrNull { it.name == configurationCombo.selectedItem }
 
     /**
      * Says what the selection will actually send, and what stops it if anything does.
@@ -301,6 +384,14 @@ class AICodingAgentSettingsConfigurable : Configurable {
      */
     private fun updateConfigurationSummary() {
         val selected = selectedConfiguration()
+        // Refilled from the selection rather than left alone, because the model list belongs to the
+        // entry: the models one provider offers mean nothing to the next.
+        modelCombo.model = DefaultComboBoxModel((selected?.models ?: emptyList()).toTypedArray())
+        modelCombo.isEnabled = selected?.models?.isNotEmpty() == true
+        modelCombo.selectedItem = selected
+            ?.withModel(AICodingAgentSettingsState.getInstance().state.activeModel)
+            ?.model
+
         if (selected == null) {
             configurationSummaryLabel.text = ""
             tokenStatusLabel.text = "No configuration is selected."
@@ -314,8 +405,8 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // at a time rather than left to a label that would read a stray < as markup.
         configurationSummaryLabel.text = buildString {
             append("<html>")
-            append("Model: <b>").append(escape(selected.model)).append("</b>")
-            append(" &nbsp;&middot;&nbsp; API: ").append(escape(selected.protocol.displayName.substringBefore(" (")))
+            append("Models offered: ").append(escape(selected.models.joinToString(", ")))
+            append("<br/>API: ").append(escape(selected.protocol.displayName.substringBefore(" (")))
             append(" &nbsp;&middot;&nbsp; Token header: <code>").append(escape(selected.authScheme.headerName)).append("</code>")
             append("<br/>URL: <code>").append(escape(selected.url)).append("</code>")
             append("<br/>Thinking: ").append(escape(selected.thinking.fileName))
@@ -470,6 +561,35 @@ class AICodingAgentSettingsConfigurable : Configurable {
             }
         }
         Messages.showInfoMessage(report.trim(), "Skills")
+    }
+
+    /**
+     * Connects to the usage database once and reports what is there, creating the database and table
+     * if they are not.
+     *
+     * Runs against the typed URL rather than the saved one, like [testServers] and [scanSkills]: the
+     * point of the button is to find out whether an entry works before committing to it. Modal
+     * because a server that is not there is found out by waiting for a timeout, and the answer only
+     * makes sense next to the field it was read from.
+     */
+    private fun testUsageDatabase() {
+        val url = usageDatabaseUrlField.text
+        if (url.isBlank()) {
+            Messages.showInfoMessage("No database URL is configured.", "Usage Database")
+            return
+        }
+
+        val task = object : Task.Modal(project(), "Connecting to the Usage Database", true) {
+            var report = ""
+
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                report = ModelUsageDatabase.test(url)
+            }
+
+            override fun onSuccess() = Messages.showInfoMessage(report, "Usage Database")
+        }
+        ProgressManager.getInstance().run(task)
     }
 
     /**

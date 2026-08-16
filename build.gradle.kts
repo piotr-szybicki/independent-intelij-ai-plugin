@@ -39,6 +39,19 @@ dependencies {
 
     implementation("org.commonmark:commonmark:0.29.0")
 
+    // ModelUsageDatabase writes one row per request to the MySQL server named in the settings.
+    //
+    // 9.7.0 rather than the current 26.7.0: it is the last of the 9.x line, and the one with the
+    // widest range of servers behind it, which matters when the URL points at whatever container
+    // happens to be running.
+    //
+    // protobuf-java is a non-optional dependency of the connector, and 1.8MB of a plugin that would
+    // never call it: it is there for X DevAPI, the document-store protocol on port 33060, and
+    // nothing here speaks anything but JDBC.
+    implementation("com.mysql:mysql-connector-j:9.7.0") {
+        exclude(group = "com.google.protobuf", module = "protobuf-java")
+    }
+
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
         intellijIdea("2026.2.0.1")

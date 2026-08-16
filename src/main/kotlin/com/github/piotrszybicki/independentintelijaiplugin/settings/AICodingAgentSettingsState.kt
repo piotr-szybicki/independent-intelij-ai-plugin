@@ -125,7 +125,12 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
 
     data class State(
         /**
-         * Which entry of the project's [AgentConfiguration] file requests go out with, by name.
+         * Which entry of the project's [AgentConfiguration] file a **new** chat starts on, by name.
+         *
+         * The default rather than what is in force: each conversation holds its own provider and
+         * model, and a chat reopened from the history comes back on the one it was sent to. This is
+         * what a chat that has not been told otherwise begins with, and it is updated whenever any
+         * chat's dropdown is used, so the next new one carries on from the last one.
          *
          * The name rather than the configuration itself: model, URL, token and token header live in
          * the file, and copying them here would be two answers to the same question. A name that
@@ -134,6 +139,16 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
          * project's.
          */
         var activeConfiguration: String = "",
+
+        /**
+         * Which of that configuration's `models` a new chat starts on, by name.
+         *
+         * Empty means the entry's own default, and so does a name that entry has never heard of --
+         * see [AgentConfiguration.withModel]. That is what makes one setting safe to keep across a
+         * change of provider: switching from a Claude entry to an OpenAI one lands on the OpenAI
+         * default rather than asking it for a model it will refuse.
+         */
+        var activeModel: String = "",
 
         /**
          * How many request/tool-call rounds one message gets before the agent stops and asks whether
@@ -179,6 +194,29 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
          * them. Parsing is [com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot]'s job.
          */
         var skillPaths: String = SkillRoot.DEFAULT_PATHS,
+
+        /**
+         * Whether one row per request is written to [usageDatabaseUrl] -- see
+         * [com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase].
+         *
+         * On by default, which costs nothing while the URL is empty: with nowhere to write to,
+         * nothing is attempted. It is the switch for turning the writes off without losing the URL,
+         * which is what a server that is down for the afternoon needs.
+         */
+        var logUsageToDatabase: Boolean = true,
+
+        /**
+         * The MySQL server to record requests to, as a JDBC URL --
+         * `jdbc:mysql://localhost:3306/ai_usage?user=root&password=${env:MYSQL_PASSWORD}`.
+         *
+         * Empty means nothing is written, which is the default: this names a server outside the
+         * plugin, and there is no sensible guess to make about where one is.
+         *
+         * Stored in plain XML like everything else here, which is why values support `${env:NAME}`
+         * -- a password belongs in the environment, not in this field. The database and the table
+         * are created if they are not there, so the URL may name a database that does not exist yet.
+         */
+        var usageDatabaseUrl: String = "",
     )
 
     private var state = State()

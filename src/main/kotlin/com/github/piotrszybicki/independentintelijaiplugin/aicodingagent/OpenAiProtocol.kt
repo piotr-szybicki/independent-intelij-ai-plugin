@@ -42,9 +42,11 @@ internal object OpenAiProtocol {
         system: String?,
         messages: List<ChatMessage>,
         tools: List<ToolDefinition>,
+        cacheKey: String? = null,
     ): JsonObject = JsonObject().apply {
         addProperty("model", model)
         addProperty("max_completion_tokens", maxTokens)
+        addCacheKey(cacheKey)
 
         val out = JsonArray()
         if (!system.isNullOrEmpty()) {
@@ -169,10 +171,12 @@ internal object OpenAiProtocol {
         system: String?,
         messages: List<ChatMessage>,
         tools: List<ToolDefinition>,
+        cacheKey: String? = null,
         reasoning: JsonObject? = null,
     ): JsonObject = JsonObject().apply {
         addProperty("model", model)
         addProperty("max_output_tokens", maxTokens)
+        addCacheKey(cacheKey)
         if (!system.isNullOrEmpty()) addProperty("instructions", system)
         if (reasoning != null) add("reasoning", reasoning)
         // The plugin resends the whole conversation on every request, so a server-side copy buys it
@@ -282,6 +286,34 @@ internal object OpenAiProtocol {
     }
 
     // --- shared -------------------------------------------------------------------------------------
+
+    /**
+     * Names the conversation a request belongs to, so its cached prefix can be found again.
+     *
+     * Caching here is nothing like Anthropic's: there is no breakpoint to place and the prefix is
+     * matched automatically. All this field changes is where the request is routed -- which is
+     * nevertheless what decides whether anything is matched, because an entry only exists on the
+     * machine that wrote it. Routing without a key goes by a hash of the prefix alone, so every
+     * conversation this plugin opens hashes alike -- one system prompt, one set of tool schemas --
+     * and they compete for a single machine's cache, while load can move one chat off its own entry
+     * between turns. The key is mixed into that hash, giving each chat a lane of its own.
+     *
+     * What hangs on it is the whole stable prefix -- the tool schemas and the system prompt, which
+     * is the bulk of every request and goes out again on every iteration of every turn.
+     *
+     * The chat's own id, which is a random UUID. It is sent to the provider and shows up in their
+     * logs, so it must be opaque: nothing the user typed, and nothing identifying them. Left out
+     * when blank rather than sent as a placeholder, since one shared constant would put every
+     * conversation back on a single machine -- worse than no key at all.
+     *
+     * It is a field of both OpenAI request schemas rather than something invented here, so the
+     * providers that do not implement it drop it the way they drop `max_completion_tokens` on an
+     * older deployment. A compatible server strict enough to reject unknown fields outright would
+     * reject this one -- the same bet `store` already makes on the Responses shape.
+     */
+    private fun JsonObject.addCacheKey(cacheKey: String?) {
+        if (!cacheKey.isNullOrBlank()) addProperty("prompt_cache_key", cacheKey)
+    }
 
     /**
      * Usage in the plugin's own shape, where the input figures do not overlap.

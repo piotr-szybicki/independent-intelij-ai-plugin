@@ -107,7 +107,31 @@ internal class ChatTranscript(onCancel: () -> Unit) {
      */
     fun endAiTurn() {
         currentTurn = null
+        pendingCost = null
     }
+
+    /**
+     * Puts what the reply has cost so far along the bottom of the AI's bubble. Null clears it.
+     *
+     * Held rather than dropped when there is no bubble yet: usage for a request is reported before
+     * anything the model said in it is drawn, so the first call of a turn almost always arrives
+     * before there is anywhere to put it. It is applied to the bubble the turn opens next.
+     */
+    fun setTurnCost(text: String?, tooltip: String? = null) {
+        val turn = currentTurn
+        if (turn == null) {
+            pendingCost = text?.let { it to tooltip }
+            return
+        }
+        turn.setCost(text, tooltip)
+        // The bubble grows by a line the first time this is set, and the rows below it have to move
+        // down with it -- the row revalidating on its own is not enough to shift its neighbours.
+        content.revalidate()
+        content.repaint()
+    }
+
+    /** A cost reported before the turn had a bubble, waiting for one. */
+    private var pendingCost: Pair<String, String?>? = null
 
     fun addError(message: String) = addRow(ErrorRow(message))
 
@@ -116,7 +140,10 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         val turn = currentTurn
         if (turn == null) {
             // A new bubble is a row like any other -- addRow gives it its width and scrolls to it.
-            addRow(AiTurnRow(row).also { currentTurn = it })
+            addRow(AiTurnRow(row).also { fresh ->
+                currentTurn = fresh
+                pendingCost?.let { (text, tooltip) -> fresh.setCost(text, tooltip) }
+            })
             return
         }
         turn.addContent(row)
@@ -146,6 +173,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
     fun clear() {
         rows.clear()
         currentTurn = null
+        pendingCost = null
         content.removeAll()
         content.add(placeholder)
         content.revalidate()
@@ -261,6 +289,29 @@ internal class ChatTranscript(onCancel: () -> Unit) {
             isOpaque = false
         }
 
+        /**
+         * What this reply cost, along the bottom of the bubble.
+         *
+         * Small and muted rather than a line of its own: it is a footnote to the answer, and a
+         * reader following the conversation should be able to ignore it without effort. Hidden until
+         * there is a figure, so a turn on an unpriced model has no empty strip under it.
+         */
+        private val cost = JBLabel().apply {
+            font = JBFont.small()
+            foreground = ChatColors.muted
+            isVisible = false
+            horizontalAlignment = SwingConstants.RIGHT
+        }
+
+        /** EDT only, like everything else the transcript draws. */
+        fun setCost(text: String?, tooltip: String?) {
+            cost.text = text.orEmpty()
+            cost.toolTipText = tooltip
+            cost.isVisible = !text.isNullOrEmpty()
+            revalidate()
+            repaint()
+        }
+
         init {
             border = JBUI.Borders.emptyRight(ChatMetrics.bubbleIndent)
             add(
@@ -279,6 +330,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
                         BorderLayout.NORTH,
                     )
                     add(stack, BorderLayout.CENTER)
+                    add(cost, BorderLayout.SOUTH)
                 },
                 BorderLayout.CENTER,
             )

@@ -49,6 +49,7 @@ project root, written with three example entries the first time a project is ope
     {
       "name": "Anthropic Claude",
       "model": "claude-sonnet-5",
+      "models": ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"],
       "url": "https://api.anthropic.com/v1/messages",
       "token": "$AI_API_KEY",
       "header-type": "x-api-key",
@@ -73,6 +74,7 @@ Everything after `token` is optional and has a default:
 
 | Field | Values | Default |
 | --- | --- | --- |
+| `models` | every model this provider can be asked for, offered in the chat window's model dropdown | just `model` |
 | `header-type` | `x-api-key`, `Authorization`, `api-key` | read off the URL |
 | `protocol` | `anthropic-messages`, `openai-responses`, `openai-chat-completions` | read off the URL |
 | `thinking` | `on`, `off`, `provider-default` (or a JSON boolean) | `on`, or `provider-default` on Chat Completions, which cannot carry it |
@@ -82,9 +84,14 @@ Everything after `token` is optional and has a default:
 | `additional-customizations.anthropic-version` | sent only on the Messages API; empty omits the header | `2023-06-01` there, nothing elsewhere |
 | `additional-customizations.extra-headers` | routing or tenancy headers for a gateway | none |
 
-Pick which entry is in force from the dropdown under <kbd>Settings</kbd> > <kbd>Tools</kbd> >
-<kbd>AICodingAgent</kbd>, which also says what the selection will send and what stops it if anything
-does. **Fill In Defaults** there rewrites the file with every optional field written out at the value
+Pick the provider and the model from the two dropdowns above the chat transcript. **Both belong to
+that conversation**: they are saved with it, a chat reopened from the history comes back on what it
+was sent to, and a second chat can be on something else. Changing either takes effect from the next
+message, with the conversation so far carried over, so a chat can start cheap and move up without
+being restarted — and it becomes the default the next new chat starts on.
+
+<kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>AICodingAgent</kbd> sets that default and says what a
+selection will send and what stops it if anything does. **Fill In Defaults** there rewrites the file with every optional field written out at the value
 it is already running on — which is how a file written before a field existed gets that field back.
 Only **Tool calls per message** stays on that page — it guards the agent loop rather than
 describing the model — along with tools, MCP servers and skills.
@@ -129,3 +136,10 @@ Plugin based on the [IntelliJ Platform Plugin Template][template].
 
 [template]: https://github.com/JetBrains/intellij-platform-plugin-template
 [docs:plugin-description]: https://plugins.jetbrains.com/docs/intellij/plugin-user-experience.html#plugin-description-and-presentation
+
+| Model                       | Tokens |
+|-----------------------------|-------|
+| OpenAI (gpt-5.6-sol)        | 4809    |
+| OpenAI (gpt-5.6-luna)       | 4809    |
+| Anthropic (claude-opus-4-6) | 7768      |
+| Anthropic (claude-opus-5)   | 9773     |

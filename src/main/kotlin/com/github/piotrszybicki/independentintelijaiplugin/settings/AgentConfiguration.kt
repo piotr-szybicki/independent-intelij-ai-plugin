@@ -26,7 +26,25 @@ class AgentConfigurationException(message: String) : Exception(message)
 data class AgentConfiguration(
     /** What this configuration is called in the settings dropdown. Unique within the file. */
     val name: String,
+
+    /**
+     * The model this configuration is currently sending to. Always one of [models].
+     *
+     * Separate from the list because it is the answer to a different question: [models] is what this
+     * provider can be asked for, which belongs in the file, while this is what the chat window's
+     * dropdown last picked, which belongs to the moment. The file writes the default.
+     */
     val model: String,
+
+    /**
+     * Every model this provider can be asked for, most-used first, as the chat window offers them.
+     *
+     * One entry when the file says nothing, because a provider always has at least the model named
+     * above -- so the dropdown is a list of one rather than a special case, and switching model
+     * within a provider costs an entry here rather than a whole configuration.
+     */
+    val models: List<String>,
+
     val url: String,
     /** As written in the file: `$NAME` to read an environment variable, or the token itself. */
     val token: String,
@@ -77,6 +95,16 @@ data class AgentConfiguration(
     val tokenEnvVar: String? get() = envVarName(token)
 
     /**
+     * The same configuration with [wanted] selected, or unchanged when it does not offer it.
+     *
+     * Unchanged rather than an error, because the name comes from a setting that outlives the file
+     * it was chosen from: switching to a provider that has never heard of the model last picked has
+     * to land on that provider's own default, not on a request it will refuse.
+     */
+    fun withModel(wanted: String): AgentConfiguration =
+        if (wanted.isNotBlank() && wanted in models) copy(model = wanted) else this
+
+    /**
      * The token to send: the named variable's value, or the literal. Blank when the variable is
      * unset, which [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint.validate]
      * turns into a message naming the variable rather than a 401 from the provider.
@@ -94,6 +122,7 @@ data class AgentConfiguration(
     fun toJson(): JsonObject = JsonObject().apply {
         addProperty(NAME, name)
         addProperty(MODEL, model)
+        add(MODELS, JsonArray().apply { models.forEach { add(it) } })
         addProperty(URL, url)
         addProperty(TOKEN, token)
         addProperty(HEADER_TYPE, authScheme.headerName)
@@ -128,6 +157,7 @@ data class AgentConfiguration(
         private const val CONFIGURATIONS = "configurations"
         private const val NAME = "name"
         private const val MODEL = "model"
+        private const val MODELS = "models"
         private const val URL = "url"
         private const val TOKEN = "token"
         private const val HEADER_TYPE = "header-type"
@@ -144,6 +174,7 @@ data class AgentConfiguration(
         val DEFAULT = AgentConfiguration(
             name = "Anthropic Claude",
             model = DEFAULT_MODEL,
+            models = listOf(DEFAULT_MODEL, "claude-opus-5", "claude-haiku-4-5-20251001"),
             url = DEFAULT_ENDPOINT_URL,
             token = "$" + AICodingAgentCredentials.ENV_VAR,
             authScheme = AuthScheme.X_API_KEY,
@@ -188,6 +219,7 @@ data class AgentConfiguration(
             AgentConfiguration(
                 name = "OpenAI GPT",
                 model = "gpt-5",
+                models = listOf("gpt-5", "gpt-5-mini"),
                 url = "https://api.openai.com/v1/responses",
                 token = "\$OPENAI_API_KEY",
                 authScheme = AuthScheme.BEARER,
@@ -202,6 +234,7 @@ data class AgentConfiguration(
             AgentConfiguration(
                 name = "Local Ollama",
                 model = "qwen3-coder",
+                models = listOf("qwen3-coder"),
                 url = "http://localhost:11434/v1/chat/completions",
                 // Literal rather than a variable: a local server wants a token it will not look at,
                 // and this is the example of the plain-text form.
@@ -281,8 +314,18 @@ data class AgentConfiguration(
             val url = entry.string(URL).orEmpty().trim()
             if (url.isBlank()) throw AgentConfigurationException("\"$name\" has no \"$URL\"")
 
-            val model = entry.string(MODEL).orEmpty().trim()
-            if (model.isBlank()) throw AgentConfigurationException("\"$name\" has no \"$MODEL\"")
+            // Either field on its own is a complete answer: "model" alone is one model to send to,
+            // "models" alone makes its first entry the default. Both is the useful case -- a default
+            // that is not the first of the list.
+            val listed = entry.strings(name, MODELS)
+            val model = entry.string(MODEL)?.trim().orEmpty().ifBlank { listed.firstOrNull().orEmpty() }
+            if (model.isBlank()) {
+                throw AgentConfigurationException("\"$name\" has no \"$MODEL\" and no \"$MODELS\"")
+            }
+            // A default outside the list is a list missing an entry rather than a mistake worth
+            // refusing over: writing both and forgetting to repeat one in the other is the obvious
+            // way to write this, and dropping the default would send a model that was not asked for.
+            val models = if (model in listed) listed else listOf(model) + listed
 
             // Both of these are optional, because the URL already says what they are for every
             // provider whose URL says anything -- see [ProviderProfile]. Stating them is for the
@@ -342,6 +385,7 @@ data class AgentConfiguration(
             return AgentConfiguration(
                 name = name,
                 model = model,
+                models = models,
                 url = url,
                 token = entry.string(TOKEN).orEmpty().trim(),
                 authScheme = authScheme,
@@ -385,6 +429,19 @@ data class AgentConfiguration(
                 throw AgentConfigurationException("\"$configuration\".$field must be at least $minimum")
             }
             return value
+        }
+
+        /** An array of strings, blanks and duplicates dropped, or empty when the field is absent. */
+        private fun JsonObject.strings(configuration: String, field: String): List<String> {
+            val element = get(field) ?: return emptyList()
+            if (!element.isJsonArray) {
+                throw AgentConfigurationException("\"$configuration\".$field must be an array of names")
+            }
+            return element.asJsonArray
+                .filter { it.isJsonPrimitive }
+                .map { it.asString.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
         }
 
         private fun JsonObject.stringMap(configuration: String, field: String): Map<String, String> {

@@ -30,8 +30,18 @@ import java.util.concurrent.atomic.AtomicLong
  * with every other chat's, and they are on one line. Here each one is a file that an editor will
  * fold, a diff will compare against the previous request, and `jq` will read.
  *
- * The `request_id` naming each directory is the same one [ModelUsageLog] puts in its row, so a
- * spreadsheet row that looks wrong leads back to the bodies that produced it.
+ * ### The body and nothing else
+ *
+ * Each file holds exactly what went over the wire, at the top level. It used to be wrapped in an
+ * envelope carrying the protocol, URL, model, status code and duration, which cost more than it
+ * gave: every `jq` expression and every diff had to reach through `.body` first, and two files that
+ * sent the same request never compared equal because their timestamps differed. That metadata is in
+ * [ModelUsageDatabase] instead, where it can be selected on rather than read one file at a time --
+ * `conversation_id` and `request_id` there name the directory below, so a row that looks wrong leads
+ * straight to the bodies behind it.
+ *
+ * The one exception is a request that never came back, which has no body to write: its
+ * `response.json` holds the error on its own, so a directory is never a request and a silence.
  *
  * Deliberately never pruned or rotated. That is a real cost -- unlike the traffic log this grows
  * without bound, roughly the size of the conversation per request, and an afternoon of agentic work
@@ -56,10 +66,6 @@ object ModelExchangeLog {
         .setPrettyPrinting()
         .create()
 
-    private val timestamp = DateTimeFormatter
-        .ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
-        .withZone(ZoneId.systemDefault())
-
     /** Sorts the directories chronologically when listed by name, which is how they are read. */
     private val idStamp = DateTimeFormatter
         .ofPattern("yyyyMMdd-HHmmss-SSS")
@@ -76,14 +82,14 @@ object ModelExchangeLog {
 
     /**
      * Set once a write has failed, so a log directory that cannot be written costs one warning for
-     * the session rather than two per request. Same bargain as [ModelUsageLog]'s.
+     * the session rather than two per request. Same bargain as [ModelUsageDatabase]'s.
      */
     @Volatile
     private var broken = false
 
     /**
      * The id for one request/response pair: the directory its two files go in, and the `request_id`
-     * column tying [ModelUsageLog]'s row to them.
+     * column tying [ModelUsageDatabase]'s row to them.
      *
      * Minted by the caller before the request goes out rather than derived from anything on the
      * wire, because the response may never arrive and the request still has to be findable.
@@ -91,79 +97,31 @@ object ModelExchangeLog {
     fun newRequestId(): String = "${idStamp.format(Instant.now())}-${"%05d".format(sequence.incrementAndGet())}"
 
     /**
-     * Writes `request.json`. [body] is the serialised request, embedded as JSON rather than as a
-     * string so the file is one document instead of a document wrapped around an escaped one.
+     * Writes `request.json` -- the serialised request body, reformatted and nothing else.
      *
      * Headers are left out on purpose, the same as in [ModelTrafficLog]: one of them is the token.
      */
-    fun recordRequest(
-        conversationId: String,
-        requestId: String,
-        protocol: String,
-        url: String,
-        model: String,
-        body: String,
-    ) {
-        write(conversationId, requestId, REQUEST_FILE) {
-            JsonObject().apply {
-                addProperty("request_id", requestId)
-                addProperty("conversation_id", conversationId.ifBlank { UNASSIGNED })
-                addProperty("timestamp", timestamp.format(Instant.now()))
-                addProperty("protocol", protocol)
-                addProperty("url", url)
-                addProperty("model", model)
-                add("body", parsed(body))
-            }
-        }
+    fun recordRequest(conversationId: String, requestId: String, body: String) {
+        write(conversationId, requestId, REQUEST_FILE) { parsed(body) }
     }
 
-    /**
-     * Writes `response.json` beside the request it answers. [responseId] is the provider's own id
-     * for the message, blank when the body carried none.
-     */
-    fun recordResponse(
-        conversationId: String,
-        requestId: String,
-        responseId: String,
-        statusCode: Int,
-        durationMillis: Long,
-        body: String,
-    ) {
-        write(conversationId, requestId, RESPONSE_FILE) {
-            JsonObject().apply {
-                addProperty("request_id", requestId)
-                addProperty("response_id", responseId)
-                addProperty("conversation_id", conversationId.ifBlank { UNASSIGNED })
-                addProperty("timestamp", timestamp.format(Instant.now()))
-                addProperty("status_code", statusCode)
-                addProperty("duration_ms", durationMillis)
-                add("body", parsed(body))
-            }
-        }
+    /** Writes `response.json` beside the request it answers -- again the body and nothing else. */
+    fun recordResponse(conversationId: String, requestId: String, body: String) {
+        write(conversationId, requestId, RESPONSE_FILE) { parsed(body) }
     }
 
     /**
      * Writes `response.json` for a request that never got one -- a timeout, a refused connection, a
      * TLS failure.
      *
-     * Written rather than skipped so the pair is never half a story: a directory holding a request
-     * and nothing else reads as "the log broke", and this is the case where the bodies are most
-     * worth having.
+     * The one file here that is not a body, because there was none: written rather than skipped so
+     * the pair is never half a story, since a directory holding a request and nothing else reads as
+     * "the log broke" and this is the case most worth looking at. How long it hung first, and how
+     * often it happens, are [ModelUsageDatabase]'s columns.
      */
-    fun recordFailure(
-        conversationId: String,
-        requestId: String,
-        durationMillis: Long,
-        error: String,
-    ) {
+    fun recordFailure(conversationId: String, requestId: String, error: String) {
         write(conversationId, requestId, RESPONSE_FILE) {
-            JsonObject().apply {
-                addProperty("request_id", requestId)
-                addProperty("conversation_id", conversationId.ifBlank { UNASSIGNED })
-                addProperty("timestamp", timestamp.format(Instant.now()))
-                addProperty("duration_ms", durationMillis)
-                addProperty("error", error)
-            }
+            JsonObject().apply { addProperty("error", error) }
         }
     }
 
@@ -177,7 +135,7 @@ object ModelExchangeLog {
      * serialised is caught here along with the disk failures. Nothing about logging a request is
      * worth taking a turn down for.
      */
-    private fun write(conversationId: String, requestId: String, name: String, document: () -> JsonObject) {
+    private fun write(conversationId: String, requestId: String, name: String, document: () -> JsonElement) {
         if (broken) return
         runCatching {
             val directory = root.resolve(segment(conversationId, UNASSIGNED)).resolve(segment(requestId, "request"))

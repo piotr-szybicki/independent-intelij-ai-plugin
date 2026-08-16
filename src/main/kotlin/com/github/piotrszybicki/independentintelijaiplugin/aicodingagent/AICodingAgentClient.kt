@@ -2,7 +2,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelExchangeLog
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelTrafficLog
-import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageLog
+import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase
 import com.github.piotrszybicki.independentintelijaiplugin.settings.WireProtocol
 import com.google.gson.Gson
 import com.google.gson.JsonArray
@@ -127,8 +127,13 @@ object AICodingAgentClient {
         reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
         /**
          * Which conversation this request belongs to, which is what files it under a directory of
-         * its own in [ModelExchangeLog] and what its [ModelUsageLog] row is grouped by. Blank for a
+         * its own in [ModelExchangeLog] and what its [ModelUsageDatabase] row is grouped by. Blank for a
          * caller with no conversation to name, which lands under `unassigned` rather than nowhere.
+         *
+         * It leaves the machine as well as being logged: on the OpenAI protocols it is sent as the
+         * prompt cache key, which is what keeps a chat reading back its own cached prefix rather
+         * than competing with every other chat for one. That is the reason it has to stay opaque --
+         * see [OpenAiProtocol.addCacheKey].
          */
         conversationId: String = "",
     ): AICodingAgentTurn {
@@ -142,7 +147,9 @@ object AICodingAgentClient {
         val requestBody = when (endpoint.protocol) {
             // Cache breakpoints go on only here, and so do `thinking` and `output_config`. All of
             // them are Anthropic's, and OpenAI's APIs reject an unknown field rather than ignoring
-            // it -- so a request bound for one of them would fail outright.
+            // it -- so a request bound for one of them would fail outright. Caching on the OpenAI
+            // shapes is asked for the other way round, by naming the conversation rather than
+            // marking the prompt -- see [OpenAiProtocol.addCacheKey].
             WireProtocol.ANTHROPIC_MESSAGES -> gson.toJson(
                 AICodingAgentRequest(
                     model,
@@ -150,17 +157,21 @@ object AICodingAgentClient {
                     systemBlocks(system),
                     withCacheBreakpoints(repaired),
                     tools.ifEmpty { null },
-                    reasoning.thinkingJson(),
-                    reasoning.outputConfigJson(),
+                    reasoning.thinkingJson(model, maxTokens),
+                    reasoning.outputConfigJson(model),
                 )
             )
 
             WireProtocol.OPENAI_CHAT_COMPLETIONS ->
-                OpenAiProtocol.chatCompletionsRequest(model, maxTokens, system, repaired, tools).toString()
+                OpenAiProtocol.chatCompletionsRequest(
+                    model, maxTokens, system, repaired, tools, cacheKey = conversationId,
+                ).toString()
 
             WireProtocol.OPENAI_RESPONSES ->
                 OpenAiProtocol.responsesRequest(
-                    model, maxTokens, system, repaired, tools, reasoning.reasoningJson(),
+                    model, maxTokens, system, repaired, tools,
+                    cacheKey = conversationId,
+                    reasoning = reasoning.reasoningJson(),
                 ).toString()
         }
         // Headers are deliberately not logged: one of them is the token.
@@ -168,7 +179,8 @@ object AICodingAgentClient {
         // Minted before the request goes out, not after it comes back: it names the directory the
         // request body is written to, which has to happen whether or not there is ever a response.
         val requestId = ModelExchangeLog.newRequestId()
-        ModelExchangeLog.recordRequest(
+        ModelExchangeLog.recordRequest(conversationId, requestId, requestBody)
+        ModelUsageDatabase.recordRequest(
             conversationId, requestId, endpoint.protocol.name, endpoint.url, model, requestBody,
         )
 
@@ -184,9 +196,9 @@ object AICodingAgentClient {
             httpClient.send(request, HttpResponse.BodyHandlers.ofString())
         } catch (e: Exception) {
             LOG.info("API request failed: ${e.message}")
-            ModelExchangeLog.recordFailure(
-                conversationId, requestId, System.currentTimeMillis() - startedAt, e.toString(),
-            )
+            val elapsed = System.currentTimeMillis() - startedAt
+            ModelExchangeLog.recordFailure(conversationId, requestId, e.toString())
+            ModelUsageDatabase.recordFailure(conversationId, requestId, elapsed, e.toString())
             throw AICodingAgentApiException("Could not reach ${endpoint.url}: ${e.message}")
         }
 
@@ -200,7 +212,8 @@ object AICodingAgentClient {
         // Before the status check, so a rejected request is a directory holding both halves of what
         // happened rather than a request and a silence.
         val responseId = providerResponseId(root)
-        ModelExchangeLog.recordResponse(
+        ModelExchangeLog.recordResponse(conversationId, requestId, response.body())
+        ModelUsageDatabase.recordResponse(
             conversationId,
             requestId,
             responseId,
@@ -234,11 +247,14 @@ object AICodingAgentClient {
                 "usage: input=${it.input_tokens} output=${it.output_tokens} " +
                     "cache_write=${it.cache_creation_input_tokens} cache_read=${it.cache_read_input_tokens}",
             )
-            ModelUsageLog.record(
+            // Fills in the token columns of the row opened above, rather than a row of its own: the
+            // response has already been recorded, and a usage block is only ever part of one.
+            ModelUsageDatabase.recordUsage(
                 conversationId,
                 requestId,
-                responseId,
-                endpoint.protocol.name,
+                // The model asked for rather than one read back off the response: it is the same
+                // string the row's `model` column holds and the same one the chat window prices its
+                // label with, so the two figures cannot come from different rate cards.
                 model,
                 it.input_tokens,
                 it.cache_creation_input_tokens,
