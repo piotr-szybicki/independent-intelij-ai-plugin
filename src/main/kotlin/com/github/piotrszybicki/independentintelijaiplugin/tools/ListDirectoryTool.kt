@@ -23,9 +23,11 @@ class ListDirectoryTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "list_directory"
     override val description =
-        "Lists a project directory's contents, relative to the project root, with a trailing " +
-            "\"/\" on directories. One level by default; recursive=true descends, bounded by " +
-            "max_depth. Build output and VCS metadata are skipped."
+        "Lists a project directory's contents as an indented tree: each subdirectory on its own " +
+            "line ending in \"/\", the files it holds comma-separated on the line below it, and " +
+            "directories that contain only one subdirectory collapsed onto one line (\"a/b/c/\"). " +
+            "Paths are relative to the listed directory. One level by default; recursive=true " +
+            "descends, bounded by max_depth. Build output and VCS metadata are skipped."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
@@ -75,7 +77,12 @@ class ListDirectoryTool(private val project: Project) : AICodingAgentTool {
         val maxEntries = (input.get("max_entries")?.asInt ?: DEFAULT_MAX_ENTRIES)
             .coerceIn(1, MAX_MAX_ENTRIES)
 
-        val entries = mutableListOf<String>()
+        // Paths go into the listing relative to the directory that was asked for: the tree repeats
+        // the part above it on every line otherwise, which is the cost the format exists to avoid.
+        val rootPath = PsiTargets.relativePath(project, root)
+        val rootPrefix = if (rootPath.isEmpty()) "" else "$rootPath/"
+
+        val entries = mutableListOf<DirectoryListing.Entry>()
         var truncated = false
 
         ProjectFiles.walk(project, root, maxDepth) { file, _ ->
@@ -83,20 +90,11 @@ class ListDirectoryTool(private val project: Project) : AICodingAgentTool {
                 truncated = true
                 return@walk false
             }
-            entries.add(PsiTargets.relativePath(project, file) + if (file.isDirectory) "/" else "")
+            val path = PsiTargets.relativePath(project, file).removePrefix(rootPrefix)
+            entries.add(DirectoryListing.Entry(path, file.isDirectory))
             true
         }
 
-        val shownPath = PsiTargets.relativePath(project, root).ifEmpty { "." }
-        if (entries.isEmpty()) return "$shownPath/ is empty."
-
-        return buildString {
-            append("${entries.size} entr(y/ies) under $shownPath/")
-            if (truncated) {
-                append(" (stopped at the limit; narrow the path or lower max_depth to see the rest)")
-            }
-            append(":\n")
-            entries.forEach { append(it).append('\n') }
-        }
+        return DirectoryListing.format(rootPath.ifEmpty { "." }, entries, truncated)
     }
 }

@@ -137,6 +137,27 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
 
     fun addError(message: String) = addRow(ErrorRow(message))
 
+    /** A row that is taken back rather than left in the conversation -- see [addContinuePrompt]. */
+    interface Dismissable {
+        fun dismiss()
+    }
+
+    /**
+     * Offers an action at the end of the transcript, and takes the offer away once it is used.
+     *
+     * The one caller is the withheld tool output: press it and the edited output is sent, so the row
+     * has to go the moment it is pressed. It leaves nothing behind because it is not part of the
+     * conversation -- it is a thing to do about one, which is also why it is never saved with the
+     * chat and never appears in an export. Reopening a chat that had one does not bring it back.
+     */
+    fun addContinuePrompt(action: String, message: String, onAction: () -> Unit): Dismissable {
+        val row = ContinueRow(action, message) { onAction() }
+        addRow(row)
+        return object : Dismissable {
+            override fun dismiss() = removeRow(row)
+        }
+    }
+
     /** Puts [row] in the AI's open bubble, opening one if the model has not spoken since the last turn ended. */
     private fun intoAiTurn(row: ChatRow) {
         val turn = currentTurn
@@ -198,6 +219,18 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
         content.revalidate()
         content.repaint()
         scrollToBottom()
+    }
+
+    /**
+     * Takes a row back out. Only ever used for rows that were an offer rather than a record of what
+     * happened, so the placeholder is not restored: a transcript that had a row in it has a
+     * conversation in it too.
+     */
+    private fun removeRow(row: ChatRow) {
+        if (!rows.remove(row)) return
+        content.remove(row)
+        content.revalidate()
+        content.repaint()
     }
 
     private fun contentWidth(): Int = content.width - content.insets.left - content.insets.right
@@ -628,6 +661,28 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
                     font = JBFont.small()
                     foreground = ChatColors.muted
                     iconTextGap = JBUI.scale(5)
+                },
+                BorderLayout.CENTER,
+            )
+        }
+    }
+
+    /**
+     * A link and a line of explanation, drawn where an error row would be and reading as one of
+     * them: something happened, and here is the one thing to do about it.
+     *
+     * An [ActionLink] rather than a button because it sits in the flow of the conversation rather
+     * than in a toolbar, and because the transcript is a stack of text -- a Swing button here draws
+     * as a raised box in the middle of a page.
+     */
+    private class ContinueRow(action: String, message: String, onAction: () -> Unit) :
+        ChatRow(BorderLayout(JBUI.scale(6), 0)) {
+        init {
+            add(ActionLink(action) { onAction() }.apply { font = JBFont.small() }, BorderLayout.WEST)
+            add(
+                JBLabel(message).apply {
+                    font = JBFont.small()
+                    foreground = ChatColors.muted
                 },
                 BorderLayout.CENTER,
             )

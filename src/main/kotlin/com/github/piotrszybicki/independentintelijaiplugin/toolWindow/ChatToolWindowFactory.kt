@@ -36,6 +36,8 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMes
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.HistoryCompaction
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ReasoningOptions
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.TokenCounter
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ToolResults
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeTrackingTool
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryService
@@ -64,6 +66,7 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.math.BigDecimal
+import java.nio.file.Path
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.BorderFactory
@@ -176,6 +179,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
         /** The tool row drawn but not yet settled, and its place in [rows]. Null between tool calls. */
         private var runningTool: ChatTranscript.RunningTool? = null
         private var runningToolIndex = -1
+
+        /**
+         * The withheld tool output waiting to be edited and sent, or null when there is none.
+         *
+         * Deliberately not part of [rows], so it is neither saved with the chat nor replayed when one
+         * is reopened. The offer is about a file on disk and a turn that has just stopped; a day
+         * later, in a chat loaded from history, it would be an offer to splice a stale file into a
+         * conversation that has moved on. The withheld note stays in the conversation either way, so
+         * nothing is lost by the offer expiring -- the chat simply carries on from it.
+         */
+        private var pendingContinue: PendingContinue? = null
 
         /**
          * Lazy on purpose. A tool window that was open when the IDE last closed is rebuilt during
@@ -720,6 +734,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
             rows.clear()
             runningTool = null
             runningToolIndex = -1
+            // The offer belongs to the conversation that stopped, and there is about to be a
+            // different one. The file it points at is left where it is: it is the user's now.
+            dismissContinuePrompt()
             // Shell and MCP approvals are given for a conversation, not for the project. So is the
             // raised output cap: a new chat starts back at the configured one.
             shellTool?.forgetApprovals()
@@ -1044,6 +1061,25 @@ class ChatToolWindowFactory : ToolWindowFactory {
             showUserMessage(displayText)
             input.text = ""
             clearAttachments()
+            // A message of one's own supersedes an offer to continue the last one: the conversation
+            // has moved on, and the edited output would be spliced into a turn that is no longer the
+            // end of it.
+            dismissContinuePrompt()
+
+            startTurn(sizeBeforeTurn)
+        }
+
+        /**
+         * Sends the conversation as it stands and drives the turn it starts.
+         *
+         * Split out from [send] because a turn does not always begin with something the user typed:
+         * [continueWithEditedOutput] restarts one from a tool result the user rewrote, with nothing
+         * added to the conversation at all. Everything from here on is the same either way.
+         *
+         * [sizeBeforeTurn] is how far back the failure path may roll the history: the point it was at
+         * before this turn touched it.
+         */
+        private fun startTurn(sizeBeforeTurn: Int) {
             setBusy(true)
 
             // Read once, here, rather than separately for each thing it decides: model, endpoint,
@@ -1058,6 +1094,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             // still takes effect -- the raise is a floor this chat has earned, not a replacement.
             val maxTokens = maxOf(configuration.maxTokens, raisedMaxTokens)
             val maxIterations = AICodingAgentSettingsState.getInstance().state.maxIterations
+            val maxToolOutputTokens = AICodingAgentSettingsState.getInstance().state.maxToolOutputTokens
             val contextWindow = configuration.contextWindowTokens
             // Read here rather than on the pooled thread, for the same reason as the settings above:
             // it is what the turn's log files are filed under, and a chat switched part-way through
@@ -1127,6 +1164,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
                                     AICodingAgent.ToolOutcome.OK -> ChatTranscript.ToolStatus.DONE
                                     AICodingAgent.ToolOutcome.FAILED -> ChatTranscript.ToolStatus.FAILED
                                     AICodingAgent.ToolOutcome.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
+                                    // The call itself was fine and its output is right here to be
+                                    // read -- what failed is that it was too big to send, which the
+                                    // error row that follows says in as many words.
+                                    AICodingAgent.ToolOutcome.TOO_LARGE -> ChatTranscript.ToolStatus.FAILED
                                 }
                                 val details = toolCallDetails(input, result)
                                 // A tool the cancel got to first was never started, so there is no
@@ -1159,7 +1200,27 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             }
                             return extend
                         }
-                    }, isCancelled = cancelled::get, reasoning = reasoning, conversationId = conversationId)
+
+                        // One line and no markup: an error row is a plain label, so it neither wraps
+                        // nor renders anything. The output itself is in the row above this one, and
+                        // the limit is in Settings | AICodingAgent -- neither needs saying here.
+                        override fun onToolOutputTooLarge(
+                            name: String,
+                            toolUseId: String,
+                            output: String,
+                            tokens: Int,
+                            limit: Int,
+                        ) {
+                            ApplicationManager.getApplication().invokeLater {
+                                showError(
+                                    "Stopped: $name returned ${"%,d".format(tokens)} tokens, over the " +
+                                        "${"%,d".format(limit)}-token limit, so it was not sent to the model.",
+                                )
+                                offerContinue(name, toolUseId, output)
+                            }
+                        }
+                    }, isCancelled = cancelled::get, reasoning = reasoning, conversationId = conversationId,
+                        maxToolOutputTokens = maxToolOutputTokens)
                     ApplicationManager.getApplication().invokeLater { endTurn() }
                 } catch (e: Throwable) {
                     // Throwable, not Exception: whatever comes out of a turn, the composer has to be
@@ -1213,6 +1274,86 @@ class ChatToolWindowFactory : ToolWindowFactory {
             turn?.cancel(true)
             showError("Stopped. The reply is incomplete.")
             setBusy(false)
+        }
+
+        /**
+         * The withheld output, waiting on the user: written to `.cache`, opened in an editor, and
+         * offered back to the conversation as a Continue link under the transcript.
+         *
+         * The point of the round trip is that only the user can say which part of a 40,000-token
+         * `find_in_files` was the part worth having. Trimming it in the editor and pressing Continue
+         * sends *their* version as the tool's result -- see [continueWithEditedOutput] -- so the
+         * model carries on from a result it can afford, and never learns there was an argument about
+         * it.
+         *
+         * A failure to write the file is the end of the offer rather than the end of the turn: the
+         * conversation is already whole, holding the note that says the output was withheld, so the
+         * user can simply say what to do next.
+         */
+        private fun offerContinue(toolName: String, toolUseId: String, output: String) {
+            val file = WithheldOutput.saveAndOpen(project, toolName, output)
+            if (file == null) {
+                showError("The output could not be written to .cache, so there is nothing to edit and send.")
+                return
+            }
+            pendingContinue = PendingContinue(
+                toolName = toolName,
+                toolUseId = toolUseId,
+                file = file,
+                prompt = transcript.addContinuePrompt(
+                    "Continue with the edited output",
+                    "— cut ${file.fileName} down in the editor; it is sent as $toolName's result.",
+                ) { continueWithEditedOutput() },
+            )
+        }
+
+        /**
+         * Sends the edited file as the withheld tool call's result and restarts the turn.
+         *
+         * Nothing is added to the conversation: the result that was already there is rewritten, so
+         * the model reads the trimmed output as what the tool returned. That is safe because the
+         * request carrying the withheld note never went out -- the turn ended first -- so this edits
+         * something the provider has never seen and the cached prefix does not cover.
+         *
+         * What the user left in the file is sent as it stands, over the limit or not. The limit
+         * guards against a tool asking for too much; it has no business overruling someone who has
+         * just read the output and decided what of it matters.
+         */
+        private fun continueWithEditedOutput() {
+            val pending = pendingContinue ?: return
+            // Pressed while a turn is running -- a click that raced the conversation moving on.
+            // The offer is already stale, so it goes without sending anything.
+            if (!sendButton.isEnabled) {
+                dismissContinuePrompt()
+                return
+            }
+            // Before the reading and the sending, so the link goes the moment it is pressed however
+            // the rest of this turns out.
+            dismissContinuePrompt()
+
+            val edited = WithheldOutput.read(pending.file)?.takeIf { it.isNotBlank() }
+            if (edited == null) {
+                showError("${pending.file.fileName} is empty or could not be read, so nothing was sent.")
+                return
+            }
+            if (!ToolResults.replace(history, pending.toolUseId, edited)) {
+                showError("That tool call is no longer in the conversation, so the edited output was not sent.")
+                return
+            }
+
+            showError(
+                "Sent the edited ${pending.toolName} output " +
+                    "(${"%,d".format(TokenCounter.count(edited))} tokens) as the result of that call.",
+            )
+            // From here rather than from before the tool call: everything already in the history is
+            // being kept, edit included, so there is nothing for a failed turn to roll back.
+            startTurn(history.size)
+        }
+
+        /** Takes the Continue offer away, whether it was used, overtaken or abandoned. */
+        private fun dismissContinuePrompt() {
+            pendingContinue?.prompt?.dismiss()
+            pendingContinue = null
         }
 
         private fun setBusy(busy: Boolean) {
@@ -1644,6 +1785,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
             return extend
         }
+
+        /**
+         * A withheld tool result the user is editing: which call it answers, where its text is, and
+         * the transcript row offering to send it.
+         */
+        private class PendingContinue(
+            val toolName: String,
+            val toolUseId: String,
+            val file: Path,
+            val prompt: ChatTranscript.Dismissable,
+        )
 
         private companion object {
             private val prettyJson = GsonBuilder().setPrettyPrinting().create()

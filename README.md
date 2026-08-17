@@ -143,8 +143,29 @@ being restarted — and it becomes the default the next new chat starts on.
 <kbd>Settings</kbd> > <kbd>Tools</kbd> > <kbd>AICodingAgent</kbd> sets that default and says what a
 selection will send and what stops it if anything does. **Fill In Defaults** there rewrites the file with every optional field written out at the value
 it is already running on — which is how a file written before a field existed gets that field back.
-Only **Tool calls per message** stays on that page — it guards the agent loop rather than
-describing the model — along with tools, MCP servers and skills.
+Only **Tool calls per message** and **Tokens per tool result** stay on that page — they guard the
+agent loop rather than describing the model — along with tools, MCP servers and skills.
+
+**Tokens per tool result** is the cap on what one tool call may hand back, counted with
+[JTokkit](https://github.com/knuddelsgmbh/jtokkit), the JVM port of OpenAI's tiktoken. Go over it —
+500 tokens by default — and the output is *not* sent: the model gets a note saying it was withheld
+and the turn stops there. The chat still shows the output in full, and your next message carries on
+as normal. It is set low because tool output is the expensive kind: what a call returns is re-sent
+with every later request in the conversation, so one search that matched half the project is paid
+for over and over. Set it to `0` to turn the check off.
+
+When that happens the full output is written to **`.cache/`** in the project root and opened in an
+editor tab, and a **Continue with the edited output** link appears under the transcript. Cut the file
+down to the part that actually mattered, then press the link: your version is sent as *that tool
+call's* result — not as a message from you — so the model reads it as what the tool returned and
+picks up where it stopped. The link goes as soon as it is pressed, and unsaved edits count: the
+editor's copy is what gets sent, and is saved to disk on the way.
+
+The offer is deliberately short-lived. Sending a message of your own instead takes it away, and it is
+not restored when a chat is reopened from the history — by then the file is stale and the
+conversation has moved on. The conversation is never stuck either way: the withheld note is a valid
+result, so you can simply say what to do next. Files in `.cache/` are never deleted by the plugin;
+empty the folder whenever you like.
 
 ### Running it
 
@@ -190,3 +211,7 @@ Plugin based on the [IntelliJ Platform Plugin Template][template].
 ---
 ### Run db to log all the requests
 docker run -d --name ai-usage -e MYSQL_ROOT_PASSWORD=secret -p 3306:3306 mysql:9,
+
+
+
+#####################################################

@@ -82,6 +82,8 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     private val maxIterationsField = JBTextField()
 
+    private val maxToolOutputField = JBTextField()
+
     private val mcpServersArea = JBTextArea(10, 40).apply {
         lineWrap = false
         font = JBUI.Fonts.create("Monospaced", font.size)
@@ -202,6 +204,21 @@ class AICodingAgentSettingsConfigurable : Configurable {
                     "and the context window &mdash; belongs to the model rather than to the loop, and " +
                     "is set per entry in <code>${AgentConfiguration.FILE_NAME}</code>.",
             )
+            row("Tokens per tool result:") {
+                cell(maxToolOutputField).columns(10)
+            }.rowComment(
+                "The most one tool call may return before the assistant refuses to send it. The " +
+                    "output is counted with a real tokenizer (JTokkit, the JVM port of OpenAI's " +
+                    "tiktoken); over the limit it is withheld, the turn stops, and the transcript " +
+                    "says which call it was and how big.<br/>" +
+                    "The output itself is still shown in the chat &mdash; it is the model's copy " +
+                    "that is dropped, not yours &mdash; and the conversation stays usable: your " +
+                    "next message carries on, and the model is told the result was withheld so it " +
+                    "asks for less rather than repeating the call.<br/>" +
+                    "It is deliberately low. What a tool returns is re-sent with every later " +
+                    "request in the conversation, so one search that matched half the project is " +
+                    "paid for again and again. <b>0</b> turns the check off.",
+            )
         }
         group("Tools") {
             row {
@@ -315,6 +332,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
             // the entry's own default is what is being used.
             modelCombo.selectedItem != selectedConfiguration()?.withModel(settings.activeModel)?.model ||
             maxIterationsField.positiveIntOr(settings.maxIterations) != settings.maxIterations ||
+            maxToolOutputField.zeroOrPositiveIntOr(settings.maxToolOutputTokens) != settings.maxToolOutputTokens ||
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
             skillPathsArea.text != settings.skillPaths ||
@@ -330,9 +348,11 @@ class AICodingAgentSettingsConfigurable : Configurable {
         settings.activeConfiguration = selectedConfiguration()?.name.orEmpty()
         settings.activeModel = modelCombo.selectedItem as? String ?: ""
         settings.maxIterations = maxIterationsField.positiveIntOr(settings.maxIterations)
+        settings.maxToolOutputTokens = maxToolOutputField.zeroOrPositiveIntOr(settings.maxToolOutputTokens)
         // Put the accepted number back, so a field that was left with something unusable in it
         // shows what actually got saved rather than the text that was ignored.
         maxIterationsField.text = settings.maxIterations.toString()
+        maxToolOutputField.text = settings.maxToolOutputTokens.toString()
         // Nothing to notify: the roots are rescanned on the next turn, so a path added here is read
         // the next time the user sends a message.
         settings.skillPaths = skillPathsArea.text
@@ -357,6 +377,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
     override fun reset() {
         val settings = AICodingAgentSettingsState.getInstance().state
         maxIterationsField.text = settings.maxIterations.toString()
+        maxToolOutputField.text = settings.maxToolOutputTokens.toString()
         mcpServersArea.text = settings.mcpServers
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths
@@ -610,6 +631,14 @@ class AICodingAgentSettingsConfigurable : Configurable {
      */
     private fun JBTextField.positiveIntOr(fallback: Int): Int =
         text.trim().toIntOrNull()?.takeIf { it > 0 } ?: fallback
+
+    /**
+     * The same, for a field where zero is an answer rather than a mistake: the tool-output limit
+     * reads it as "do not check", which is the escape hatch for a chat that really does need a whole
+     * file in one call. Anything else unusable still falls back to [fallback].
+     */
+    private fun JBTextField.zeroOrPositiveIntOr(fallback: Int): Int =
+        text.trim().toIntOrNull()?.takeIf { it >= 0 } ?: fallback
 
     /**
      * Scans the directories in the field and reports what was found in each.

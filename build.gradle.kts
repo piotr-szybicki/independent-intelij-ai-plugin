@@ -39,6 +39,15 @@ dependencies {
 
     implementation("org.commonmark:commonmark:0.29.0")
 
+    // JTokkit is a JVM port of OpenAI's tiktoken, and what [TokenCounter] measures tool output with
+    // before it goes into the conversation. Pure Java with the encodings as classpath resources --
+    // no native library and no network, which a tokenizer that runs on every tool result has to be.
+    //
+    // The count is OpenAI's rather than every provider's: the endpoint here can be any of them and
+    // they do not share a tokenizer. Close enough for the job, which is deciding whether a result is
+    // enormous, not billing for it.
+    implementation("com.knuddels:jtokkit:1.1.0")
+
     // ModelUsageDatabase writes one row per request to the MySQL server named in the settings.
     //
     // 9.7.0 rather than the current 26.7.0: it is the last of the 9.x line, and the one with the

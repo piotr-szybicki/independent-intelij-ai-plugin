@@ -163,6 +163,25 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
         var maxIterations: Int = 10,
 
         /**
+         * The most a single tool result may come to before the agent refuses to send it and ends the
+         * turn. Counted with
+         * [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.TokenCounter], so it is
+         * a real tokenizer's answer rather than a guess from the character count. Zero turns the
+         * check off.
+         *
+         * 500 by default, which is small on purpose: it is the size a tool result has to be for the
+         * call to have been a *good* one -- a read of the right file, a search that found the right
+         * dozen lines. Past it the usual cause is a call aimed too wide, and one of those costs the
+         * whole conversation, not just the turn: what a tool returns is re-sent with every later
+         * request until compaction drops it.
+         *
+         * Here rather than in the configuration file, for the same reason as [maxIterations]: it is
+         * a guard on the loop and on what the tools hand it, and none of that changes when the
+         * provider does.
+         */
+        var maxToolOutputTokens: Int = 500,
+
+        /**
          * MCP servers, in the `mcpServers` JSON every other MCP client uses, so an entry can be
          * pasted in from a server's own README. Kept as text rather than a structured list because
          * that is the form it arrives in, and parsing it is [com.github.piotrszybicki.independentintelijaiplugin.mcp.McpServerConfig]'s job.
