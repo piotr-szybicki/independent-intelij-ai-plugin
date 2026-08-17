@@ -39,6 +39,8 @@ launched from a desktop shortcut or Toolbox will not see a variable exported in 
   Replacing one entry's URL would leave that entry's protocol, token header and token describing a
   provider the URL no longer points at, which is a request that cannot be sent rather than an
   override. Switching endpoint is the dropdown.
+- Optionally, **`INTELIJ_AI_SETTINGS`** to keep the configuration file somewhere other than the
+  project root — see [Keeping the file outside the project](#keeping-the-file-outside-the-project).
 
 Which provider a request goes to is read from **`independent-ai-plugin-settings.json`** in the
 project root, written with three example entries the first time a project is opened:
@@ -73,6 +75,33 @@ project root, written with three example entries the first time a project is ope
 
 A `token` starting with `$` names an environment variable; anything else is used as the token
 itself, which the file being plain text and usually in version control is the argument against.
+
+### Keeping the file outside the project
+
+Set **`INTELIJ_AI_SETTINGS`** to a path and that file is read instead of the one in the project root
+— one set of providers for every project on the machine, kept out of version control:
+
+```bash
+setx INTELIJ_AI_SETTINGS "%USERPROFILE%\.config\independent-ai-plugin-settings.json"
+```
+
+A directory is taken as the directory the file is in, so `~/.config` and
+`~/.config/independent-ai-plugin-settings.json` mean the same thing. `~` is your home directory, and
+a relative path is resolved against whatever the IDE was started in, so make it absolute.
+
+While the variable is set the file is **only read**:
+
+- No starter file is written, at that path or in the project root.
+- **Fill In Defaults** refuses — the file is yours to edit, and it may be shared by every project on
+  the machine. **Edit File** still opens it.
+- If nothing is at that path, the plugin does not start: the tool window opens on the error instead
+  of a chat, an error balloon says the same at startup, and the side-chat button is hidden. It does
+  **not** fall back to the project file or to the built-in default, because a variable naming a file
+  is a statement about which providers to use, and quietly using different ones would be worse than
+  saying so. Create the file, or unset the variable and restart the IDE.
+
+The variable is read on every use, but the tool window is built once per project, so a change to it
+takes effect on the next IDE start.
 
 Everything after `token` is optional and has a default:
 

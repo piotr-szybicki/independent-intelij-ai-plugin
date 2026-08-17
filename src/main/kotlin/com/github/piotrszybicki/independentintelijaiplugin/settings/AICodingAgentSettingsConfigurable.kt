@@ -157,6 +157,13 @@ class AICodingAgentSettingsConfigurable : Configurable {
                     "provider is this dropdown rather than four fields that are briefly wrong " +
                     "between edits. It is written with three example entries the first time a " +
                     "project is opened, and is never rewritten afterwards.<br/>" +
+                    "Set <code>${AgentConfiguration.PATH_ENV_VAR}</code> to a path and that file is " +
+                    "read instead &mdash; one set of providers for every project on the machine, " +
+                    "kept outside version control. A directory means " +
+                    "<code>${AgentConfiguration.FILE_NAME}</code> inside it. Such a file is only " +
+                    "ever read: nothing is written to it and no starter file is created, and if it " +
+                    "is not there the tool window refuses to open rather than falling back to a " +
+                    "provider you did not choose.<br/>" +
                     "A <code>token</code> starting with <code>\$</code> names an environment " +
                     "variable (<code>\$${AICodingAgentCredentials.ENV_VAR}</code>) and anything " +
                     "else is the token itself &mdash; the file is plain text and is usually in " +
@@ -480,11 +487,19 @@ class AICodingAgentSettingsConfigurable : Configurable {
             Messages.showInfoMessage("Open a project first -- the file lives in the project root.", "Configuration File")
             return
         }
-        val file = AgentConfigurations.getInstance(project).virtualFile() ?: run {
-            Messages.showErrorDialog(
-                "Could not create ${AgentConfiguration.FILE_NAME} in ${project.basePath}.",
-                "Configuration File",
-            )
+        val service = AgentConfigurations.getInstance(project)
+        val file = service.virtualFile() ?: run {
+            // An external file is never created, so "could not create it" would be wrong as well as
+            // unhelpful: the thing to do about it is fix the variable, which means being told the
+            // path it currently names.
+            val message = if (service.isExternal) {
+                "\$${AgentConfiguration.PATH_ENV_VAR} names ${service.path}, which is not there.\n\n" +
+                    "Nothing is created while that variable is set. Create the file at that path, or " +
+                    "unset the variable to use ${AgentConfiguration.FILE_NAME} in the project root."
+            } else {
+                "Could not create ${AgentConfiguration.FILE_NAME} in ${project.basePath}."
+            }
+            Messages.showErrorDialog(message, "Configuration File")
             return
         }
         FileEditorManager.getInstance(project).openFile(file, true)
@@ -503,6 +518,19 @@ class AICodingAgentSettingsConfigurable : Configurable {
             return
         }
         val service = AgentConfigurations.getInstance(project)
+        // A file named by the environment is read and never written, so this button has nothing to
+        // offer for one -- and saying so beats a rewrite that silently reformats a file shared by
+        // every project on the machine.
+        if (service.isExternal) {
+            Messages.showInfoMessage(
+                "${service.path} is only read, never written, because " +
+                    "\$${AgentConfiguration.PATH_ENV_VAR} names it.\n\n" +
+                    "Fill in the fields yourself, or unset that variable to have the plugin manage " +
+                    "${AgentConfiguration.FILE_NAME} in the project root.",
+                "Configuration File",
+            )
+            return
+        }
         val current = service.load()
         if (current.configurations.isEmpty()) {
             Messages.showErrorDialog(

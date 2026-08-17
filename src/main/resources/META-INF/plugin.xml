@@ -5,7 +5,7 @@
     <vendor>piotr-szybicki</vendor>
     <description><![CDATA[
         <p><b>AICodingAgent</b> is a simple chat tool window backed by the Anthropic Messages API, or by any provider speaking OpenAI's Chat Completions or Responses API &mdash; OpenAI, Azure, Microsoft Foundry, OpenRouter, or a local vLLM or Ollama server.</p>
-        <p>Set the <code>AI_API_KEY</code> environment variable to your API key and restart the IDE, then chat from the tool window. Providers live in <code>independent-ai-plugin-settings.json</code> in the project root &mdash; one entry per model or provider, with the token read from an environment variable when it starts with <code>$</code> &mdash; and the entry in force is picked from a dropdown under Settings | Tools | AICodingAgent, where the token budget, tools, MCP servers and skills are configured too.</p>
+        <p>Set the <code>AI_API_KEY</code> environment variable to your API key and restart the IDE, then chat from the tool window. Providers live in <code>independent-ai-plugin-settings.json</code> in the project root, or wherever <code>INTELIJ_AI_SETTINGS</code> points &mdash; one entry per model or provider, with the token read from an environment variable when it starts with <code>$</code> &mdash; and the entry in force is picked from a dropdown under Settings | Tools | AICodingAgent, where the token budget, tools, MCP servers and skills are configured too.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
@@ -25,9 +25,13 @@
             instance="com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable"
             id="com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable"
             displayName="AICodingAgent"/>
-        <!-- Writes independent-ai-plugin-settings.json into the project root when it is missing. -->
+        <!-- Writes independent-ai-plugin-settings.json into the project root when it is missing, and
+             reports the one state the plugin will not run in: INTELIJ_AI_SETTINGS naming a file that
+             is not there. -->
         <postStartupActivity
             implementation="com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurationStartup"/>
+        <!-- Sticky: the only thing reported through it is why the tool window will not open. -->
+        <notificationGroup id="AICodingAgent" displayType="STICKY_BALLOON"/>
     </extensions>
 
     <actions>

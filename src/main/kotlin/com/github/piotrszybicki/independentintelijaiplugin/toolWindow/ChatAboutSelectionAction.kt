@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.IconLoader
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 
 /**
  * The "Open a Side Chat" button in the editor's floating code toolbar.
@@ -27,7 +28,13 @@ class ChatAboutSelectionAction : AnAction(
 
     override fun update(e: AnActionEvent) {
         val editor = e.getData(CommonDataKeys.EDITOR)
-        e.presentation.isEnabledAndVisible = editor?.selectionModel?.hasSelection() == true
+        val project = e.project
+        // Hidden outright when the plugin will not run, rather than a button that opens a tool
+        // window explaining itself: this one sits in the editor's floating toolbar next to actions
+        // that all do something -- see AgentConfigurations.unavailableReason.
+        val available = project != null &&
+            AgentConfigurations.getInstance(project).unavailableReason == null
+        e.presentation.isEnabledAndVisible = available && editor?.selectionModel?.hasSelection() == true
     }
 
     override fun actionPerformed(e: AnActionEvent) {

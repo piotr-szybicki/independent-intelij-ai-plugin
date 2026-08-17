@@ -15,8 +15,9 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 /**
- * Reads [AgentConfiguration.FILE_NAME] from the project root and turns a chat's chosen names back
- * into the configuration behind them.
+ * Reads [AgentConfiguration.FILE_NAME] from the project root -- or from wherever
+ * [AgentConfiguration.PATH_ENV_VAR] points -- and turns a chat's chosen names back into the
+ * configuration behind them.
  *
  * The file is read on every call rather than cached: it is a few hundred bytes, it is edited by hand
  * in the editor next to this, and a cache would mean an edit that appears to do nothing until the
@@ -43,19 +44,60 @@ class AgentConfigurations(private val project: Project) {
      */
     data class LoadedDatabase(val database: UsageDatabaseConfig, val error: String?)
 
-    /** Where the file is, or null for a project with no directory on disk. */
+    /**
+     * Where the file is: what [AgentConfiguration.PATH_ENV_VAR] names, or the project root, or null
+     * for a project with no directory on disk and no variable set.
+     *
+     * The variable wins over the project, and one variable serves every project the IDE has open --
+     * which is the point of it. A path is read from the environment on every call rather than kept,
+     * for the same reason the file's contents are: nothing here is expensive, and a cached answer
+     * would mean a variable changed and the IDE restarted before it counted.
+     */
     val path: Path?
-        get() = project.basePath?.let { Paths.get(it, AgentConfiguration.FILE_NAME) }
+        get() = configuredPath() ?: project.basePath?.let { Paths.get(it, AgentConfiguration.FILE_NAME) }
+
+    /** Whether the location came from the environment rather than from the project. */
+    val isExternal: Boolean
+        get() = configuredPath() != null
+
+    /**
+     * Why the plugin must not start, or null when it may.
+     *
+     * The one fatal state there is: [AgentConfiguration.PATH_ENV_VAR] names a file that is not there.
+     * Everything else here degrades -- a missing project file is written, an unparseable one falls
+     * back to [AgentConfiguration.fallback] -- because a chat that still works while the settings
+     * page says what is wrong beats no chat at all. This does not degrade, because the variable is a
+     * deliberate instruction about which providers to use: falling back would send the conversation
+     * somewhere the user has explicitly said not to look, and writing a starter file at that path
+     * would invent one. So the tool window refuses to open with the path on it instead -- see
+     * [com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory] and
+     * [AgentConfigurationStartup].
+     */
+    val unavailableReason: String?
+        get() {
+            val configured = configuredPath() ?: return null
+            if (Files.exists(configured)) return null
+            return "\$${AgentConfiguration.PATH_ENV_VAR} names $configured, which is not there."
+        }
 
     /**
      * Writes the starter file if there is nothing there yet, and returns the file either way.
      *
      * Called from startup and from the settings page. Never overwrites: the file belongs to the
      * user from the moment it exists, and an entry deleted from it is meant to stay deleted.
+     *
+     * Writes nothing at all when [AgentConfiguration.PATH_ENV_VAR] is set. A variable that names a
+     * file has been pointed at one that is meant to exist, so a path with a typo in it should be
+     * reported as missing rather than quietly filled with three example providers -- and the path
+     * can be anywhere, which is not somewhere to be creating files uninvited.
      */
     fun createIfMissing(): Path? {
         val file = path ?: return null
         if (Files.exists(file)) return file
+        if (isExternal) {
+            LOG.info("\$${AgentConfiguration.PATH_ENV_VAR} names $file, which is not there; not creating it")
+            return null
+        }
         val failure = save(AgentConfiguration.render(AgentConfiguration.STARTER, UsageDatabaseConfig.OFF))
         if (failure != null) return null
         LOG.info("wrote a starter configuration file to $file")
@@ -92,8 +134,17 @@ class AgentConfigurations(private val project: Project) {
      * changes, so everything watching it is told in the right order.
      *
      * Returns null on success, or the reason it could not be written.
+     *
+     * Refuses outright while [AgentConfiguration.PATH_ENV_VAR] is set. A file named by the
+     * environment is the user's own, kept deliberately outside the project and quite possibly shared
+     * by every project on the machine -- one project's idea of what belongs in it is not a reason to
+     * rewrite it. The plugin reads that file and nothing else touches it.
      */
     private fun save(text: String): String? {
+        configuredPath()?.let {
+            return "$it is only read, never written, because \$${AgentConfiguration.PATH_ENV_VAR} " +
+                "names it -- edit it yourself"
+        }
         val basePath = project.basePath ?: return "this project has no directory on disk"
         return try {
             // Dispatches to the EDT and waits, so this is callable from startup and from the
@@ -134,9 +185,7 @@ class AgentConfigurations(private val project: Project) {
 
     fun load(): Loaded {
         val file = path ?: return Loaded(emptyList(), "this project has no directory on disk")
-        if (!Files.exists(file)) {
-            return Loaded(emptyList(), "${AgentConfiguration.FILE_NAME} is not in the project root")
-        }
+        if (!Files.exists(file)) return Loaded(emptyList(), notThere())
         return try {
             val configurations = AgentConfiguration.parseAll(text().orEmpty())
             if (configurations.isEmpty()) {
@@ -150,6 +199,14 @@ class AgentConfigurations(private val project: Project) {
             Loaded(emptyList(), "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}")
         }
     }
+
+    /**
+     * Why there is nothing to read, said so the two places the file can be are told apart: a missing
+     * project file is the ordinary first-run state, while a missing external one is a variable to fix
+     * and has to name the path it was pointed at.
+     */
+    private fun notThere(): String =
+        unavailableReason ?: "${AgentConfiguration.FILE_NAME} is not in the project root"
 
     /**
      * The `usage-database` section, or [UsageDatabaseConfig.OFF] and the reason when it cannot be
@@ -194,6 +251,30 @@ class AgentConfigurations(private val project: Project) {
         return configuration.withModel(modelName)
     }
 
+
+    /**
+     * What [AgentConfiguration.PATH_ENV_VAR] names, or null when it says nothing usable -- see
+     * [AgentConfiguration.configuredPath], which is where the reading of it lives.
+     *
+     * A variable that is set and still resolves to nothing is logged here rather than there: it is a
+     * path that cannot exist on this OS, so the project root is used and the log line is the only
+     * place that says why.
+     */
+    private fun configuredPath(): Path? {
+        val raw = System.getenv(AgentConfiguration.PATH_ENV_VAR)
+        val resolved = AgentConfiguration.configuredPath(raw)
+        if (resolved == null && !raw.isNullOrBlank() && warnedAbout != raw) {
+            // Once per value: this is asked on every action update as well as on every read, and a
+            // variable that cannot be a path stays one for the life of the IDE.
+            warnedAbout = raw
+            LOG.warn("\$${AgentConfiguration.PATH_ENV_VAR} is not a usable path: ${raw.trim()}")
+        }
+        return resolved
+    }
+
+    /** The unusable value already logged, so [configuredPath] says it once rather than per call. */
+    @Volatile
+    private var warnedAbout: String? = null
 
     companion object {
         private val LOG = Logger.getInstance(AgentConfigurations::class.java)

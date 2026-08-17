@@ -19,6 +19,7 @@ import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.text.StringUtil
 import com.intellij.openapi.wm.ToolWindow
 import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.InplaceButton
@@ -111,6 +112,16 @@ class ChatToolWindowFactory : ToolWindowFactory {
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+        // The one state that is refused rather than worked around: a configuration file named by the
+        // environment that is not there. No panel is built, so there is nothing to send from and no
+        // chat can start on a provider the user did not choose -- see
+        // AgentConfigurations.unavailableReason.
+        AgentConfigurations.getInstance(project).unavailableReason?.let { reason ->
+            val content = ContentFactory.getInstance().createContent(unavailablePanel(reason), null, false)
+            toolWindow.contentManager.addContent(content)
+            return
+        }
+
         val chatPanel = ChatPanel(project)
         panels[project] = chatPanel
         val content = ContentFactory.getInstance().createContent(chatPanel.component, null, false)
@@ -128,6 +139,29 @@ class ChatToolWindowFactory : ToolWindowFactory {
     }
 
     override fun shouldBeAvailable(project: Project) = true
+
+    /**
+     * What the tool window holds instead of a chat when the plugin will not run: the reason, and the
+     * two ways out of it.
+     *
+     * A panel rather than a hidden tool window, because a tool window that is simply not there is
+     * indistinguishable from a plugin that failed to install -- and the path in the message is the
+     * whole answer.
+     */
+    private fun unavailablePanel(reason: String): JComponent = JPanel(BorderLayout()).apply {
+        border = JBUI.Borders.empty(16)
+        add(
+            JBLabel(
+                "<html><b>AICodingAgent is not available.</b><br/><br/>" +
+                    StringUtil.escapeXmlEntities(reason) + "<br/><br/>" +
+                    "Create the file at that path, or unset <code>${AgentConfiguration.PATH_ENV_VAR}</code> " +
+                    "and restart the IDE to use <code>${AgentConfiguration.FILE_NAME}</code> in the " +
+                    "project root.</html>"
+            ).apply { verticalAlignment = SwingConstants.TOP },
+            BorderLayout.CENTER,
+        )
+    }
+
     private class ChatPanel(private val project: Project) : Disposable {
 
         private val history = mutableListOf<ChatMessage>()

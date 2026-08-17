@@ -4,6 +4,9 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.Paths
 
 /** Raised when the configuration file cannot be turned into a list of configurations. */
 class AgentConfigurationException(message: String) : Exception(message)
@@ -147,6 +150,46 @@ data class AgentConfiguration(
 
         /** Sits in the project root, next to the code it configures. */
         const val FILE_NAME = "independent-ai-plugin-settings.json"
+
+        /**
+         * The variable that moves the file somewhere else: set it to a path and that file is read
+         * instead of the one in the project root, and no starter file is ever written.
+         *
+         * For the case the project-root default is wrong for -- one set of providers shared by every
+         * project on the machine, kept outside version control because the entries name real
+         * endpoints. Nothing is created when it is set: a variable pointing at a file that is not
+         * there is a path to fix, and writing examples over the top of it would hide that. See
+         * [AgentConfigurations.path].
+         */
+        const val PATH_ENV_VAR = "INTELIJ_AI_SETTINGS"
+
+        /**
+         * The file [raw] -- the value of [PATH_ENV_VAR] -- names, or null when it is unset, empty, or
+         * not a path this platform can make sense of.
+         *
+         * Unset and unusable give the same answer on purpose: the alternative is a project that
+         * cannot read its configuration at all because a variable somewhere has a stray quote in it,
+         * and falling back to the project root leaves the file the user can see being the file that
+         * is read.
+         *
+         * A directory is taken as the directory the file is in, since "a location for the
+         * configuration file" is as likely to be typed as a folder as as a filename, and [FILE_NAME]
+         * inside it is the only thing that can mean. `~` is the home directory, which is where a file
+         * shared by every project usually goes.
+         */
+        fun configuredPath(raw: String?): Path? {
+            val trimmed = raw?.trim().orEmpty()
+            if (trimmed.isEmpty()) return null
+            val home = System.getProperty("user.home").orEmpty()
+            val expanded = when {
+                trimmed == "~" -> home
+                trimmed.startsWith("~/") || trimmed.startsWith("~\\") -> home + trimmed.substring(1)
+                else -> trimmed
+            }
+            val path = runCatching { Paths.get(expanded).toAbsolutePath().normalize() }.getOrNull()
+                ?: return null
+            return if (Files.isDirectory(path)) path.resolve(FILE_NAME) else path
+        }
 
         const val DEFAULT_MODEL = "claude-sonnet-5"
         const val DEFAULT_ENDPOINT_URL = "https://api.anthropic.com/v1/messages"
