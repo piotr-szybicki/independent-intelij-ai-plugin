@@ -3,8 +3,10 @@ package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 import com.intellij.icons.AllIcons
 import com.intellij.ui.AnimatedIcon
 import com.intellij.openapi.ide.CopyPasteManager
+import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.IconLoader
 import com.intellij.ui.InplaceButton
+import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.panels.VerticalLayout
@@ -31,7 +33,7 @@ import javax.swing.SwingUtilities
  * Scrollable transcript of a conversation: user messages as tinted bubbles, the model's replies as
  * plain markdown, and tool calls as compact cards that expand on click.
  */
-internal class ChatTranscript(onCancel: () -> Unit) {
+internal class ChatTranscript(private val project: Project, onCancel: () -> Unit) {
 
     private val rows = mutableListOf<ChatRow>()
     private val placeholder = PlaceholderRow()
@@ -140,7 +142,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         val turn = currentTurn
         if (turn == null) {
             // A new bubble is a row like any other -- addRow gives it its width and scrolls to it.
-            addRow(AiTurnRow(row).also { fresh ->
+            addRow(AiTurnRow(row) { markdown -> TranscriptExport.save(project, markdown) }.also { fresh ->
                 currentTurn = fresh
                 pendingCost?.let { (text, tooltip) -> fresh.setCost(text, tooltip) }
             })
@@ -230,6 +232,13 @@ internal class ChatTranscript(onCancel: () -> Unit) {
 
         /** Called with the width available inside the transcript's padding. */
         open fun applyAvailableWidth(width: Int) {}
+
+        /**
+         * What this row contributes to an export, or null when it contributes nothing.
+         *
+         * The markdown the row was built from rather than the HTML it drew: see [TranscriptExport].
+         */
+        open fun toMarkdown(): String? = null
     }
 
     private class PlaceholderRow : ChatRow(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)) {
@@ -280,7 +289,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
      * the point it had nothing left to do, inside a single bubble. The mirror of [UserRow] -- same
      * shape, held off the opposite edge, and neutral rather than accent-tinted.
      */
-    private class AiTurnRow(first: ChatRow) : ChatRow(BorderLayout()) {
+    private class AiTurnRow(first: ChatRow, onExport: (String) -> Unit) : ChatRow(BorderLayout()) {
 
         private val contents = mutableListOf<ChatRow>()
 
@@ -312,6 +321,67 @@ internal class ChatTranscript(onCancel: () -> Unit) {
             repaint()
         }
 
+        private var exportHovered = false
+
+        /**
+         * Saves this reply to a file, because a chat window is a poor place to keep an answer that
+         * is worth coming back to.
+         *
+         * On the turn rather than on the transcript as a whole: one turn is one answer, and it is an
+         * answer -- not a conversation -- that gets pasted into a ticket or kept next to the code it
+         * describes. A word rather than an icon, because unlike the copy button on a tool card there
+         * is nothing about this spot that would suggest what the icon meant.
+         */
+        private val export = ActionLink().apply {
+            text = "Export MD"
+            font = JBFont.small()
+            toolTipText = "Save this reply as a Markdown file"
+            addActionListener { onExport(toMarkdown()) }
+            // The card behind it draws the hover, and the pointer is over the link rather than over
+            // the card for all but a few pixels of padding.
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseEntered(e: MouseEvent) = setExportHovered(true)
+                override fun mouseExited(e: MouseEvent) = setExportHovered(false)
+            })
+        }
+
+        /**
+         * The outline that makes the link read as something to press.
+         *
+         * The same card the tool rows use, at the same arc and the same three colors, so the one
+         * pressable thing in a bubble and the ones above it are recognisably the same kind of
+         * control -- a second style of button for a single word would be a style to learn for
+         * nothing.
+         */
+        private val exportButton = RoundedPanel(
+            BorderLayout(),
+            arc = { ChatMetrics.smallArc },
+            fill = { if (exportHovered) ChatColors.cardHover else ChatColors.card },
+            stroke = { ChatColors.cardBorder },
+        ).apply {
+            border = JBUI.Borders.empty(JBUI.scale(2), JBUI.scale(7))
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            add(export, BorderLayout.CENTER)
+        }
+
+        /** Called from the link's listener, so it resolves after both fields are built. */
+        private fun setExportHovered(hovered: Boolean) {
+            exportHovered = hovered
+            exportButton.repaint()
+        }
+
+        /**
+         * The strip along the bottom of the bubble: what the reply cost, and the way to keep it.
+         *
+         * The cost is pushed to the far side rather than left next to the button, so the figure
+         * stays where it has always been -- the corner a reader's eye goes to for it.
+         */
+        private val footer = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+            isOpaque = false
+            add(exportButton, BorderLayout.WEST)
+            add(cost, BorderLayout.CENTER)
+        }
+
         init {
             border = JBUI.Borders.emptyRight(ChatMetrics.bubbleIndent)
             add(
@@ -330,7 +400,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
                         BorderLayout.NORTH,
                     )
                     add(stack, BorderLayout.CENTER)
-                    add(cost, BorderLayout.SOUTH)
+                    add(footer, BorderLayout.SOUTH)
                 },
                 BorderLayout.CENTER,
             )
@@ -346,9 +416,12 @@ internal class ChatTranscript(onCancel: () -> Unit) {
             val inner = width - ChatMetrics.bubbleIndent - 2 * ChatMetrics.bubblePadding
             contents.forEach { it.applyAvailableWidth(inner) }
         }
+
+        /** Everything in the bubble, in the order the model produced it. */
+        override fun toMarkdown(): String = contents.mapNotNull { it.toMarkdown() }.joinToString("\n\n")
     }
 
-    private class AssistantRow(markdown: String) : ChatRow(BorderLayout()) {
+    private class AssistantRow(private val markdown: String) : ChatRow(BorderLayout()) {
 
         private val body = HtmlTextPane()
 
@@ -358,12 +431,22 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         }
 
         override fun applyAvailableWidth(width: Int) = body.applyWidth(width)
+
+        override fun toMarkdown(): String? = markdown.trim().takeIf { it.isNotEmpty() }
     }
 
     /** One tool invocation, collapsed to a single line until clicked. */
     private class ToolRow(
-        name: String,
-        summary: String,
+        /**
+         * Not `name`, which is what it was called while it was a constructor parameter.
+         *
+         * The header below is built inside `apply` blocks on `JPanel`s, and a panel has a `name` of
+         * its own from `java.awt.Component`. A parameter is a local and wins that; a property is a
+         * member of the outer class and loses to the nearer receiver, so `JBLabel(name)` quietly
+         * became `JBLabel(panel.name)` -- null, and an @NotNull failure on every tool row.
+         */
+        private val toolName: String,
+        private val summary: String,
         private var details: String,
         status: ToolStatus,
     ) : ChatRow(BorderLayout()), RunningTool {
@@ -418,7 +501,7 @@ internal class ChatTranscript(onCancel: () -> Unit) {
                     JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
                         isOpaque = false
                         add(
-                            JBLabel(name).apply {
+                            JBLabel(toolName).apply {
                                 font = JBFont.small()
                                 foreground = ChatColors.foreground
                             },
@@ -520,6 +603,19 @@ internal class ChatTranscript(onCancel: () -> Unit) {
         }
 
         private fun detailWidth(width: Int) = width - 2 * JBUI.scale(7)
+
+        /**
+         * The line, not the output: a quoted note that the call happened.
+         *
+         * The output is deliberately left out. It is the one part of a turn that can run to
+         * megabytes -- a file read, a full test log -- and an export is meant to be the answer in a
+         * readable state, not the working that produced it. The card's own copy button is still
+         * there for the times the output is what is wanted.
+         */
+        override fun toMarkdown(): String {
+            val what = summary.trim().replace('`', '\'')
+            return if (what.isEmpty()) "> 🔧 `$toolName`" else "> 🔧 `$toolName` — $what"
+        }
 
         private fun escapeHtml(text: String) =
             text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

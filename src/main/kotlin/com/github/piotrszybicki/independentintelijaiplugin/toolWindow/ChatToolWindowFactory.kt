@@ -242,7 +242,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             skills = { SkillCatalog.describe(project) },
         )
 
-        private val transcript = ChatTranscript(onCancel = { cancelTurn() })
+        private val transcript = ChatTranscript(project, onCancel = { cancelTurn() })
 
         /** Set for the whole turn; read by the agent between steps and by the pooled thread's catch. */
         private val cancelled = AtomicBoolean(false)

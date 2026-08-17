@@ -178,7 +178,7 @@ class AgentConfigurations(private val project: Project) {
         val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file.toFile()) ?: return onDisk
         // getCachedDocument, not getDocument: nothing here is worth loading a document for a file
         // the user never opened, and a file never opened cannot be holding an edit the disk lacks.
-        return ReadAction.compute<String?, RuntimeException> {
+        return ReadAction.computeBlocking<String?, RuntimeException> {
             FileDocumentManager.getInstance().getCachedDocument(virtualFile)?.text
         } ?: onDisk
     }

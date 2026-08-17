@@ -32,6 +32,10 @@
             implementation="com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurationStartup"/>
         <!-- Sticky: the only thing reported through it is why the tool window will not open. -->
         <notificationGroup id="AICodingAgent" displayType="STICKY_BALLOON"/>
+        <!-- Where a reply was exported to. Its own group so it can fade: the user has just been
+             through a save dialog and knows it happened, so the balloon is only there for the path
+             and the link that opens it. -->
+        <notificationGroup id="AICodingAgent.Export" displayType="BALLOON"/>
     </extensions>
 
     <actions>
