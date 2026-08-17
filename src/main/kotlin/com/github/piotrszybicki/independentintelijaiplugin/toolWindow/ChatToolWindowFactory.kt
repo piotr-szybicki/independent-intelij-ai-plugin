@@ -1122,6 +1122,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private fun startTurn(sizeBeforeTurn: Int) {
             setBusy(true)
+            // The request is going out again, so the failure the last one ended in is over: the red
+            // frame and its Retry button come off before anything else happens.
+            transcript.clearRequestFailure()
             // Before anything goes out: from here the withheld notes are on their way to the
             // provider, and an approval after that would rewrite a block it has already been sent.
             settleApprovals()
@@ -1152,8 +1155,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 val endpoint = AICodingAgentEndpoint.from(configuration)
                 if (endpoint.token.isBlank()) {
                     ApplicationManager.getApplication().invokeLater {
+                        val dropped = history.drop(sizeBeforeTurn)
                         rollbackHistoryTo(sizeBeforeTurn)
                         setBusy(false)
+                        // Retry as well as the dialog: the token is fixed in settings or in the
+                        // environment, and this is what sends the message once it has been -- without
+                        // it the request the rollback just took out of the conversation would have to
+                        // be typed again.
+                        offerRetry(sizeBeforeTurn, dropped)
                         promptForMissingApiKey(configuration)
                     }
                     return@executeOnPooledThread
@@ -1295,13 +1304,53 @@ class ChatToolWindowFactory : ToolWindowFactory {
                                 // results in it, discarding them would leave the model blind to work
                                 // the transcript still shows and to file changes that really did
                                 // happen.
-                                if (history.size <= sizeBeforeTurn + 1) rollbackHistoryTo(sizeBeforeTurn)
+                                val dropped = if (history.size <= sizeBeforeTurn + 1) {
+                                    // Held rather than lost: this is what Retry has to put back
+                                    // before it can send the conversation again.
+                                    history.drop(sizeBeforeTurn).also { rollbackHistoryTo(sizeBeforeTurn) }
+                                } else {
+                                    emptyList()
+                                }
                                 showError(message)
+                                offerRetry(sizeBeforeTurn, dropped)
                             }.onFailure { log.warn("Could not report the failure in the transcript", it) }
                         }
                         endTurn()
                     }
                 }
+            }
+        }
+
+        /**
+         * Frames the failed request in red and puts a Retry button under it.
+         *
+         * [dropped] is whatever the failure path took back out of the conversation -- the user's
+         * message, when the turn died before anything else happened, and nothing at all when it got
+         * far enough to have tool results worth keeping. Retry is what puts it back.
+         */
+        private fun offerRetry(sizeBeforeTurn: Int, dropped: List<ChatMessage>) {
+            transcript.markRequestFailed { retryTurn(sizeBeforeTurn, dropped) }
+        }
+
+        /**
+         * Sends the failed request again, from the point the failure left the conversation at.
+         *
+         * Two cases, which is why [dropped] is carried this far. A turn that died on its opening
+         * request had that request rolled back, so retrying means putting it back and sending from
+         * where it stood -- what the user sees resent is the message their bubble still shows. A turn
+         * that died later kept everything it had done, tool results included, so there is nothing to
+         * restore and retrying is [continueTurn]'s bargain: send the conversation as it now stands.
+         */
+        private fun retryTurn(sizeBeforeTurn: Int, dropped: List<ChatMessage>) {
+            // Raced by a turn that started in the meantime -- Retry pressed just after something
+            // else was sent. The offer is stale rather than wrong, so it is dropped quietly.
+            if (!sendButton.isEnabled) return
+
+            if (dropped.isNotEmpty() && history.size == sizeBeforeTurn) {
+                history.addAll(dropped)
+                startTurn(sizeBeforeTurn)
+            } else {
+                startTurn(history.size)
             }
         }
 

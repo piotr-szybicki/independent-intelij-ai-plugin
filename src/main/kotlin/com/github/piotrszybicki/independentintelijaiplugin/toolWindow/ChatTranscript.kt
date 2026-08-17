@@ -58,6 +58,9 @@ internal class ChatTranscript(
      */
     private var lastTurn: AiTurnRow? = null
 
+    /** The last request the user sent, which is the one [markRequestFailed] is about. */
+    private var lastUserRow: UserRow? = null
+
     private val content = TranscriptPanel().apply {
         isOpaque = true
         background = ChatColors.background
@@ -124,7 +127,35 @@ internal class ChatTranscript(
 
     fun addUserMessage(markdown: String) {
         endAiTurn()
-        addRow(UserRow(markdown))
+        // Whatever failed before, this is the request a retry would be about now -- so the red frame
+        // and the button go with the row that is no longer the last one.
+        clearRequestFailure()
+        addRow(UserRow(markdown).also { lastUserRow = it })
+    }
+
+    /**
+     * Marks the last request as one the model never answered: its bubble is framed in red and a
+     * Retry button appears under it.
+     *
+     * On the request rather than beside the error line, because what a retry sends is that message
+     * -- and after a long turn the error can be a screen away from the thing it is about.
+     *
+     * Does nothing when the conversation is being replayed from disk or was started by something
+     * other than a user message: there is no row to mark, and [onRetry] is simply never wired up.
+     */
+    fun markRequestFailed(onRetry: () -> Unit) {
+        val row = lastUserRow ?: return
+        row.markFailed(onRetry)
+        content.revalidate()
+        content.repaint()
+    }
+
+    /** Takes the mark and the button away -- the retry has been taken, or the offer has expired. */
+    fun clearRequestFailure() {
+        val row = lastUserRow ?: return
+        row.clearFailure()
+        content.revalidate()
+        content.repaint()
     }
 
     fun addAssistantMessage(markdown: String) = intoAiTurn(AssistantRow(markdown))
@@ -321,6 +352,7 @@ internal class ChatTranscript(
         rows.clear()
         currentTurn = null
         lastTurn = null
+        lastUserRow = null
         pendingCost = null
         closeToolGroup()
         content.removeAll()
@@ -473,20 +505,68 @@ internal class ChatTranscript(
 
         private val body = HtmlTextPane()
 
+        /** True once the request this message started came back as a failure -- see [markFailed]. */
+        private var failed = false
+
+        /**
+         * What Retry does, replaced on every failure rather than captured once.
+         *
+         * A retry that fails again marks this same row a second time, and what has to be re-sent by
+         * then is not what had to be re-sent the first time -- the second attempt may have got
+         * further into the conversation than the first. The button is built once and reads this.
+         */
+        private var onRetry: (() -> Unit)? = null
+
+        /**
+         * Retry sits inside the bubble, under the message it would send again.
+         *
+         * Under the request rather than at the end of the transcript for the same reason Approve
+         * sits on its tool card: it is about *this* message, and it appears at the moment the frame
+         * around that message turns red, so the two read as one thing.
+         */
+        private val retry = CardButton("Retry", "Send this request to the model again") {
+            onRetry?.invoke()
+        }
+
+        private val footer = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+            isOpaque = false
+            isVisible = false
+            add(retry.component)
+        }
+
+        private val bubble = RoundedPanel(
+            BorderLayout(0, JBUI.scale(6)),
+            fill = { ChatColors.userBubble },
+            stroke = { if (failed) ChatColors.error else ChatColors.userBubbleBorder },
+        ).apply {
+            border = JBUI.Borders.empty(ChatMetrics.bubblePadding)
+            add(body, BorderLayout.CENTER)
+            add(footer, BorderLayout.SOUTH)
+        }
+
         init {
             border = JBUI.Borders.emptyLeft(ChatMetrics.bubbleIndent)
             body.setHtml(MarkdownRenderer.toHtml(MarkdownRenderer.normalizeQuoteFences(markdown)))
-            add(
-                RoundedPanel(
-                    BorderLayout(),
-                    fill = { ChatColors.userBubble },
-                    stroke = { ChatColors.userBubbleBorder },
-                ).apply {
-                    border = JBUI.Borders.empty(ChatMetrics.bubblePadding)
-                    add(body, BorderLayout.CENTER)
-                },
-                BorderLayout.CENTER,
-            )
+            add(bubble, BorderLayout.CENTER)
+        }
+
+        /** The model never answered this one: red frame, and a way to send it again. */
+        fun markFailed(action: () -> Unit) {
+            onRetry = action
+            failed = true
+            footer.isVisible = true
+            revalidate()
+            repaint()
+        }
+
+        /** Back to an ordinary request, because the offer to retry is over or has been taken. */
+        fun clearFailure() {
+            if (!failed) return
+            onRetry = null
+            failed = false
+            footer.isVisible = false
+            revalidate()
+            repaint()
         }
 
         override fun applyAvailableWidth(width: Int) {

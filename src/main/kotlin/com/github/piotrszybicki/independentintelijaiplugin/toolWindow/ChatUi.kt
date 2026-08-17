@@ -36,6 +36,15 @@ internal object ChatColors {
     val accent: Color get() = JBUI.CurrentTheme.Link.Foreground.ENABLED
     val separator: Color get() = JBColor.namedColor("Group.separatorColor", 0xEBECF0, 0x393B40)
 
+    /**
+     * The frame around a request the model never answered.
+     *
+     * The platform's own validation colour rather than a red of our own: a field that failed
+     * validation in a settings dialog is outlined in exactly this, so a bubble outlined in it reads
+     * as "this went wrong" in every theme, including the ones that pick their own red.
+     */
+    val error: Color get() = JBColor.namedColor("Component.errorFocusColor", 0xE53E4D, 0x8B3C3C)
+
     /** Bubble behind the user's own messages: the theme background nudged towards the accent hue. */
     val userBubble: Color get() = mix(background, accent, if (JBColor.isBright()) 0.10 else 0.22)
     val userBubbleBorder: Color get() = mix(background, accent, if (JBColor.isBright()) 0.28 else 0.38)
