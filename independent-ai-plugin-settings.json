@@ -1,0 +1,42 @@
+{
+  "usage-database": {
+    "url": "jdbc:mysql://localhost:3306/ai_usage?user=root&password=${env:MYSQL_PASSWORD}",
+    "enabled": true
+  },
+  "configurations": [
+    {
+      "name": "Anthropic Claude",
+      "model": "claude-sonnet-5",
+      "models": ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001", "claude-opus-4-6"],
+      "url": "https://api.anthropic.com/v1/messages",
+      "token": "$ANTHROPIC_API_KEY",
+      "header-type": "x-api-key",
+      "protocol": "anthropic-messages",
+      "thinking": "on",
+      "effort": "medium",
+      "max-tokens": 8000,
+      "context-window": 200000,
+      "additional-customizations": {
+        "anthropic-version": "2023-06-01",
+        "extra-headers": {}
+      }
+    },
+    {
+      "name": "OpenAI GPT",
+      "model": "gpt-5.6-sol",
+      "models": ["gpt-5.6-sol", "gpt-5.6-luna"],
+      "url": "https://foundry-pszybicki.services.ai.azure.com/openai/v1/responses",
+      "token": "$FOUNDRY_API_KEY",
+      "header-type": "Authorization",
+      "protocol": "openai-responses",
+      "thinking": "on",
+      "effort": "medium",
+      "max-tokens": 8000,
+      "context-window": 200000,
+      "additional-customizations": {
+        "anthropic-version": "",
+        "extra-headers": {}
+      }
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.logging
 
 /**
- * The MySQL URL from the settings, taken apart far enough to be used.
+ * The MySQL URL from the `usage-database` section of the configuration file, taken apart far enough
+ * to be used.
  *
  * Two things need doing to it that the driver will not do. The database has to be creatable, which
  * means reaching the server without naming it -- so the name is split off and a server-only URL is

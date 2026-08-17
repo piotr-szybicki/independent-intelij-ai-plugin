@@ -45,6 +45,10 @@ project root, written with three example entries the first time a project is ope
 
 ```json
 {
+  "usage-database": {
+    "url": "",
+    "enabled": true
+  },
   "configurations": [
     {
       "name": "Anthropic Claude",
@@ -83,6 +87,23 @@ Everything after `token` is optional and has a default:
 | `context-window` | what compaction measures against; `0` switches it off | `200000` |
 | `additional-customizations.anthropic-version` | sent only on the Messages API; empty omits the header | `2023-06-01` there, nothing elsewhere |
 | `additional-customizations.extra-headers` | routing or tenancy headers for a gateway | none |
+
+The same file's **`usage-database`** section says where one row per request is recorded — a MySQL
+JDBC URL in `url`, and `enabled` to stop the writing without losing it. An empty URL, or no section
+at all, records nothing. Write `${env:NAME}` for the password: the file is plain text and usually in
+version control.
+
+```json
+"usage-database": {
+  "url": "jdbc:mysql://localhost:3306/ai_usage?user=root&password=${env:MYSQL_PASSWORD}",
+  "enabled": true
+}
+```
+
+The database and its `model_requests` table are created if they are not there, so the URL may name a
+database that does not exist yet. **Test Connection** under <kbd>Settings</kbd> > <kbd>Tools</kbd> >
+<kbd>AICodingAgent</kbd> > <kbd>Logging</kbd> connects once against the file as it stands, sets the
+schema up and reports the server version, the row count and the cost recorded so far.
 
 Pick the provider and the model from the two dropdowns above the chat transcript. **Both belong to
 that conversation**: they are saved with it, a chat reopened from the history comes back on what it

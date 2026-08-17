@@ -33,6 +33,16 @@ class AgentConfigurations(private val project: Project) {
     /** What one read of the file produced: its entries, and why there are none if there are none. */
     data class Loaded(val configurations: List<AgentConfiguration>, val error: String?)
 
+    /**
+     * What one read of the `usage-database` section produced: what it says, and why it says nothing
+     * when it is there and unreadable.
+     *
+     * Separate from [Loaded] so the two cannot take each other down: a typo in the database section
+     * must not cost the chat its providers, and an unparseable provider entry must not silently stop
+     * the recording of the requests that still go out.
+     */
+    data class LoadedDatabase(val database: UsageDatabaseConfig, val error: String?)
+
     /** Where the file is, or null for a project with no directory on disk. */
     val path: Path?
         get() = project.basePath?.let { Paths.get(it, AgentConfiguration.FILE_NAME) }
@@ -46,7 +56,7 @@ class AgentConfigurations(private val project: Project) {
     fun createIfMissing(): Path? {
         val file = path ?: return null
         if (Files.exists(file)) return file
-        val failure = save(AgentConfiguration.render(AgentConfiguration.STARTER))
+        val failure = save(AgentConfiguration.render(AgentConfiguration.STARTER, UsageDatabaseConfig.OFF))
         if (failure != null) return null
         LOG.info("wrote a starter configuration file to $file")
         return file
@@ -67,8 +77,8 @@ class AgentConfigurations(private val project: Project) {
      * Deliberately not automatic. It reformats a file the user owns and may be part-way through
      * editing, which is a thing to do when asked rather than on every project open.
      */
-    fun rewrite(configurations: List<AgentConfiguration>): String? =
-        save(AgentConfiguration.render(configurations))
+    fun rewrite(configurations: List<AgentConfiguration>, database: UsageDatabaseConfig): String? =
+        save(AgentConfiguration.render(configurations, database))
 
     /**
      * Puts [text] in the file, through the VFS and inside a write action.
@@ -138,6 +148,29 @@ class AgentConfigurations(private val project: Project) {
             Loaded(emptyList(), "${AgentConfiguration.FILE_NAME} is ${e.message}")
         } catch (e: Exception) {
             Loaded(emptyList(), "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}")
+        }
+    }
+
+    /**
+     * The `usage-database` section, or [UsageDatabaseConfig.OFF] and the reason when it cannot be
+     * read.
+     *
+     * Read from the file on every call like everything else here, so switching the recording off or
+     * pointing it at another server takes effect on the next request rather than on the next IDE
+     * start. It is a few hundred bytes and the reader is off the request thread already.
+     */
+    fun usageDatabase(): LoadedDatabase {
+        val file = path ?: return LoadedDatabase(UsageDatabaseConfig.OFF, null)
+        // Missing is not an error here, unlike a missing set of configurations: a project that
+        // records nothing never writes the section, and saying so once per request would be noise
+        // about a feature that was never asked for.
+        if (!Files.exists(file)) return LoadedDatabase(UsageDatabaseConfig.OFF, null)
+        return try {
+            LoadedDatabase(UsageDatabaseConfig.parse(text().orEmpty()), null)
+        } catch (e: AgentConfigurationException) {
+            LoadedDatabase(UsageDatabaseConfig.OFF, "${AgentConfiguration.FILE_NAME} is ${e.message}")
+        } catch (e: Exception) {
+            LoadedDatabase(UsageDatabaseConfig.OFF, "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}")
         }
     }
 

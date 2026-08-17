@@ -411,22 +411,40 @@ object AICodingAgentClient {
     private val CACHEABLE_BLOCK_TYPES = setOf("text", "tool_use", "tool_result", "image", "document")
 
     /**
-     * A breakpoint that keeps what it caches for an hour rather than the default five minutes.
+     * How long each breakpoint keeps what it caches.
      *
-     * The gap it has to survive is the user reading an answer and editing code before sending the
-     * next message, which is routinely longer than five minutes -- and an entry that expires in
-     * that gap is re-read at full price, tool schemas and conversation alike. Writing the longer
-     * one costs twice the base price instead of 1.25x, so it takes three requests to pay for itself
-     * rather than two; a single turn answering a round of tool calls already sends more than that.
+     * The hour costs twice the base price to write instead of 1.25x, so it takes three requests to
+     * pay for itself rather than two. That is worth it only where the entry has to survive the gap
+     * between one turn and the next -- the user reading an answer and editing code, routinely
+     * longer than five minutes -- and letting one of those lapse re-reads the prefix it covered at
+     * full price. Which is two of the three breakpoints, not all of them:
      *
-     * On every breakpoint rather than only the system one, so a returning user reads back the
-     * conversation as well as the prefix in front of it. The extra write is smaller than it sounds:
-     * after the first request what is written is only the blocks appended since, and it is the
-     * whole history before them that is read.
+     * - [SYSTEM_TTL] spans that gap by definition. It covers the tool schemas and the system
+     *   prompt, which is the bulk of every request and unchanged for the life of the conversation.
+     * - [TAIL_TTL] spans it too. The tail mark moves forward on every request, so the entry the
+     *   next turn reads the conversation back from is the one the *last* request of this turn
+     *   wrote -- and nothing at write time can tell which iteration that will turn out to be.
+     * - [LOOKBACK_TTL] does not. That mark exists so the next request in the same agentic loop has
+     *   a breakpoint within reach (see [LOOKBACK_BLOCKS]), and that request is seconds away. Once
+     *   the loop ends the tail entry is both longer and still live, so nothing reads this one
+     *   again; an hour on it buys nothing and is charged for anyway.
+     *
+     * Split into three named constants rather than one, because which of them is right is a
+     * question about this plugin's traffic rather than about the API, and the answer is measurable:
+     * [com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase] records
+     * written and read tokens per request. Setting [TAIL_TTL] to [FIVE_MINUTES] pays 1.25x for the
+     * whole turn and takes the cross-turn read at full price when the user is slow to answer.
      */
-    private fun ephemeral(): JsonObject = JsonObject().apply {
+    private const val ONE_HOUR = "1h"
+    private const val FIVE_MINUTES = "5m"
+
+    private const val SYSTEM_TTL = ONE_HOUR
+    private const val TAIL_TTL = ONE_HOUR
+    private const val LOOKBACK_TTL = FIVE_MINUTES
+
+    private fun ephemeral(ttl: String): JsonObject = JsonObject().apply {
         addProperty("type", "ephemeral")
-        addProperty("ttl", "1h")
+        addProperty("ttl", ttl)
     }
 
     /**
@@ -447,7 +465,7 @@ object AICodingAgentClient {
         val block = JsonObject().apply {
             addProperty("type", "text")
             addProperty("text", system)
-            add("cache_control", ephemeral())
+            add("cache_control", ephemeral(SYSTEM_TTL))
         }
         return JsonArray().apply { add(block) }
     }
@@ -467,6 +485,9 @@ object AICodingAgentClient {
      * Marks at most two, which with the one on the system prompt leaves the request inside the limit.
      * Internal rather than private so that bound can be asserted in a test -- exceeding it is a
      * request the API rejects outright, and nothing before the round trip would catch it.
+     *
+     * The two are not marked alike: they are read back over different spans of time, so they are
+     * kept for different lengths of it. See [TAIL_TTL] and [LOOKBACK_TTL].
      */
     internal fun withCacheBreakpoints(messages: List<ChatMessage>): List<ChatMessage> {
         if (messages.isEmpty()) return messages
@@ -474,7 +495,7 @@ object AICodingAgentClient {
         // Not necessarily the last message: a turn can end on a thinking block, which cannot carry
         // the marker, so the newest markable message is what the tail breakpoint lands on.
         val tail = messages.indices.lastOrNull { markableBlock(messages[it]) >= 0 } ?: return messages
-        val marked = mutableSetOf(tail)
+        val marked = mutableMapOf(tail to TAIL_TTL)
 
         var blocks = 0
         for (i in tail downTo 0) {
@@ -484,12 +505,14 @@ object AICodingAgentClient {
             // tool calls, which is several blocks at once -- ends the search on itself and leaves
             // the second breakpoint unplaced, in exactly the case it exists for.
             if (i < tail && blocks >= LOOKBACK_BLOCKS && markableBlock(messages[i]) >= 0) {
-                marked.add(i)
+                marked[i] = LOOKBACK_TTL
                 break
             }
         }
 
-        return messages.mapIndexed { i, message -> if (i in marked) withBreakpoint(message) else message }
+        return messages.mapIndexed { i, message ->
+            marked[i]?.let { withBreakpoint(message, it) } ?: message
+        }
     }
 
     /**
@@ -508,8 +531,8 @@ object AICodingAgentClient {
         return -1
     }
 
-    /** A copy of [message] whose last markable content block carries a breakpoint. */
-    private fun withBreakpoint(message: ChatMessage): ChatMessage {
+    /** A copy of [message] whose last markable content block carries a breakpoint kept for [ttl]. */
+    private fun withBreakpoint(message: ChatMessage, ttl: String): ChatMessage {
         val at = markableBlock(message)
         if (at < 0) return message
 
@@ -518,7 +541,7 @@ object AICodingAgentClient {
         for (i in 0 until content.size()) {
             copy.add(
                 if (i == at) {
-                    content[i].deepCopy().asJsonObject.apply { add("cache_control", ephemeral()) }
+                    content[i].deepCopy().asJsonObject.apply { add("cache_control", ephemeral(ttl)) }
                 } else {
                     content[i]
                 },

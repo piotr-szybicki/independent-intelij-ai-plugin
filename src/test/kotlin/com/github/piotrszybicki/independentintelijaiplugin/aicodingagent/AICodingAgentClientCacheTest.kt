@@ -96,16 +96,36 @@ class AICodingAgentClientCacheTest {
     }
 
     /**
-     * The default five minutes is shorter than the gap between one message and the next, so a
-     * breakpoint that lost its TTL would expire unnoticed and cost the whole prefix every turn.
+     * The tail entry is what the next turn reads the conversation back from, and the gap it has to
+     * survive is the user reading an answer -- routinely longer than the default five minutes. A
+     * breakpoint that lost its hour would expire unnoticed and cost the whole prefix every turn.
      */
     @Test
-    fun `caches for an hour rather than the default`() {
+    fun `keeps the tail for an hour rather than the default`() {
         val marked = AICodingAgentClient.withCacheBreakpoints(listOf(message("user", 1)))
 
         val control = marked.single().content[0].asJsonObject.getAsJsonObject("cache_control")
         assertEquals("ephemeral", control.get("type").asString)
         assertEquals("1h", control.get("ttl").asString)
+    }
+
+    /**
+     * The older mark is only ever read by the next request in the same agentic loop, seconds later:
+     * once the loop ends the tail entry is longer and still live. Paying an hour's write price --
+     * twice the base rate rather than 1.25x -- for an entry superseded that fast is the difference
+     * this split exists to stop spending.
+     */
+    @Test
+    fun `keeps the lookback mark for the default five minutes`() {
+        val messages = (1..10).map { message("user", 4) }
+
+        val marked = AICodingAgentClient.withCacheBreakpoints(messages)
+
+        val tail = marked.indexOfLast { it.breakpoints() > 0 }
+        val lookback = marked.indexOfFirst { it.breakpoints() > 0 }
+        assertTrue("expected two distinct breakpoints", lookback in 0 until tail)
+        assertEquals("1h", marked[tail].ttl())
+        assertEquals("5m", marked[lookback].ttl())
     }
 
     @Test
@@ -267,4 +287,9 @@ class AICodingAgentClientCacheTest {
 
     private fun ChatMessage.breakpoints(): Int =
         content.count { it.isJsonObject && it.asJsonObject.has("cache_control") }
+
+    /** The TTL of this message's single breakpoint. */
+    private fun ChatMessage.ttl(): String =
+        content.first { it.isJsonObject && it.asJsonObject.has("cache_control") }
+            .asJsonObject.getAsJsonObject("cache_control").get("ttl").asString
 }

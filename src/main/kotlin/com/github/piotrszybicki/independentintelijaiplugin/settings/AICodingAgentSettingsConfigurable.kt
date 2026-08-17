@@ -104,9 +104,22 @@ class AICodingAgentSettingsConfigurable : Configurable {
         font = JBUI.Fonts.create("Monospaced", font.size)
     }
 
-    private val usageDatabaseCheckBox = JBCheckBox("Record each request in the database below")
+    /**
+     * What the file's `usage-database` section says, as it was last read.
+     *
+     * Displayed rather than edited, like the provider section above it and for the same reason: the
+     * URL lives in [AgentConfiguration.FILE_NAME], and a field here would be a second place to
+     * change it that the file would then disagree with. **Edit File** is how it is changed and
+     * **Reload File** is what re-reads it.
+     */
+    private var loadedDatabase: AgentConfigurations.LoadedDatabase =
+        AgentConfigurations.LoadedDatabase(UsageDatabaseConfig.OFF, null)
 
-    private val usageDatabaseUrlField = JBTextField().apply {
+    /** What the section said last time this page read it, or null before it ever has. */
+    private var lastSeenDatabase: UsageDatabaseConfig? = null
+
+    /** The URL as the file writes it -- never expanded, so a `${env:...}` password stays a name. */
+    private val usageDatabaseLabel = JBLabel().apply {
         font = JBUI.Fonts.create("Monospaced", font.size)
     }
 
@@ -242,18 +255,24 @@ class AICodingAgentSettingsConfigurable : Configurable {
         }
         group("Logging") {
             row("Usage database:") {
-                cell(usageDatabaseUrlField).align(AlignX.FILL)
+                cell(usageDatabaseLabel).align(AlignX.FILL)
             }.rowComment(
-                "A MySQL JDBC URL. Leave it empty and nothing is recorded &mdash; there is no " +
-                    "sensible guess to make about where a server is.<br/>" +
-                    "<code>jdbc:mysql://localhost:3306/ai_usage?user=root&amp;password=\${env:MYSQL_PASSWORD}</code><br/>" +
-                    "Write <code>\${env:NAME}</code> for anything secret &mdash; this field is " +
-                    "stored in plain text. The database and the <code>${ModelUsageDatabase.TABLE}</code> " +
-                    "table are created if they are not there, so the URL may name a database that " +
-                    "does not exist yet.",
+                "A MySQL JDBC URL, in the <code>${UsageDatabaseConfig.SECTION}</code> section of " +
+                    "<code>${AgentConfiguration.FILE_NAME}</code> beside the providers &mdash; it " +
+                    "names a server that belongs to the project, so it travels with it. " +
+                    "<b>Edit File</b> and <b>Reload File</b> above are how it is changed and re-read.<br/>" +
+                    "<code>\"${UsageDatabaseConfig.SECTION}\": {\"url\": " +
+                    "\"jdbc:mysql://localhost:3306/ai_usage?user=root&amp;password=\${env:MYSQL_PASSWORD}\", " +
+                    "\"enabled\": true}</code><br/>" +
+                    "Leave the URL empty and nothing is recorded &mdash; there is no sensible guess " +
+                    "to make about where a server is. <code>enabled</code> is what stops the writing " +
+                    "without losing the URL. Write <code>\${env:NAME}</code> for anything secret: " +
+                    "the file is plain text and usually in version control. The database and the " +
+                    "<code>${ModelUsageDatabase.TABLE}</code> table are created if they are not " +
+                    "there, so the URL may name a database that does not exist yet.",
             )
             row {
-                cell(usageDatabaseCheckBox)
+                button("Test Connection") { testUsageDatabase() }
             }.rowComment(
                 "One row per request &mdash; when it was sent, which conversation, to which " +
                     "provider, model and URL, the status code, how long it took, the error if it " +
@@ -271,12 +290,11 @@ class AICodingAgentSettingsConfigurable : Configurable {
                     "<code>exchanges/</code>, which <code>conversation_id</code> and " +
                     "<code>request_id</code> name the directory of.<br/>" +
                     "Writes happen on a background thread, so a server that is down slows nothing " +
-                    "up: the rows are dropped and a line goes to <code>idea.log</code>. Turning this " +
-                    "off keeps the URL but stops the writing.",
+                    "up: the rows are dropped and a line goes to <code>idea.log</code>. " +
+                    "<b>Test Connection</b> runs against the URL in the file as it stands, creating " +
+                    "the database and the table if they are not there, and reports the server " +
+                    "version, the row count and what has been recorded so far.",
             )
-            row {
-                button("Test Connection") { testUsageDatabase() }
-            }
         }
     }.also { reset() }
 
@@ -293,8 +311,8 @@ class AICodingAgentSettingsConfigurable : Configurable {
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
             skillPathsArea.text != settings.skillPaths ||
-            usageDatabaseCheckBox.isSelected != settings.logUsageToDatabase ||
-            usageDatabaseUrlField.text != settings.usageDatabaseUrl ||
+            // Nothing about the usage database is here: it is read out of the configuration file and
+            // displayed, and the file is not this page's to save.
             pendingTools != ToolCatalog.parse(settings.enabledTools)
     }
 
@@ -314,15 +332,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // Same again: the chat panel holds every built-in tool and asks the catalog which of them to
         // send each turn, so this lands on the next message without rebuilding anything.
         settings.enabledTools = ToolCatalog.format(pendingTools)
-
-        val databaseChanged = settings.usageDatabaseUrl != usageDatabaseUrlField.text ||
-            settings.logUsageToDatabase != usageDatabaseCheckBox.isSelected
-        settings.logUsageToDatabase = usageDatabaseCheckBox.isSelected
-        settings.usageDatabaseUrl = usageDatabaseUrlField.text
-        // The writer picks both up on its own -- it re-reads them per request and reconnects when the
-        // URL has changed under it. Dropping the session here is so that a server the plugin has
-        // just been told to stop writing to does not keep an open connection until the IDE exits.
-        if (databaseChanged) ModelUsageDatabase.close()
 
         val serversChanged = settings.mcpServers != mcpServersArea.text
         settings.mcpServers = mcpServersArea.text
@@ -344,8 +353,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         mcpServersArea.text = settings.mcpServers
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths
-        usageDatabaseCheckBox.isSelected = settings.logUsageToDatabase
-        usageDatabaseUrlField.text = settings.usageDatabaseUrl
         pendingTools = ToolCatalog.parse(settings.enabledTools)
         updateToolsSummary()
         reloadConfigurations()
@@ -371,6 +378,41 @@ class AICodingAgentSettingsConfigurable : Configurable {
         configurationCombo.isEnabled = loaded.configurations.isNotEmpty()
         configurationCombo.selectedItem = AgentConfigurations.select(loaded.configurations, wanted)?.name
         updateConfigurationSummary()
+        reloadUsageDatabase()
+    }
+
+    /**
+     * Re-reads the file's `usage-database` section and says what it now means.
+     *
+     * Also where the open connection is dropped when the section has changed under it. The writer
+     * would reconnect on its own -- it compares the URL it is connected to against the one it is
+     * asked for -- but a server the file has just stopped naming would otherwise keep a session open
+     * until the IDE exits, which is what the old checkbox used to close.
+     */
+    private fun reloadUsageDatabase() {
+        val previous = lastSeenDatabase
+        loadedDatabase = project()?.let { AgentConfigurations.getInstance(it).usageDatabase() }
+            ?: AgentConfigurations.LoadedDatabase(UsageDatabaseConfig.OFF, null)
+        val database = loadedDatabase.database
+        lastSeenDatabase = database
+        // Null on the first read, which is the page being opened rather than the file changing --
+        // dropping a working connection for that would be a reconnect per visit to this page.
+        if (previous != null && previous != database) ModelUsageDatabase.close()
+
+        val problem = loadedDatabase.error
+        usageDatabaseLabel.text = when {
+            problem != null -> problem
+            database.url.isBlank() -> "Not configured -- nothing is recorded."
+            !database.enabled -> "Switched off (\"enabled\": false) -- ${database.url}"
+            // Escaped rather than trusted: the URL came out of a file the user wrote, and a label
+            // reads a stray < as markup.
+            else -> "<html><code>${escape(database.url)}</code></html>"
+        }
+        usageDatabaseLabel.foreground = if (problem != null) {
+            JBColor.namedColor("Label.errorForeground", JBColor.RED)
+        } else {
+            UIUtil.getLabelForeground()
+        }
     }
 
     private fun selectedConfiguration(): AgentConfiguration? =
@@ -469,7 +511,18 @@ class AICodingAgentSettingsConfigurable : Configurable {
             )
             return
         }
-        if (service.text() == AgentConfiguration.render(current.configurations)) {
+        // Re-read rather than taken from the display, and refused when it will not parse: this
+        // rewrites the whole file, so a section that could not be read is a URL that would be
+        // replaced with an empty one.
+        val database = service.usageDatabase()
+        if (database.error != null) {
+            Messages.showErrorDialog(
+                "${database.error}\n\nFix that section first -- rewriting the file now would drop it.",
+                "Configuration File",
+            )
+            return
+        }
+        if (service.text() == AgentConfiguration.render(current.configurations, database.database)) {
             Messages.showInfoMessage(
                 "${AgentConfiguration.FILE_NAME} already spells out every field.",
                 "Configuration File",
@@ -490,7 +543,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
         )
         if (confirmed != Messages.YES) return
 
-        val failure = service.rewrite(current.configurations)
+        val failure = service.rewrite(current.configurations, database.database)
         if (failure != null) {
             Messages.showErrorDialog(failure, "Configuration File")
             return
@@ -567,15 +620,27 @@ class AICodingAgentSettingsConfigurable : Configurable {
      * Connects to the usage database once and reports what is there, creating the database and table
      * if they are not.
      *
-     * Runs against the typed URL rather than the saved one, like [testServers] and [scanSkills]: the
-     * point of the button is to find out whether an entry works before committing to it. Modal
-     * because a server that is not there is found out by waiting for a timeout, and the answer only
-     * makes sense next to the field it was read from.
+     * Runs against the file as it stands, re-read rather than taken from the label: the file is
+     * edited in the editor behind this dialog, and the point of the button is to find out whether
+     * what is in it now works. Modal because a server that is not there is found out by waiting for
+     * a timeout, and the answer only makes sense next to the URL it was read from.
+     *
+     * The URL is tested whether or not `enabled` is false: switching the recording off is not a
+     * reason to stop being able to check the server it names.
      */
     private fun testUsageDatabase() {
-        val url = usageDatabaseUrlField.text
+        reloadUsageDatabase()
+        loadedDatabase.error?.let {
+            Messages.showErrorDialog(it, "Usage Database")
+            return
+        }
+        val url = loadedDatabase.database.url
         if (url.isBlank()) {
-            Messages.showInfoMessage("No database URL is configured.", "Usage Database")
+            Messages.showInfoMessage(
+                "No database URL is configured. Add a \"${UsageDatabaseConfig.SECTION}\" section to " +
+                    "${AgentConfiguration.FILE_NAME}.",
+                "Usage Database",
+            )
             return
         }
 

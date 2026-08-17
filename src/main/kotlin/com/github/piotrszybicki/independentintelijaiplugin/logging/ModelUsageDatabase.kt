@@ -1,9 +1,11 @@
 package com.github.piotrszybicki.independentintelijaiplugin.logging
 
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.project.ProjectManager
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.mysql.cj.jdbc.Driver
 import java.math.BigDecimal
@@ -19,7 +21,9 @@ import java.util.concurrent.ConcurrentHashMap
  * One row per request in a MySQL table -- what a conversation cost, and which request was the
  * expensive one.
  *
- * A client and nothing more: the server is whatever the URL in the settings points at, and starting
+ * A client and nothing more: the server is whatever the `usage-database` section of
+ * [AgentConfiguration.FILE_NAME] points at -- see
+ * [com.github.piotrszybicki.independentintelijaiplugin.settings.UsageDatabaseConfig] -- and starting
  * it, backing it up and keeping it running are outside this plugin. What is here is the schema it
  * needs, created on the way in if it is not there, and the four writes that fill a row.
  *
@@ -479,29 +483,45 @@ object ModelUsageDatabase {
      * The URL to write to, expanded and with timeouts applied, or empty when nothing should be
      * written.
      *
-     * Read per call rather than cached, so both the checkbox and the URL take effect on the next
-     * request. Behind a `runCatching` because this is reached from a pooled thread and a service
+     * Read from the project's [AgentConfiguration.FILE_NAME] per call rather than cached, so both
+     * the switch and the URL take effect on the next request -- the same as every other thing that
+     * file says. Behind a `runCatching` because this is reached from a pooled thread and a service
      * lookup that fails during shutdown is not a reason to lose the request.
+     *
+     * The first open project, because there is no project here to ask: this and the client above it
+     * are application-level objects, and threading a project through four record calls to settle a
+     * question that only arises with two projects open at once would cost more than it answers. With
+     * one project open -- which is the case this is used in -- it is exactly the file the settings
+     * page shows.
      */
     private fun configuredUrl(): String = runCatching {
-        val settings = AICodingAgentSettingsState.getInstance().state
-        if (!settings.logUsageToDatabase) return@runCatching ""
-        val raw = settings.usageDatabaseUrl
+        val project = ProjectManager.getInstance().openProjects.firstOrNull() ?: return@runCatching ""
+        val loaded = AgentConfigurations.getInstance(project).usageDatabase()
+        loaded.error?.let { return@runCatching complain(it) }
+        if (!loaded.database.isActive) return@runCatching ""
         try {
-            JdbcUrl.prepare(raw, TIMEOUTS)
+            JdbcUrl.prepare(loaded.database.url, TIMEOUTS)
         } catch (e: Exception) {
             // A typo in the URL is the one failure here that would otherwise leave no trace at all:
             // nothing is written, and nothing is attempted, so no connection ever fails to report it.
-            // Once per distinct URL, so it does not become a line per request.
-            if (badUrlWarned != raw) {
-                badUrlWarned = raw
-                fallback.warn("The usage database URL cannot be used, so nothing is being recorded: ${e.message}")
-            }
-            ""
+            complain("the usage database URL cannot be used: ${e.message}")
         }
     }.getOrDefault("")
 
-    /** The last URL already complained about, so a typo is one line in idea.log and not a stream. */
+    /**
+     * Says once that nothing is being recorded and why, and reports back the empty URL that means
+     * it. Once per distinct complaint, so a typo left in the file is a line in `idea.log` rather
+     * than a stream of them.
+     */
+    private fun complain(reason: String): String {
+        if (badUrlWarned != reason) {
+            badUrlWarned = reason
+            fallback.warn("Nothing is being recorded to the usage database: $reason")
+        }
+        return ""
+    }
+
+    /** The last complaint already made, so a typo is one line in idea.log and not a stream. */
     @Volatile
     private var badUrlWarned = ""
 
@@ -575,10 +595,11 @@ object ModelUsageDatabase {
     /**
      * Connects once and reports what is there, for the button on the settings page.
      *
-     * Runs against the URL typed into the field rather than the saved one, the same as the MCP and
-     * skill buttons: the point is to find out whether it works before committing to it. It creates
-     * the database and table if they are not there, which is the same thing the first request would
-     * have done -- so a green answer here means the next request has nothing left to set up.
+     * Runs against the URL the file holds as it stands, re-read when the button is pressed rather
+     * than taken from what the page is displaying: the file is edited in the editor behind the
+     * dialog, and the point is to find out whether what is in it now works. It creates the database
+     * and table if they are not there, which is the same thing the first request would have done --
+     * so a green answer here means the next request has nothing left to set up.
      */
     fun test(url: String): String {
         val target = runCatching { JdbcUrl.prepare(url, TIMEOUTS) }.getOrElse { return "Bad URL: ${it.message}" }

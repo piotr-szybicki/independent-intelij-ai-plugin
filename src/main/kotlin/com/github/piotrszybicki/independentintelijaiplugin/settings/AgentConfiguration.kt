@@ -405,9 +405,22 @@ data class AgentConfiguration(
             )
         }
 
-        /** The file's whole contents, pretty-printed, as it is written on creation. */
-        fun render(configurations: List<AgentConfiguration>): String {
+        /**
+         * The file's whole contents, pretty-printed, as it is written on creation.
+         *
+         * [database] is written out along with the configurations rather than left to be preserved,
+         * because this rewrites the whole file: a section that was not passed in is a section that
+         * would be dropped, and the one thing worse than a usage database that is not recording is
+         * one whose URL disappeared when an unrelated button was pressed.
+         */
+        fun render(
+            configurations: List<AgentConfiguration>,
+            database: UsageDatabaseConfig = UsageDatabaseConfig.OFF,
+        ): String {
             val root = JsonObject().apply {
+                // First, because it is two lines and the array below is however many providers long
+                // -- a section at the bottom of that is a section nobody finds.
+                add(UsageDatabaseConfig.SECTION, database.toJson())
                 add(CONFIGURATIONS, JsonArray().apply { configurations.forEach { add(it.toJson()) } })
             }
             return GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root) + "\n"

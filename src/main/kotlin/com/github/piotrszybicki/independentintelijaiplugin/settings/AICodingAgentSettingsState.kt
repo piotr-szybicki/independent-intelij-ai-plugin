@@ -194,30 +194,19 @@ class AICodingAgentSettingsState : PersistentStateComponent<AICodingAgentSetting
          * them. Parsing is [com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot]'s job.
          */
         var skillPaths: String = SkillRoot.DEFAULT_PATHS,
-
-        /**
-         * Whether one row per request is written to [usageDatabaseUrl] -- see
-         * [com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase].
-         *
-         * On by default, which costs nothing while the URL is empty: with nowhere to write to,
-         * nothing is attempted. It is the switch for turning the writes off without losing the URL,
-         * which is what a server that is down for the afternoon needs.
-         */
-        var logUsageToDatabase: Boolean = true,
-
-        /**
-         * The MySQL server to record requests to, as a JDBC URL --
-         * `jdbc:mysql://localhost:3306/ai_usage?user=root&password=${env:MYSQL_PASSWORD}`.
-         *
-         * Empty means nothing is written, which is the default: this names a server outside the
-         * plugin, and there is no sensible guess to make about where one is.
-         *
-         * Stored in plain XML like everything else here, which is why values support `${env:NAME}`
-         * -- a password belongs in the environment, not in this field. The database and the table
-         * are created if they are not there, so the URL may name a database that does not exist yet.
-         */
-        var usageDatabaseUrl: String = "",
     )
+
+    /*
+     * Where the usage database went: into the `usage-database` section of
+     * [AgentConfiguration.FILE_NAME], alongside the providers -- see [UsageDatabaseConfig]. It names
+     * a server that belongs to the project rather than to the IDE, and a URL kept here was one more
+     * thing that did not travel with the project it recorded.
+     *
+     * An older IDE's XML still holds `usageDatabaseUrl` and `logUsageToDatabase`; both are ignored
+     * from here on and the URL has to be moved into the file by hand. Reading them as a fallback
+     * would mean two places that answer the same question, which is the arrangement the file exists
+     * to end.
+     */
 
     private var state = State()
 
