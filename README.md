@@ -158,9 +158,6 @@ Plugin based on the [IntelliJ Platform Plugin Template][template].
 [template]: https://github.com/JetBrains/intellij-platform-plugin-template
 [docs:plugin-description]: https://plugins.jetbrains.com/docs/intellij/plugin-user-experience.html#plugin-description-and-presentation
 
-| Model                       | Tokens |
-|-----------------------------|-------|
-| OpenAI (gpt-5.6-sol)        | 4809    |
-| OpenAI (gpt-5.6-luna)       | 4809    |
-| Anthropic (claude-opus-4-6) | 7768      |
-| Anthropic (claude-opus-5)   | 9773     |
+---
+### Run db to log all the requests
+docker run -d --name ai-usage -e MYSQL_ROOT_PASSWORD=secret -p 3306:3306 mysql:9,
