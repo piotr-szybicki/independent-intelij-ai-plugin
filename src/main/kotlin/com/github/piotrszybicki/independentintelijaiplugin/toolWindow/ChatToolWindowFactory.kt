@@ -181,15 +181,20 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private var runningToolIndex = -1
 
         /**
-         * The withheld tool output waiting to be edited and sent, or null when there is none.
+         * The cards of calls whose output the limit withheld, by `tool_use` id, while their Approve
+         * buttons are still live.
          *
-         * Deliberately not part of [rows], so it is neither saved with the chat nor replayed when one
-         * is reopened. The offer is about a file on disk and a turn that has just stopped; a day
-         * later, in a chat loaded from history, it would be an offer to splice a stale file into a
-         * conversation that has moved on. The withheld note stays in the conversation either way, so
-         * nothing is lost by the offer expiring -- the chat simply carries on from it.
+         * A map because a single response can ask for six tools and have more than one of them
+         * overrun: each gets its own offer, on its own card, and the id is what says which result an
+         * approval rewrites.
+         *
+         * Deliberately not part of [rows], so the offers are neither saved with the chat nor
+         * replayed when one is reopened. An offer is about a turn that has just stopped; a day
+         * later, in a chat loaded from history, approving would splice output into a conversation
+         * that has long since moved on. The withheld notes stay in the conversation either way, so
+         * nothing is lost by an offer expiring -- the chat simply carries on from them.
          */
-        private var pendingContinue: PendingContinue? = null
+        private val withheldCards = mutableMapOf<String, ChatTranscript.RunningTool>()
 
         /**
          * Lazy on purpose. A tool window that was open when the IDE last closed is rebuilt during
@@ -256,7 +261,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
             skills = { SkillCatalog.describe(project) },
         )
 
-        private val transcript = ChatTranscript(project, onCancel = { cancelTurn() })
+        private val transcript = ChatTranscript(
+            project,
+            onCancel = { cancelTurn() },
+            onContinue = { continueTurn() },
+        )
 
         /** Set for the whole turn; read by the agent between steps and by the pooled thread's catch. */
         private val cancelled = AtomicBoolean(false)
@@ -734,9 +743,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
             rows.clear()
             runningTool = null
             runningToolIndex = -1
-            // The offer belongs to the conversation that stopped, and there is about to be a
-            // different one. The file it points at is left where it is: it is the user's now.
-            dismissContinuePrompt()
+            // The offers belong to the conversation that stopped, and there is about to be a
+            // different one. The files they point at are left where they are: they are the user's
+            // now. Nothing is settled on screen, because the transcript is about to be cleared.
+            withheldCards.clear()
             // Shell and MCP approvals are given for a conversation, not for the project. So is the
             // raised output cap: a new chat starts back at the configured one.
             shellTool?.forgetApprovals()
@@ -812,7 +822,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun showThinking(summary: String) {
             val headline = headlineOf(summary)
             rows += StoredRow(StoredRow.THINKING, summary = headline, details = summary)
-            transcript.addToolCall("thinking", headline, summary, ChatTranscript.ToolStatus.DONE)
+            // No request id: a thinking summary borrows the tool card's shape but is not a tool
+            // call, so it is drawn on its own rather than inside the round's box.
+            transcript.addToolCall("", "thinking", headline, summary, ChatTranscript.ToolStatus.DONE)
         }
 
         /** The collapsed row's one line: the first thing the summary says, cut to fit. */
@@ -866,34 +878,62 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 append("The threshold is the context window on the settings page.")
             }
             rows += StoredRow(StoredRow.TOOL, name = "compact_context", summary = summary, details = details)
-            transcript.addToolCall("compact_context", summary, details, ChatTranscript.ToolStatus.DONE)
+            // Drawn like a tool call and stored like one, but it is the loop's own work rather than
+            // anything a response asked for, so it has no request to be boxed with.
+            transcript.addToolCall("", "compact_context", summary, details, ChatTranscript.ToolStatus.DONE)
         }
 
-        private fun showToolCall(name: String, summary: String, details: String, status: ChatTranscript.ToolStatus) {
-            rows += StoredRow(StoredRow.TOOL, name = name, summary = summary, details = details, status = stored(status))
-            transcript.addToolCall(name, summary, details, status)
+        private fun showToolCall(
+            requestId: String,
+            name: String,
+            summary: String,
+            details: String,
+            status: ChatTranscript.ToolStatus,
+        ): ChatTranscript.RunningTool {
+            rows += StoredRow(
+                StoredRow.TOOL,
+                name = name,
+                summary = summary,
+                details = details,
+                status = stored(status),
+                requestId = requestId,
+            )
+            return transcript.addToolCall(requestId, name, summary, details, status)
         }
 
         /**
          * Draws a tool call the moment it starts, spinning, and remembers the row so
          * [finishToolCall] can fill in its output. Only one is ever open at a time: the agent runs
-         * the model's tool calls one after another.
+         * the model's tool calls one after another, even when the response asked for several.
          */
-        private fun startToolCall(name: String, summary: String, details: String) {
-            rows += StoredRow(StoredRow.TOOL, name = name, summary = summary, details = details)
+        private fun startToolCall(requestId: String, name: String, summary: String, details: String) {
+            rows += StoredRow(
+                StoredRow.TOOL,
+                name = name,
+                summary = summary,
+                details = details,
+                requestId = requestId,
+            )
             runningToolIndex = rows.lastIndex
-            runningTool = transcript.startToolCall(name, summary, details)
+            runningTool = transcript.startToolCall(requestId, name, summary, details)
         }
 
-        /** Settles the row [startToolCall] opened, on screen and in what gets saved. Does nothing if none is open. */
-        private fun finishToolCall(details: String, status: ChatTranscript.ToolStatus) {
-            val row = runningTool ?: return
+        /**
+         * Settles the row [startToolCall] opened, on screen and in what gets saved, and hands it
+         * back so an offer can be attached to it later. Null when no row was open.
+         */
+        private fun finishToolCall(
+            details: String,
+            status: ChatTranscript.ToolStatus,
+        ): ChatTranscript.RunningTool? {
+            val row = runningTool ?: return null
             runningTool = null
             val index = runningToolIndex
             runningToolIndex = -1
 
             row.finish(details, status)
             rows.getOrNull(index)?.let { rows[index] = it.copy(details = details, status = stored(status)) }
+            return row
         }
 
         private fun stored(status: ChatTranscript.ToolStatus): String? = when (status) {
@@ -918,9 +958,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
             when (row.kind) {
                 StoredRow.USER -> transcript.addUserMessage(row.text)
                 StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
-                StoredRow.TOOL -> transcript.addToolCall(row.name, row.summary, row.details, toolStatus(row.status))
+                // orEmpty because a chat saved before the id was recorded has none, and those rows
+                // replay ungrouped -- which is how they were drawn when they were written.
+                StoredRow.TOOL ->
+                    transcript.addToolCall(
+                        row.requestId.orEmpty(), row.name, row.summary, row.details, toolStatus(row.status),
+                    )
                 StoredRow.THINKING ->
-                    transcript.addToolCall("thinking", row.summary, row.details, ChatTranscript.ToolStatus.DONE)
+                    transcript.addToolCall("", "thinking", row.summary, row.details, ChatTranscript.ToolStatus.DONE)
                 // Draws nothing of its own: it puts the figure back under the bubble the rows before
                 // it just built. A number that will not parse is skipped rather than shown as zero.
                 StoredRow.COST -> row.text.toBigDecimalOrNull()?.let {
@@ -1061,10 +1106,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             showUserMessage(displayText)
             input.text = ""
             clearAttachments()
-            // A message of one's own supersedes an offer to continue the last one: the conversation
-            // has moved on, and the edited output would be spliced into a turn that is no longer the
-            // end of it.
-            dismissContinuePrompt()
 
             startTurn(sizeBeforeTurn)
         }
@@ -1081,6 +1122,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private fun startTurn(sizeBeforeTurn: Int) {
             setBusy(true)
+            // Before anything goes out: from here the withheld notes are on their way to the
+            // provider, and an approval after that would rewrite a block it has already been sent.
+            settleApprovals()
 
             // Read once, here, rather than separately for each thing it decides: model, endpoint,
             // limits and reasoning all come from the same entry, and a file saved between two reads
@@ -1143,16 +1187,24 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             ApplicationManager.getApplication().invokeLater { showCompaction(result) }
                         }
 
-                        override fun onToolStarted(name: String, input: JsonObject, interruptible: Boolean) {
+                        override fun onToolStarted(
+                            call: AICodingAgent.ToolCallId,
+                            name: String,
+                            input: JsonObject,
+                            interruptible: Boolean,
+                        ) {
                             ApplicationManager.getApplication().invokeLater {
                                 transcript.setCancellable(interruptible)
                                 // Details are the arguments alone for now; the output joins them in
                                 // onToolCall, which is also what stops the spinner.
-                                startToolCall(name, summarizeToolInput(input), toolCallDetails(input, ""))
+                                startToolCall(
+                                    call.requestId, name, summarizeToolInput(input), toolCallDetails(input, ""),
+                                )
                             }
                         }
 
                         override fun onToolCall(
+                            call: AICodingAgent.ToolCallId,
                             name: String,
                             input: JsonObject,
                             result: String,
@@ -1172,10 +1224,16 @@ class ChatToolWindowFactory : ToolWindowFactory {
                                 val details = toolCallDetails(input, result)
                                 // A tool the cancel got to first was never started, so there is no
                                 // row waiting for it -- it is drawn here, settled, instead.
-                                if (runningTool != null) {
+                                val card = if (runningTool != null) {
                                     finishToolCall(details, status)
                                 } else {
-                                    showToolCall(name, summarizeToolInput(input), details, status)
+                                    showToolCall(call.requestId, name, summarizeToolInput(input), details, status)
+                                }
+                                // Kept only for the calls that are about to be offered for approval.
+                                // onToolOutputTooLarge follows once the whole round has run, and by
+                                // then this is the only way back to the card that drew this call.
+                                if (outcome == AICodingAgent.ToolOutcome.TOO_LARGE && card != null) {
+                                    withheldCards[call.toolUseId] = card
                                 }
                             }
                         }
@@ -1201,9 +1259,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             return extend
                         }
 
-                        // One line and no markup: an error row is a plain label, so it neither wraps
-                        // nor renders anything. The output itself is in the row above this one, and
-                        // the limit is in Settings | AICodingAgent -- neither needs saying here.
+                        // Once per oversized call, after the whole round has run -- so a response
+                        // that asked for six tools and overran on two of them offers two approvals.
                         override fun onToolOutputTooLarge(
                             name: String,
                             toolUseId: String,
@@ -1212,11 +1269,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             limit: Int,
                         ) {
                             ApplicationManager.getApplication().invokeLater {
-                                showError(
-                                    "Stopped: $name returned ${"%,d".format(tokens)} tokens, over the " +
-                                        "${"%,d".format(limit)}-token limit, so it was not sent to the model.",
-                                )
-                                offerContinue(name, toolUseId, output)
+                                offerApproval(name, toolUseId, output, tokens, limit)
                             }
                         }
                     }, isCancelled = cancelled::get, reasoning = reasoning, conversationId = conversationId,
@@ -1277,83 +1330,115 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         /**
-         * The withheld output, waiting on the user: written to `.cache`, opened in an editor, and
-         * offered back to the conversation as a Continue link under the transcript.
+         * Offers one withheld output back to the conversation: an Approve button on the card that
+         * produced it, and the turn's Continue button once there is something to continue from.
          *
-         * The point of the round trip is that only the user can say which part of a 40,000-token
-         * `find_in_files` was the part worth having. Trimming it in the editor and pressing Continue
-         * sends *their* version as the tool's result -- see [continueWithEditedOutput] -- so the
-         * model carries on from a result it can afford, and never learns there was an argument about
-         * it.
+         * On the card rather than under the transcript, because a response can ask for six tools and
+         * have more than one of them overrun -- and every one of those six ran, so the transcript
+         * now holds several outputs and one link at the bottom could not say which it meant.
          *
-         * A failure to write the file is the end of the offer rather than the end of the turn: the
-         * conversation is already whole, holding the note that says the output was withheld, so the
-         * user can simply say what to do next.
+         * The output is written to `.cache` but not opened: only the user can say which part of a
+         * 40,000-token `find_in_files` was the part worth having, and Edit is how they get at it,
+         * but opening a tab per oversized call would bury the chat. A failure to write it costs the
+         * Edit button and nothing else -- Approve still sends what the tool actually returned, which
+         * is the whole of it.
          */
-        private fun offerContinue(toolName: String, toolUseId: String, output: String) {
-            val file = WithheldOutput.saveAndOpen(project, toolName, output)
-            if (file == null) {
-                showError("The output could not be written to .cache, so there is nothing to edit and send.")
-                return
-            }
-            pendingContinue = PendingContinue(
-                toolName = toolName,
-                toolUseId = toolUseId,
-                file = file,
-                prompt = transcript.addContinuePrompt(
-                    "Continue with the edited output",
-                    "— cut ${file.fileName} down in the editor; it is sent as $toolName's result.",
-                ) { continueWithEditedOutput() },
+        private fun offerApproval(toolName: String, toolUseId: String, output: String, tokens: Int, limit: Int) {
+            // One line and no markup: an error row is a plain label, so it neither wraps nor renders
+            // anything. The output itself is in the card above, and the limit is in
+            // Settings | AICodingAgent -- neither needs saying here.
+            showError(
+                "Stopped: $toolName returned ${"%,d".format(tokens)} tokens, over the " +
+                    "${"%,d".format(limit)}-token limit, so it was not sent to the model.",
             )
+            // Offered whether or not the card is still there to hang it off: Continue with the
+            // withheld notes as they stand is a perfectly good answer, and it is the model narrowing
+            // its own call that the note asks for.
+            transcript.setTurnContinuable(true)
+
+            val card = withheldCards[toolUseId] ?: return
+            val file = WithheldOutput.save(project, toolName, output)
+            card.offerApproval(
+                tokens = tokens,
+                limit = limit,
+                onApprove = { approveWithheldOutput(toolName, toolUseId, output, file) },
+                onEdit = file?.let { path -> { openWithheldOutput(path) } },
+            )
+        }
+
+        private fun openWithheldOutput(file: Path) {
+            if (!WithheldOutput.open(project, file)) {
+                showError("$file could not be opened.")
+            }
         }
 
         /**
-         * Sends the edited file as the withheld tool call's result and restarts the turn.
+         * Puts a withheld output back where the note stands, and says whether it got there.
          *
-         * Nothing is added to the conversation: the result that was already there is rewritten, so
-         * the model reads the trimmed output as what the tool returned. That is safe because the
-         * request carrying the withheld note never went out -- the turn ended first -- so this edits
-         * something the provider has never seen and the cached prefix does not cover.
+         * Nothing is added to the conversation: the `tool_result` that is already in it is rewritten,
+         * so the model reads the output as what the tool returned rather than as a second-hand
+         * quotation of it. That is safe because the request carrying the note never went out -- the
+         * turn ended first -- so this edits something the provider has never seen and no cached
+         * prefix covers. [settleApprovals] is what stops it being done after that stops being true.
          *
-         * What the user left in the file is sent as it stands, over the limit or not. The limit
-         * guards against a tool asking for too much; it has no business overruling someone who has
-         * just read the output and decided what of it matters.
+         * The edited file wins when there is one, so Edit and Approve are one action in two steps:
+         * trim it, then send it. What is left in the file goes as it stands, over the limit or not
+         * -- the limit guards against a tool asking for too much, and has no business overruling
+         * someone who has just read the output and decided what of it matters. An empty file is read
+         * as "I did not edit this after all" rather than as an instruction to send nothing.
          */
-        private fun continueWithEditedOutput() {
-            val pending = pendingContinue ?: return
+        private fun approveWithheldOutput(
+            toolName: String,
+            toolUseId: String,
+            output: String,
+            file: Path?,
+        ): Boolean {
             // Pressed while a turn is running -- a click that raced the conversation moving on.
-            // The offer is already stale, so it goes without sending anything.
             if (!sendButton.isEnabled) {
-                dismissContinuePrompt()
-                return
-            }
-            // Before the reading and the sending, so the link goes the moment it is pressed however
-            // the rest of this turns out.
-            dismissContinuePrompt()
-
-            val edited = WithheldOutput.read(pending.file)?.takeIf { it.isNotBlank() }
-            if (edited == null) {
-                showError("${pending.file.fileName} is empty or could not be read, so nothing was sent.")
-                return
-            }
-            if (!ToolResults.replace(history, pending.toolUseId, edited)) {
-                showError("That tool call is no longer in the conversation, so the edited output was not sent.")
-                return
+                showError("A reply is already running, so that output was not sent.")
+                return false
             }
 
+            val text = file?.let { WithheldOutput.read(it) }?.takeIf { it.isNotBlank() } ?: output
+            if (!ToolResults.replace(history, toolUseId, text)) {
+                showError("That tool call is no longer in the conversation, so the output was not sent.")
+                return false
+            }
+
+            withheldCards.remove(toolUseId)
             showError(
-                "Sent the edited ${pending.toolName} output " +
-                    "(${"%,d".format(TokenCounter.count(edited))} tokens) as the result of that call.",
+                "Approved $toolName's output (${"%,d".format(TokenCounter.count(text))} tokens) " +
+                    "as the result of that call. Press Continue to send it.",
             )
-            // From here rather than from before the tool call: everything already in the history is
-            // being kept, edit included, so there is nothing for a failed turn to roll back.
+            return true
+        }
+
+        /**
+         * Sends the conversation again from where the limit stopped the turn -- the Continue button.
+         *
+         * Nothing is added: the history already holds a result for every call the round made, either
+         * the real output where it was approved or the note saying it was withheld. So the model
+         * picks up with what it asked for, and narrows the calls it could not have.
+         */
+        private fun continueTurn() {
+            if (!sendButton.isEnabled) return
+            // From here rather than from before the tool calls: everything in the history is being
+            // kept, approvals included, so there is nothing for a failed turn to roll back.
             startTurn(history.size)
         }
 
-        /** Takes the Continue offer away, whether it was used, overtaken or abandoned. */
-        private fun dismissContinuePrompt() {
-            pendingContinue?.prompt?.dismiss()
-            pendingContinue = null
+        /**
+         * Closes any approvals still open, because what they offered is no longer safe to do.
+         *
+         * Called as a turn starts. From that point the withheld notes are on their way to the
+         * provider, and replacing what one of them stands for would be rewriting a block that has
+         * been sent and cached -- so the buttons say so rather than staying live and lying.
+         */
+        private fun settleApprovals() {
+            withheldCards.values.forEach { it.closeApproval("Sent as withheld") }
+            withheldCards.clear()
+            // The offer goes with them: what Continue was offering to continue from is being sent.
+            transcript.setTurnContinuable(false)
         }
 
         private fun setBusy(busy: Boolean) {
@@ -1785,17 +1870,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
             return extend
         }
-
-        /**
-         * A withheld tool result the user is editing: which call it answers, where its text is, and
-         * the transcript row offering to send it.
-         */
-        private class PendingContinue(
-            val toolName: String,
-            val toolUseId: String,
-            val file: Path,
-            val prompt: ChatTranscript.Dismissable,
-        )
 
         private companion object {
             private val prettyJson = GsonBuilder().setPrettyPrinting().create()

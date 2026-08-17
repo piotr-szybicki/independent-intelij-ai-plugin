@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
+import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
@@ -44,6 +45,16 @@ class AICodingAgent(
      */
     enum class ToolOutcome { OK, FAILED, CANCELLED, TOO_LARGE }
 
+    /**
+     * Which call a listener callback is about.
+     *
+     * The two travel together everywhere: [requestId] says which response asked for the call, so
+     * everything one round asked for can be drawn as one group, and [toolUseId] identifies the
+     * block itself, which is what an edit to its result has to name -- see [ToolResults.replace].
+     * A pair rather than two more positional parameters on callbacks that already have four.
+     */
+    data class ToolCallId(val requestId: String, val toolUseId: String)
+
     interface Listener {
         fun onAssistantText(text: String)
 
@@ -61,8 +72,11 @@ class AICodingAgent(
          * A tool has finished, whatever [outcome] it finished with. Paired with [onToolStarted] for
          * every tool the loop actually ran -- but not only those: a tool skipped by a cancel is
          * reported here without ever having been started.
+         *
+         * Every call one response asked for carries the same [ToolCallId.requestId], which is how a
+         * caller tells one round from the next.
          */
-        fun onToolCall(name: String, input: JsonObject, result: String, outcome: ToolOutcome)
+        fun onToolCall(call: ToolCallId, name: String, input: JsonObject, result: String, outcome: ToolOutcome)
 
         /**
          * A tool is about to run. [interruptible] is false when stopping the turn would only stop
@@ -71,7 +85,7 @@ class AICodingAgent(
          * [onToolCall] follows for the same tool unless the turn dies on the way there, which
          * leaves anything the callback drew for it hanging -- the caller's to settle.
          */
-        fun onToolStarted(name: String, input: JsonObject, interruptible: Boolean) {}
+        fun onToolStarted(call: ToolCallId, name: String, input: JsonObject, interruptible: Boolean) {}
 
         /**
          * What the request that just came back cost.
@@ -106,21 +120,24 @@ class AICodingAgent(
         fun onMaxIterations(used: Int): Boolean = false
 
         /**
-         * A tool returned more than the turn was willing to send, so the output was withheld and the
-         * turn ended there. [tokens] is what the result actually counted, [limit] the cap it went
-         * over, both measured by [TokenCounter].
+         * A tool returned more than the turn was willing to send, so the output was withheld.
+         * [tokens] is what the result actually counted, [limit] the cap it went over, both measured
+         * by [TokenCounter].
+         *
+         * Called once per oversized call, after the whole round has run and been answered -- so a
+         * response that asked for six tools reports all six, however many of them overran. The turn
+         * then stops.
          *
          * Reported separately from the [onToolCall] that precedes it, and reported at all, because
          * this is the one way a turn stops with the model neither finished nor asked anything: the
          * transcript would otherwise show a tool call and then simply nothing. The conversation
-         * itself stays sendable -- the next message carries on from a note saying the output was
-         * withheld -- so what this needs to say is which tool, how big, and that narrowing the call
-         * is the way forward.
+         * itself stays sendable -- the next request carries on from a note saying the output was
+         * withheld -- so what this needs to say is which tool, how big, and what can be done about
+         * it.
          *
          * [output] is what the tool actually returned, and [toolUseId] identifies the block the note
-         * went into. Together they are what an offer to edit the output and send it after all needs:
-         * the text to put in front of the user, and where their version goes when they are done with
-         * it -- see [ToolResults.replace].
+         * went into. Together they are what an offer to send the output after all needs: the text to
+         * put in front of the user, and where it goes if they approve it -- see [ToolResults.replace].
          */
         fun onToolOutputTooLarge(name: String, toolUseId: String, output: String, tokens: Int, limit: Int) {}
 
@@ -184,14 +201,6 @@ class AICodingAgent(
 
         /** Stands in for a tool the loop never reached, because the turn failed on its way there. */
         private const val ABANDONED_RESULT = "This tool never ran: the turn ended with an error before it started."
-
-        /**
-         * Stands in for the tools of the same round that were never reached, because an earlier one
-         * in it overran the output limit and ended the turn.
-         */
-        private const val SKIPPED_RESULT =
-            "This tool never ran: an earlier tool call in the same round returned more output than " +
-                "the limit allows, which ended the turn before this one started."
 
         /**
          * What is sent in place of output that overran the limit.
@@ -269,15 +278,22 @@ class AICodingAgent(
      * grow until the provider refuses it.
      *
      * [maxToolOutputTokens] is the most a single tool result may be, counted with [TokenCounter]. A
-     * result over it is not sent: a note saying so goes into the conversation in its place and the
-     * turn ends there, whatever the model was in the middle of. Zero or less turns the check off.
+     * result over it is not sent: a note saying so goes into the conversation in its place. Zero or
+     * less turns the check off.
      *
      * A hard stop rather than a truncation on purpose. Truncating hands the model half a file and no
      * way to know what it is missing, and it is silent -- the same runaway `find_in_files` goes out
      * turn after turn, trimmed each time, at full price each time. Stopping puts the decision back
      * with the user, who is the only one who can tell "this tool asked for too much" from "this file
      * really is that big". The conversation survives it: the note is a valid result, so the next
-     * message continues normally.
+     * request continues normally.
+     *
+     * What it stops is the *turn*, and only once the round it happened in has finished. Every tool
+     * the response asked for runs, whatever any of the others returned -- an oversized result is one
+     * call's problem and says nothing about the five beside it, which the user asked for and which
+     * may be the ones that mattered. The turn then ends rather than going round again, because the
+     * decision about the withheld output is the user's; [Listener.onToolOutputTooLarge] fires once
+     * per oversized call so all of them can be offered at once.
      *
      * [conversationId] identifies the chat this turn belongs to, and is carried no further than the
      * logs: it is what files the turn's request and response bodies under a directory of their own,
@@ -405,27 +421,26 @@ class AICodingAgent(
                 }
 
                 val toolResults = JsonArray()
-                // The call that overran the limit, once one has. Every block after it is answered
-                // without being run: the turn is over, but the round it died in still has to be
-                // answered in full or the conversation is unsendable from here on.
-                var overran: Overrun? = null
-                for (block in toolUseBlocks) {
+                // The calls that overran the limit, in the order they ran. A list rather than the
+                // first one found, because the round is run to the end regardless: see the note on
+                // the limit in this function's docs.
+                val overruns = mutableListOf<Overrun>()
+                for ((ordinal, block) in toolUseBlocks.withIndex()) {
                     val obj = block.asJsonObject
                     val toolName = obj.get("name")?.asString.orEmpty()
                     val toolUseId = obj.get("id")?.asString.orEmpty()
                     val input = obj.getAsJsonObject("input") ?: JsonObject()
+                    val call = ToolCallId(turn.requestId, toolUseId)
 
+                    val startedAt = System.currentTimeMillis()
                     // Cancelling stops the work but still answers the block: an assistant turn whose
                     // tool_use has no matching tool_result is rejected by the API on the next message.
                     var outcome = ToolOutcome.OK
-                    val resultText = if (overran != null) {
-                        outcome = ToolOutcome.CANCELLED
-                        SKIPPED_RESULT
-                    } else if (isCancelled()) {
+                    val resultText = if (isCancelled()) {
                         outcome = ToolOutcome.CANCELLED
                         CANCELLED_RESULT
                     } else {
-                        listener.onToolStarted(toolName, input, toolsByName[toolName]?.interruptible ?: true)
+                        listener.onToolStarted(call, toolName, input, toolsByName[toolName]?.interruptible ?: true)
                         runCatching {
                             val tool = toolsByName[toolName] ?: throw AICodingAgentApiException("Unknown tool: $toolName")
                             tool.execute(input)
@@ -443,25 +458,46 @@ class AICodingAgent(
                             }
                         }
                     }
+                    val elapsed = System.currentTimeMillis() - startedAt
 
-                    // Only what a tool actually produced is measured. The three stand-in texts above
-                    // are a sentence each and are the loop's own words, so counting them would be
-                    // counting nothing -- and a cancelled turn must not also report an overrun.
-                    if (maxToolOutputTokens > 0 && (outcome == ToolOutcome.OK || outcome == ToolOutcome.FAILED)) {
-                        val tokens = TokenCounter.count(resultText)
-                        if (tokens > maxToolOutputTokens) {
-                            log.info(
-                                "Tool '$toolName' returned $tokens tokens, over the " +
-                                    "$maxToolOutputTokens-token limit: withholding it and ending the turn",
-                            )
-                            outcome = ToolOutcome.TOO_LARGE
-                            overran = Overrun(toolName, toolUseId, resultText, tokens)
-                        }
+                    // Counted once and used twice: the limit below decides on it, and the row
+                    // recorded further down reports it. Tokenizing a large result is not free, and
+                    // doing it a second time for the log would be paying for the same answer twice.
+                    val resultTokens = TokenCounter.count(resultText)
+                    // Only what a tool actually produced is weighed against the limit. The three
+                    // stand-in texts above are a sentence each and are the loop's own words, so
+                    // stopping on one would be stopping on nothing -- and a cancelled turn must not
+                    // also report an overrun.
+                    val produced = outcome == ToolOutcome.OK || outcome == ToolOutcome.FAILED
+                    if (maxToolOutputTokens > 0 && produced && resultTokens > maxToolOutputTokens) {
+                        log.info(
+                            "Tool '$toolName' returned $resultTokens tokens, over the " +
+                                "$maxToolOutputTokens-token limit: withholding it",
+                        )
+                        outcome = ToolOutcome.TOO_LARGE
+                        overruns += Overrun(toolName, toolUseId, resultText, resultTokens)
                     }
 
                     // The real output, whatever is about to be sent in its place: the transcript is
                     // the user's copy and the point of stopping is that they can go and read it.
-                    listener.onToolCall(toolName, input, resultText, outcome)
+                    listener.onToolCall(call, toolName, input, resultText, outcome)
+
+                    // The same output again, to the request's own row. A no-op when no usage
+                    // database is configured, which is the usual case -- see [ModelUsageDatabase].
+                    val arguments = input.toString()
+                    ModelUsageDatabase.recordToolCall(
+                        conversationId = conversationId,
+                        requestId = turn.requestId,
+                        ordinal = ordinal,
+                        toolUseId = toolUseId,
+                        toolName = toolName,
+                        arguments = arguments,
+                        result = resultText,
+                        outcome = outcome.name,
+                        argumentTokens = TokenCounter.count(arguments),
+                        resultTokens = resultTokens,
+                        durationMillis = elapsed,
+                    )
 
                     toolResults.add(JsonObject().apply {
                         addProperty("type", "tool_result")
@@ -469,7 +505,7 @@ class AICodingAgent(
                         addProperty(
                             "content",
                             if (outcome == ToolOutcome.TOO_LARGE) {
-                                withheldResult(overran?.tokens ?: 0, maxToolOutputTokens)
+                                withheldResult(resultTokens, maxToolOutputTokens)
                             } else {
                                 resultText
                             },
@@ -480,8 +516,10 @@ class AICodingAgent(
                 history.add(ChatMessage("user", toolResults))
                 // After the results reach the history, never before: leaving the round unanswered
                 // would be exactly the dangling `tool_use` that kills a conversation for good.
-                overran?.let {
-                    listener.onToolOutputTooLarge(it.name, it.toolUseId, it.output, it.tokens, maxToolOutputTokens)
+                if (overruns.isNotEmpty()) {
+                    overruns.forEach {
+                        listener.onToolOutputTooLarge(it.name, it.toolUseId, it.output, it.tokens, maxToolOutputTokens)
+                    }
                     return
                 }
             }
@@ -490,9 +528,9 @@ class AICodingAgent(
         }
     }
     /**
-     * The tool call that went over the output limit: what it was, what it returned, and what that
-     * counted. The output is carried because the caller is offered the chance to edit it and send it
-     * after all, and [toolUseId] is where that edit goes back to.
+     * A tool call that went over the output limit: what it was, what it returned, and what that
+     * counted. The output is carried because the caller is offered the chance to approve it and send
+     * it after all, and [toolUseId] is where it goes back to.
      */
     private class Overrun(val name: String, val toolUseId: String, val output: String, val tokens: Int)
 

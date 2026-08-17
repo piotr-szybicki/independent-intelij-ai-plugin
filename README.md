@@ -129,10 +129,22 @@ version control.
 }
 ```
 
-The database and its `model_requests` table are created if they are not there, so the URL may name a
-database that does not exist yet. **Test Connection** under <kbd>Settings</kbd> > <kbd>Tools</kbd> >
+The database and its two tables are created if they are not there, so the URL may name a database
+that does not exist yet. **Test Connection** under <kbd>Settings</kbd> > <kbd>Tools</kbd> >
 <kbd>AICodingAgent</kbd> > <kbd>Logging</kbd> connects once against the file as it stands, sets the
 schema up and reports the server version, the row count and the cost recorded so far.
+
+`model_requests` holds one row per request. `model_tool_calls` holds one row per tool call, with a
+foreign key back to the `request_id` of the response that asked for it — the tool's name, its
+arguments, what it returned, how it ended, how long it took, and an estimate of what its arguments
+and its output cost in tokens. One response can ask for several tools at once, which is why they are
+a table rather than more columns, and it is what makes `GROUP BY tool_name` the answer to which tool
+is slowest, which one fails most and whose output is eating the context window.
+
+```sql
+SELECT tool_name, COUNT(*) calls, AVG(duration_ms) ms, SUM(result_tokens) tokens
+FROM model_tool_calls GROUP BY tool_name ORDER BY tokens DESC;
+```
 
 Pick the provider and the model from the two dropdowns above the chat transcript. **Both belong to
 that conversation**: they are saved with it, a chat reopened from the history comes back on what it
@@ -148,23 +160,29 @@ agent loop rather than describing the model — along with tools, MCP servers an
 
 **Tokens per tool result** is the cap on what one tool call may hand back, counted with
 [JTokkit](https://github.com/knuddelsgmbh/jtokkit), the JVM port of OpenAI's tiktoken. Go over it —
-500 tokens by default — and the output is *not* sent: the model gets a note saying it was withheld
-and the turn stops there. The chat still shows the output in full, and your next message carries on
-as normal. It is set low because tool output is the expensive kind: what a call returns is re-sent
-with every later request in the conversation, so one search that matched half the project is paid
-for over and over. Set it to `0` to turn the check off.
+500 tokens by default — and the output is *not* sent: the model gets a note saying it was withheld.
+The chat still shows the output in full, and your next message carries on as normal. It is set low
+because tool output is the expensive kind: what a call returns is re-sent with every later request in
+the conversation, so one search that matched half the project is paid for over and over. Set it to
+`0` to turn the check off.
 
-When that happens the full output is written to **`.cache/`** in the project root and opened in an
-editor tab, and a **Continue with the edited output** link appears under the transcript. Cut the file
-down to the part that actually mattered, then press the link: your version is sent as *that tool
-call's* result — not as a message from you — so the model reads it as what the tool returned and
-picks up where it stopped. The link goes as soon as it is pressed, and unsaved edits count: the
-editor's copy is what gets sent, and is saved to disk on the way.
+**Every tool the model asked for still runs.** A single response can ask for six at once, and going
+over the limit is one call's problem — the other five are answered as normal. The turn stops once
+that round is finished, so what to do about the withheld output is yours to decide.
 
-The offer is deliberately short-lived. Sending a message of your own instead takes it away, and it is
-not restored when a chat is reopened from the history — by then the file is stale and the
-conversation has moved on. The conversation is never stuck either way: the withheld note is a valid
-result, so you can simply say what to do next. Files in `.cache/` are never deleted by the plugin;
+Each oversized call gets an **Approve output** button on its own card, with the token count in the
+tooltip. Press it and the full output is sent as *that tool call's* result — not as a message from
+you — so the model reads it as what the tool returned. Beside it, **Edit** opens the output from
+**`.cache/`** in the project root: cut it down to the part that actually mattered and Approve then
+sends your version instead. Unsaved edits count — the editor's copy is what gets sent, and is saved
+to disk on the way.
+
+Then press **Continue**, next to **Export MD** under the reply, to send the conversation on. Anything
+you left unapproved keeps its withheld note, which is a perfectly good answer: the note asks the
+model to narrow that call rather than repeat it. Both offers are withdrawn the moment the
+conversation is sent, and are not restored when a chat is reopened from the history — by then the
+note has gone to the provider and replacing what it stands for would be rewriting something already
+sent. The conversation is never stuck either way. Files in `.cache/` are never deleted by the plugin;
 empty the folder whenever you like.
 
 ### Running it

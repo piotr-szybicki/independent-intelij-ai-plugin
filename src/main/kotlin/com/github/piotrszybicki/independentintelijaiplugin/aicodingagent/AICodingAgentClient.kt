@@ -82,7 +82,22 @@ data class SessionUsage(
     )
 }
 
-data class AICodingAgentTurn(val content: JsonArray, val stopReason: String?, val usage: AICodingAgentUsage? = null)
+data class AICodingAgentTurn(
+    val content: JsonArray,
+    val stopReason: String?,
+    val usage: AICodingAgentUsage? = null,
+    /**
+     * The id of the request this came back from -- [ModelExchangeLog.newRequestId]'s, the same one
+     * naming the exchange's files and keying its [ModelUsageDatabase] row.
+     *
+     * Carried on the turn because what the model asked for in it is answered outside the client:
+     * the agent loop runs the tool calls, and both recording them against the request that asked
+     * for them and drawing them as one group depend on knowing which request that was. Blank on a
+     * turn built by a parser rather than returned by [AICodingAgentClient.sendMessage], which is
+     * what the protocol tests do.
+     */
+    val requestId: String = "",
+)
 
 class AICodingAgentApiException(message: String) : Exception(message)
 
@@ -262,7 +277,9 @@ object AICodingAgentClient {
                 it.output_tokens,
             )
         }
-        return turn
+        // Stamped here rather than by each parser: the id belongs to the exchange this function
+        // made, and the three branches above only know how to read a body.
+        return turn.copy(requestId = requestId)
     }
 
     /**
@@ -413,34 +430,55 @@ object AICodingAgentClient {
     /**
      * How long each breakpoint keeps what it caches.
      *
-     * The hour costs twice the base price to write instead of 1.25x, so it takes three requests to
-     * pay for itself rather than two. That is worth it only where the entry has to survive the gap
-     * between one turn and the next -- the user reading an answer and editing code, routinely
-     * longer than five minutes -- and letting one of those lapse re-reads the prefix it covered at
-     * full price. Which is two of the three breakpoints, not all of them:
+     * The hour costs twice the base price to write instead of the 1.25x a five-minute mark costs,
+     * so it takes three requests to pay for itself rather than two. It earns that back only where
+     * the entry has to survive the gap between one turn and the next -- the user reading an answer
+     * and editing code, routinely longer than five minutes -- since an entry that lapses means the
+     * prefix it covered is read at full price and written again.
      *
-     * - [SYSTEM_TTL] spans that gap by definition. It covers the tool schemas and the system
-     *   prompt, which is the bulk of every request and unchanged for the life of the conversation.
-     * - [TAIL_TTL] spans it too. The tail mark moves forward on every request, so the entry the
-     *   next turn reads the conversation back from is the one the *last* request of this turn
-     *   wrote -- and nothing at write time can tell which iteration that will turn out to be.
-     * - [LOOKBACK_TTL] does not. That mark exists so the next request in the same agentic loop has
-     *   a breakpoint within reach (see [LOOKBACK_BLOCKS]), and that request is seconds away. Once
-     *   the loop ends the tail entry is both longer and still live, so nothing reads this one
-     *   again; an hour on it buys nothing and is charged for anyway.
+     * ### The ordering rule these have to satisfy
      *
-     * Split into three named constants rather than one, because which of them is right is a
-     * question about this plugin's traffic rather than about the API, and the answer is measurable:
+     * The API reads a request as `tools`, then `system`, then `messages`, and rejects the whole
+     * request if a longer TTL turns up after a shorter one:
+     *
+     * > a ttl='1h' cache_control block must not come after a ttl='5m' cache_control block
+     *
+     * So the TTLs have to be non-increasing along that path, and the only question left is where
+     * the hour stops. It stops at the tail:
+     *
+     * - [SYSTEM_TTL] is an hour. It covers the tool schemas and the system prompt -- the bulk of
+     *   every early request, unchanged for the life of the conversation -- and it is processed
+     *   ahead of every message mark, so it is free to be the longest.
+     * - [LOOKBACK_TTL] is an hour. It is the *earlier* of the two message marks, which makes it the
+     *   only one allowed to outlast the one after it, and it is also where the hour buys the most:
+     *   it covers the conversation up to roughly [LOOKBACK_BLOCKS] back, which in a grown chat is
+     *   nearly all of it and the part that no longer changes. A user who takes ten minutes to
+     *   answer still reads that back at the cache rate and pays full price only for the tail.
+     * - [TAIL_TTL] is five minutes. That mark moves forward on every request and is read back by
+     *   the next request of the same agentic loop, seconds away; five minutes is ample for that,
+     *   and the entry is superseded before an hour would ever be collected on. Across the gap
+     *   between turns it is the lookback entry behind it that carries the conversation.
+     *
+     * The cost of the arrangement is the short window early on, before the conversation is deep
+     * enough for a lookback mark to be placed at all: until then the only message mark is the
+     * five-minute one, so a slow reply re-reads the conversation. That is the point where the
+     * conversation is smallest and `tools` and `system` are the bulk of the request -- and those
+     * keep their hour throughout.
+     *
+     * Which values are right is a question about this plugin's traffic rather than about the API,
+     * and it is measurable:
      * [com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase] records
-     * written and read tokens per request. Setting [TAIL_TTL] to [FIVE_MINUTES] pays 1.25x for the
-     * whole turn and takes the cross-turn read at full price when the user is slow to answer.
+     * written and read tokens per request. Raising [TAIL_TTL] to [ONE_HOUR] is legal -- it is then
+     * equal to the mark before it, not longer. Lowering [LOOKBACK_TTL] to [FIVE_MINUTES] is not:
+     * that is the arrangement this used to have, and it failed every turn deep enough to place both
+     * marks.
      */
     private const val ONE_HOUR = "1h"
     private const val FIVE_MINUTES = "5m"
 
     private const val SYSTEM_TTL = ONE_HOUR
-    private const val TAIL_TTL = ONE_HOUR
-    private const val LOOKBACK_TTL = FIVE_MINUTES
+    private const val LOOKBACK_TTL = ONE_HOUR
+    private const val TAIL_TTL = FIVE_MINUTES
 
     private fun ephemeral(ttl: String): JsonObject = JsonObject().apply {
         addProperty("type", "ephemeral")
@@ -487,7 +525,8 @@ object AICodingAgentClient {
      * request the API rejects outright, and nothing before the round trip would catch it.
      *
      * The two are not marked alike: they are read back over different spans of time, so they are
-     * kept for different lengths of it. See [TAIL_TTL] and [LOOKBACK_TTL].
+     * kept for different lengths of it -- and only in that direction, since the API rejects a
+     * request whose TTLs climb as it reads through it. See [LOOKBACK_TTL] and [TAIL_TTL].
      */
     internal fun withCacheBreakpoints(messages: List<ChatMessage>): List<ChatMessage> {
         if (messages.isEmpty()) return messages

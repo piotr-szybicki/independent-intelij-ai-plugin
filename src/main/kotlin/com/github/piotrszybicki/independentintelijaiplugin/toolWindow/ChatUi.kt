@@ -48,6 +48,17 @@ internal object ChatColors {
     val aiBubble: Color get() = mix(background, foreground, 0.03)
     val aiBubbleBorder: Color get() = mix(background, foreground, 0.16)
 
+    /**
+     * The box drawn around the tool calls one model response asked for, inside the turn's bubble.
+     *
+     * Between [aiBubble] and [card] on purpose: the three are nested -- bubble, group, card -- and
+     * the palette already reads deeper nesting as a step further from the background, so a group
+     * that sat outside that order would look like a different kind of thing rather than a box
+     * inside a box.
+     */
+    val toolGroup: Color get() = mix(background, foreground, 0.04)
+    val toolGroupBorder: Color get() = mix(background, foreground, 0.12)
+
     /** Neutral card, used for tool calls and the pending-changes bar. */
     val card: Color get() = mix(background, foreground, 0.05)
     val cardHover: Color get() = mix(background, foreground, 0.10)

@@ -3,5 +3,7 @@
 .idea
 .intellijPlatform
 .kotlin
+.cache
 build
 debug.log
+independent-ai-plugin-settings.json

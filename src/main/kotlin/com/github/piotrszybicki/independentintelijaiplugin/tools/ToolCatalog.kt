@@ -47,7 +47,6 @@ object ToolCatalog {
 
     val entries: List<Entry> = listOf(
         Entry("list_directory", ToolCategory.READ, true, ::ListDirectoryTool),
-        Entry("file_exists", ToolCategory.READ, true, ::FileExistsTool),
         Entry("read_project_file", ToolCategory.READ, true, ::ReadProjectFileTool),
         Entry("read_library_class", ToolCategory.READ, true, ::ReadLibraryClassTool),
         Entry("get_file_structure", ToolCategory.READ, true, ::GetFileStructureTool),

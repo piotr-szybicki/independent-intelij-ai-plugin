@@ -13,8 +13,8 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * The scratch file behind the Continue button: tool output that was too large to send, put somewhere
- * the user can cut it down to the part that mattered and hand it back.
+ * The scratch file behind a tool card's Edit button: output that was too large to send, put
+ * somewhere the user can cut it down to the part that mattered and hand it back with Approve.
  *
  * A file in the editor rather than a text area in a dialog, because the thing being edited is the
  * output of `find_in_files` or `git_diff` -- thousands of lines that want folding, searching and
@@ -35,13 +35,16 @@ internal object WithheldOutput {
     private val FILE_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
 
     /**
-     * Writes [output] under the project's `.cache` and opens it in an editor tab. Null when there was
-     * nowhere to put it or the write failed, which is the caller's cue not to offer Continue at all.
+     * Writes [output] under the project's `.cache`. Null when there was nowhere to put it or the
+     * write failed, which is the caller's cue to offer approval without the option of editing first.
      *
-     * EDT only, like [TranscriptExport.save]: it opens an editor, and the write it does first is a
-     * few hundred kilobytes at worst.
+     * Written but deliberately not opened. A single response can ask for six tools and have several
+     * of them overrun, and opening a tab for each would bury the chat under editors nobody asked
+     * for -- so the file waits, and [open] is what the Edit button on the card calls.
+     *
+     * EDT only, like [TranscriptExport.save]: the write is a few hundred kilobytes at worst.
      */
-    fun saveAndOpen(project: Project, toolName: String, output: String): Path? {
+    fun save(project: Project, toolName: String, output: String): Path? {
         val root = project.basePath ?: return null
         val name = "${sanitize(toolName)}-${FILE_STAMP.format(LocalDateTime.now())}.txt"
         val path = Path.of(root, DIRECTORY, name)
@@ -53,17 +56,21 @@ internal object WithheldOutput {
             LOG.warn("Could not write the withheld output to $path", e)
             return null
         }
+        return path
+    }
 
+    /** Opens a file [save] wrote, for the Edit button. Reports whether there was one to open. */
+    fun open(project: Project, path: Path): Boolean {
         // Resolving the file through the VFS fires creation events, which is a write -- and this is
         // called from a Swing callback, which holds no write-intent lock. Same bargain as
         // [TranscriptExport], down to the reason: see https://jb.gg/ij-platform-threading.
         val file = findFile(path)
         if (file == null) {
             LOG.warn("Wrote the withheld output to $path but could not find it in the VFS")
-            return null
+            return false
         }
         FileEditorManager.getInstance(project).openFile(file, true)
-        return path
+        return true
     }
 
     /**

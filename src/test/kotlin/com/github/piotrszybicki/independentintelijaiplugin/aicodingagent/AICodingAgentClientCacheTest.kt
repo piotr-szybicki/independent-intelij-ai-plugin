@@ -96,27 +96,34 @@ class AICodingAgentClientCacheTest {
     }
 
     /**
-     * The tail entry is what the next turn reads the conversation back from, and the gap it has to
-     * survive is the user reading an answer -- routinely longer than the default five minutes. A
-     * breakpoint that lost its hour would expire unnoticed and cost the whole prefix every turn.
+     * The tail mark is read back by the next request of the same agentic loop, seconds away, and is
+     * superseded by the mark the next request places. Five minutes covers that; an hour would be
+     * paid for at twice the write price and collected on by nobody. What carries the conversation
+     * across the gap between turns is the lookback mark behind it, which keeps the hour.
      */
     @Test
-    fun `keeps the tail for an hour rather than the default`() {
+    fun `keeps the tail for the default five minutes`() {
         val marked = AICodingAgentClient.withCacheBreakpoints(listOf(message("user", 1)))
 
         val control = marked.single().content[0].asJsonObject.getAsJsonObject("cache_control")
         assertEquals("ephemeral", control.get("type").asString)
-        assertEquals("1h", control.get("ttl").asString)
+        assertEquals("5m", control.get("ttl").asString)
     }
 
     /**
-     * The older mark is only ever read by the next request in the same agentic loop, seconds later:
-     * once the loop ends the tail entry is longer and still live. Paying an hour's write price --
-     * twice the base rate rather than 1.25x -- for an entry superseded that fast is the difference
-     * this split exists to stop spending.
+     * The API reads a request as `tools`, then `system`, then `messages`, and rejects it outright if
+     * a longer TTL turns up after a shorter one:
+     *
+     * > a ttl='1h' cache_control block must not come after a ttl='5m' cache_control block
+     *
+     * The marks used to be the other way round -- five minutes on the lookback against an hour on
+     * the tail, on the reasoning that the lookback is superseded within the same turn and an hour's
+     * write price is wasted on it -- which is that arrangement exactly. Every conversation deep
+     * enough to place both marks failed, the failure was the whole turn rather than the caching, and
+     * nothing before the round trip said so. Hence the invariant as well as the two values.
      */
     @Test
-    fun `keeps the lookback mark for the default five minutes`() {
+    fun `never lets a ttl grow from one breakpoint to the next`() {
         val messages = (1..10).map { message("user", 4) }
 
         val marked = AICodingAgentClient.withCacheBreakpoints(messages)
@@ -124,8 +131,24 @@ class AICodingAgentClientCacheTest {
         val tail = marked.indexOfLast { it.breakpoints() > 0 }
         val lookback = marked.indexOfFirst { it.breakpoints() > 0 }
         assertTrue("expected two distinct breakpoints", lookback in 0 until tail)
-        assertEquals("1h", marked[tail].ttl())
-        assertEquals("5m", marked[lookback].ttl())
+        // The hour goes on the older of the two, which is the only one allowed to outlast the mark
+        // after it -- and the one covering the part of the conversation that no longer changes.
+        assertEquals("1h", marked[lookback].ttl())
+        assertEquals("5m", marked[tail].ttl())
+
+        // The system prompt is marked ahead of every one of these and carries an hour, so it leads
+        // the sequence the rule is checked against.
+        val ttls = listOf("1h") + marked.filter { it.breakpoints() > 0 }.map { it.ttl() }
+        ttls.zipWithNext().forEach { (earlier, later) ->
+            assertTrue("ttl '$later' must not come after ttl '$earlier'", rank(later) <= rank(earlier))
+        }
+    }
+
+    /** Longer keeps rank higher. A mark may only be followed by one of the same rank or lower. */
+    private fun rank(ttl: String): Int = when (ttl) {
+        "1h" -> 2
+        "5m" -> 1
+        else -> throw IllegalArgumentException("unrecognised ttl '$ttl'")
     }
 
     @Test

@@ -15,6 +15,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension
+import java.awt.FlowLayout
 import java.awt.LayoutManager
 import java.awt.Rectangle
 import java.awt.datatransfer.StringSelection
@@ -33,7 +34,12 @@ import javax.swing.SwingUtilities
  * Scrollable transcript of a conversation: user messages as tinted bubbles, the model's replies as
  * plain markdown, and tool calls as compact cards that expand on click.
  */
-internal class ChatTranscript(private val project: Project, onCancel: () -> Unit) {
+internal class ChatTranscript(
+    private val project: Project,
+    onCancel: () -> Unit,
+    /** What the Continue button in a turn's footer does -- see [setTurnContinuable]. */
+    private val onContinue: () -> Unit = {},
+) {
 
     private val rows = mutableListOf<ChatRow>()
     private val placeholder = PlaceholderRow()
@@ -42,6 +48,15 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
 
     /** The bubble the AI is currently filling, or null between turns. */
     private var currentTurn: AiTurnRow? = null
+
+    /**
+     * The last bubble opened, kept after [endAiTurn] has closed it.
+     *
+     * [setTurnContinuable] is about a turn that has just stopped, and whether it arrives before or
+     * after the turn is closed is a race between two `invokeLater`s. This is what makes the answer
+     * not matter.
+     */
+    private var lastTurn: AiTurnRow? = null
 
     private val content = TranscriptPanel().apply {
         isOpaque = true
@@ -80,9 +95,31 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
     /** Where a tool call has got to, as its row draws it. */
     enum class ToolStatus { RUNNING, DONE, FAILED, CANCELLED }
 
-    /** A tool row drawn before its tool has finished. [finish] settles it. */
+    /** A handle on one tool card, for the things that happen to it after it is drawn. */
     interface RunningTool {
+
+        /** The tool has returned: its output joins the card and the spinner gives way to [status]. */
         fun finish(details: String, status: ToolStatus)
+
+        /**
+         * Puts Approve and Edit buttons on the card, for output the limit withheld.
+         *
+         * On the card rather than at the end of the transcript because the offer is about *this*
+         * call: a response can ask for six tools and have two of them overrun, and one link at the
+         * bottom of the conversation cannot say which output it would be sending.
+         *
+         * [onApprove] returns whether the output actually reached the conversation -- the block it
+         * belongs to can be gone -- and the button settles into `Approved` only if it did. [onEdit]
+         * is null when there is no file to open, which is the one case Edit is not offered.
+         */
+        fun offerApproval(tokens: Int, limit: Int, onApprove: () -> Boolean, onEdit: (() -> Unit)?)
+
+        /**
+         * Takes an open offer away, saying [label] instead. Used when the conversation moves past
+         * the withheld output: once the note has gone out to the model, replacing what it stood for
+         * would be rewriting something the provider has already been sent and cached.
+         */
+        fun closeApproval(label: String)
     }
 
     fun addUserMessage(markdown: String) {
@@ -92,16 +129,30 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
 
     fun addAssistantMessage(markdown: String) = intoAiTurn(AssistantRow(markdown))
 
-    fun addToolCall(name: String, summary: String, details: String, status: ToolStatus = ToolStatus.DONE) =
-        intoAiTurn(ToolRow(name, summary, details, status))
+    /**
+     * Draws a finished tool call, and hands back the card so anything that happens to it afterwards
+     * -- an offer to approve output the limit withheld -- has something to happen to.
+     *
+     * [requestId] is the request whose response asked for this call. Every call the model asked for
+     * at once carries the same one and they are drawn together in a box of their own; a blank one
+     * is drawn on its own, which is what the rows that borrow this shape without being tool calls
+     * -- a thinking summary, a compaction pass -- pass.
+     */
+    fun addToolCall(
+        requestId: String,
+        name: String,
+        summary: String,
+        details: String,
+        status: ToolStatus = ToolStatus.DONE,
+    ): RunningTool = ToolRow(name, summary, details, status).also { intoToolGroup(requestId, it) }
 
     /**
      * Draws a tool call that is still running, spinner and all. The row is the same one [finish]
      * later fills in, so the transcript shows what the model is doing while it does it rather than
      * only once it is over.
      */
-    fun startToolCall(name: String, summary: String, details: String): RunningTool =
-        ToolRow(name, summary, details, ToolStatus.RUNNING).also { intoAiTurn(it) }
+    fun startToolCall(requestId: String, name: String, summary: String, details: String): RunningTool =
+        ToolRow(name, summary, details, ToolStatus.RUNNING).also { intoToolGroup(requestId, it) }
 
     /**
      * Closes the AI's bubble, so whatever it says next opens a new one. Called when the model is
@@ -110,6 +161,24 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
     fun endAiTurn() {
         currentTurn = null
         pendingCost = null
+        closeToolGroup()
+    }
+
+    /**
+     * Shows or hides the Continue button in the last turn's footer, beside Export MD.
+     *
+     * Shown only when a turn stopped on something the user can still act on -- the tool output limit
+     * -- and not at the end of every reply: Continue means "send the conversation as it now stands",
+     * which on a turn that simply finished would be a button for asking the model to carry on
+     * talking to itself. Taken away again once the conversation has been sent, so the offer never
+     * outlives what it was offering.
+     *
+     * Idempotent, so a round with several withheld outputs shows one button rather than one each.
+     */
+    fun setTurnContinuable(offered: Boolean) {
+        (currentTurn ?: lastTurn)?.setContinuable(offered)
+        content.revalidate()
+        content.repaint()
     }
 
     /**
@@ -135,41 +204,96 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
     /** A cost reported before the turn had a bubble, waiting for one. */
     private var pendingCost: Pair<String, String?>? = null
 
-    fun addError(message: String) = addRow(ErrorRow(message))
-
-    /** A row that is taken back rather than left in the conversation -- see [addContinuePrompt]. */
-    interface Dismissable {
-        fun dismiss()
-    }
-
     /**
-     * Offers an action at the end of the transcript, and takes the offer away once it is used.
+     * An error, drawn at the transcript's level rather than inside the turn's bubble.
      *
-     * The one caller is the withheld tool output: press it and the edited output is sent, so the row
-     * has to go the moment it is pressed. It leaves nothing behind because it is not part of the
-     * conversation -- it is a thing to do about one, which is also why it is never saved with the
-     * chat and never appears in an export. Reopening a chat that had one does not bring it back.
+     * It closes any open group for the same reason [intoAiTurn] does, and it matters more here:
+     * this row goes *below* the bubble, so a tool call that rejoined the group afterwards would be
+     * drawn above something that happened before it.
      */
-    fun addContinuePrompt(action: String, message: String, onAction: () -> Unit): Dismissable {
-        val row = ContinueRow(action, message) { onAction() }
-        addRow(row)
-        return object : Dismissable {
-            override fun dismiss() = removeRow(row)
-        }
+    fun addError(message: String) {
+        closeToolGroup()
+        addRow(ErrorRow(message))
     }
 
     /** Puts [row] in the AI's open bubble, opening one if the model has not spoken since the last turn ended. */
     private fun intoAiTurn(row: ChatRow) {
+        // Anything that is not a tool call ends the run of them: the model has moved on to saying
+        // something, and a group left open across it would draw the calls that follow inside the
+        // box that came before them.
+        closeToolGroup()
+        placeInAiTurn(row)
+    }
+
+    /** [intoAiTurn] without closing the open group, so the group itself can be placed by one. */
+    private fun placeInAiTurn(row: ChatRow) {
         val turn = currentTurn
         if (turn == null) {
             // A new bubble is a row like any other -- addRow gives it its width and scrolls to it.
-            addRow(AiTurnRow(row) { markdown -> TranscriptExport.save(project, markdown) }.also { fresh ->
-                currentTurn = fresh
-                pendingCost?.let { (text, tooltip) -> fresh.setCost(text, tooltip) }
-            })
+            addRow(
+                AiTurnRow(
+                    row,
+                    onExport = { markdown -> TranscriptExport.save(project, markdown) },
+                    onContinue = onContinue,
+                ).also { fresh ->
+                    currentTurn = fresh
+                    lastTurn = fresh
+                    pendingCost?.let { (text, tooltip) -> fresh.setCost(text, tooltip) }
+                }
+            )
             return
         }
         turn.addContent(row)
+        refreshTurn(turn)
+    }
+
+    /**
+     * The box holding the tool calls of the request currently being answered, and which request
+     * that is. Null and blank between rounds.
+     */
+    private var currentGroup: ToolGroupRow? = null
+    private var currentGroupRequestId = ""
+
+    /**
+     * Puts a tool row in the box for [requestId], opening one if this is the round's first call.
+     *
+     * The grouping is by request rather than by "however many arrived in a row", because the two
+     * differ in exactly the case worth drawing: a response that asks for tools without saying
+     * anything first leaves nothing between its calls and the previous request's, and reading them
+     * as one round would claim the model did in one step what it took two requests to do.
+     */
+    private fun intoToolGroup(requestId: String, row: ChatRow) {
+        // Nothing to group by -- the rows that borrow the tool card's shape without coming from a
+        // request, and any chat saved before the id was recorded.
+        if (requestId.isEmpty()) {
+            intoAiTurn(row)
+            return
+        }
+
+        val open = currentGroup?.takeIf { currentGroupRequestId == requestId }
+        if (open == null) {
+            // A box of its own for this request, placed in the bubble as one row -- so a group that
+            // opens before the turn has a bubble gets one built around it, the same as any row.
+            val fresh = ToolGroupRow(row)
+            placeInAiTurn(fresh)
+            currentGroup = fresh
+            currentGroupRequestId = requestId
+            return
+        }
+
+        open.addTool(row)
+        // The turn as a whole, not the group: the row is two levels down, and it is the turn that
+        // knows how much width is left once its bubble's padding is taken off.
+        currentTurn?.let { refreshTurn(it) }
+    }
+
+    private fun closeToolGroup() {
+        currentGroup = null
+        currentGroupRequestId = ""
+    }
+
+    /** Re-measures [turn] after something was added to it, and keeps the view at the bottom. */
+    private fun refreshTurn(turn: AiTurnRow) {
         // The row arrived after the turn was laid out, so it has never been given a width.
         contentWidth().takeIf { it > 0 }?.let { turn.applyAvailableWidth(it) }
         content.revalidate()
@@ -196,7 +320,9 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
     fun clear() {
         rows.clear()
         currentTurn = null
+        lastTurn = null
         pendingCost = null
+        closeToolGroup()
         content.removeAll()
         content.add(placeholder)
         content.revalidate()
@@ -219,18 +345,6 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
         content.revalidate()
         content.repaint()
         scrollToBottom()
-    }
-
-    /**
-     * Takes a row back out. Only ever used for rows that were an offer rather than a record of what
-     * happened, so the placeholder is not restored: a transcript that had a row in it has a
-     * conversation in it too.
-     */
-    private fun removeRow(row: ChatRow) {
-        if (!rows.remove(row)) return
-        content.remove(row)
-        content.revalidate()
-        content.repaint()
     }
 
     private fun contentWidth(): Int = content.width - content.insets.left - content.insets.right
@@ -256,6 +370,69 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
         override fun getScrollableBlockIncrement(visibleRect: Rectangle, orientation: Int, direction: Int) = visibleRect.height
         override fun getScrollableTracksViewportWidth() = true
         override fun getScrollableTracksViewportHeight() = false
+    }
+
+    /**
+     * The small outlined button the bubble's footer and the tool cards share.
+     *
+     * One class rather than the four copies this would otherwise be, and worth having as one because
+     * the alternative is a second style of button appearing in the transcript the first time someone
+     * gets a padding wrong. An [ActionLink] inside a [RoundedPanel] rather than a Swing button: the
+     * transcript is a stack of text, and a real button draws as a raised box in the middle of a page.
+     *
+     * Holds a panel rather than being one, so the hover flag is a field the fill lambda can close
+     * over -- a subclass would have to pass that lambda to its own superclass constructor, before
+     * the flag exists.
+     */
+    private class CardButton(text: String, tooltip: String, onClick: () -> Unit) {
+
+        private var hovered = false
+
+        /** False once the offer behind the button is over: it then reads as a label, not a control. */
+        private var active = true
+
+        private val link = ActionLink(text) { if (active) onClick() }.apply {
+            font = JBFont.small()
+            toolTipText = tooltip
+            // The card behind it draws the hover, and the pointer is over the link rather than over
+            // the card for all but a few pixels of padding.
+            addMouseListener(object : MouseAdapter() {
+                override fun mouseEntered(e: MouseEvent) = setHovered(true)
+                override fun mouseExited(e: MouseEvent) = setHovered(false)
+            })
+        }
+
+        val component: JComponent = RoundedPanel(
+            BorderLayout(),
+            arc = { ChatMetrics.smallArc },
+            fill = { if (hovered && active) ChatColors.cardHover else ChatColors.card },
+            stroke = { ChatColors.cardBorder },
+        ).apply {
+            border = JBUI.Borders.empty(JBUI.scale(2), JBUI.scale(7))
+            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+            add(link, BorderLayout.CENTER)
+        }
+
+        private fun setHovered(value: Boolean) {
+            hovered = value
+            component.repaint()
+        }
+
+        var isVisible: Boolean
+            get() = component.isVisible
+            set(value) {
+                component.isVisible = value
+            }
+
+        /** Turns the button into a note of what happened to it: [text] instead, and nothing to press. */
+        fun settle(text: String) {
+            active = false
+            link.text = text
+            link.foreground = ChatColors.muted
+            link.toolTipText = null
+            component.cursor = Cursor.getDefaultCursor()
+            component.repaint()
+        }
     }
 
     private abstract class ChatRow(layout: LayoutManager) : JPanel(layout) {
@@ -322,7 +499,11 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
      * the point it had nothing left to do, inside a single bubble. The mirror of [UserRow] -- same
      * shape, held off the opposite edge, and neutral rather than accent-tinted.
      */
-    private class AiTurnRow(first: ChatRow, onExport: (String) -> Unit) : ChatRow(BorderLayout()) {
+    private class AiTurnRow(
+        first: ChatRow,
+        onExport: (String) -> Unit,
+        onContinue: () -> Unit,
+    ) : ChatRow(BorderLayout()) {
 
         private val contents = mutableListOf<ChatRow>()
 
@@ -354,8 +535,6 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
             repaint()
         }
 
-        private var exportHovered = false
-
         /**
          * Saves this reply to a file, because a chat window is a poor place to keep an answer that
          * is worth coming back to.
@@ -365,53 +544,48 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
          * describes. A word rather than an icon, because unlike the copy button on a tool card there
          * is nothing about this spot that would suggest what the icon meant.
          */
-        private val export = ActionLink().apply {
-            text = "Export MD"
-            font = JBFont.small()
-            toolTipText = "Save this reply as a Markdown file"
-            addActionListener { onExport(toMarkdown()) }
-            // The card behind it draws the hover, and the pointer is over the link rather than over
-            // the card for all but a few pixels of padding.
-            addMouseListener(object : MouseAdapter() {
-                override fun mouseEntered(e: MouseEvent) = setExportHovered(true)
-                override fun mouseExited(e: MouseEvent) = setExportHovered(false)
-            })
+        private val export = CardButton("Export MD", "Save this reply as a Markdown file") {
+            onExport(toMarkdown())
         }
 
         /**
-         * The outline that makes the link read as something to press.
+         * Sends the conversation again, picking the turn up from where the tool output limit stopped
+         * it.
          *
-         * The same card the tool rows use, at the same arc and the same three colors, so the one
-         * pressable thing in a bubble and the ones above it are recognisably the same kind of
-         * control -- a second style of button for a single word would be a style to learn for
-         * nothing.
+         * Hidden until there is something to continue *from*. Beside Export MD because both are
+         * about this reply as a whole rather than about any one thing in it -- and because a turn
+         * that stopped on a withheld output has its Approve buttons up in the cards above, so the
+         * one control that finishes the job wants to be somewhere fixed rather than beside whichever
+         * card happened to be last.
          */
-        private val exportButton = RoundedPanel(
-            BorderLayout(),
-            arc = { ChatMetrics.smallArc },
-            fill = { if (exportHovered) ChatColors.cardHover else ChatColors.card },
-            stroke = { ChatColors.cardBorder },
-        ).apply {
-            border = JBUI.Borders.empty(JBUI.scale(2), JBUI.scale(7))
-            cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-            add(export, BorderLayout.CENTER)
-        }
+        private val continueTurn = CardButton(
+            "Continue",
+            "Send the conversation again and carry on from where the limit stopped this turn",
+            onContinue,
+        ).apply { isVisible = false }
 
-        /** Called from the link's listener, so it resolves after both fields are built. */
-        private fun setExportHovered(hovered: Boolean) {
-            exportHovered = hovered
-            exportButton.repaint()
+        fun setContinuable(offered: Boolean) {
+            continueTurn.isVisible = offered
+            revalidate()
+            repaint()
         }
 
         /**
-         * The strip along the bottom of the bubble: what the reply cost, and the way to keep it.
+         * The strip along the bottom of the bubble: what the reply cost, and what can be done with it.
          *
-         * The cost is pushed to the far side rather than left next to the button, so the figure
+         * The cost is pushed to the far side rather than left next to the buttons, so the figure
          * stays where it has always been -- the corner a reader's eye goes to for it.
          */
         private val footer = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
             isOpaque = false
-            add(exportButton, BorderLayout.WEST)
+            add(
+                JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+                    isOpaque = false
+                    add(export.component)
+                    add(continueTurn.component)
+                },
+                BorderLayout.WEST,
+            )
             add(cost, BorderLayout.CENTER)
         }
 
@@ -468,6 +642,76 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
         override fun toMarkdown(): String? = markdown.trim().takeIf { it.isNotEmpty() }
     }
 
+    /**
+     * The tool calls of one model response, boxed together inside the turn's bubble.
+     *
+     * A box inside a box, because the nesting is the thing being shown: a turn is several requests,
+     * and each request can ask for several tools at once. Without it a turn that made nine calls is
+     * nine identical cards in a column, and nothing on screen says whether that was one round or
+     * nine round trips -- which is the difference between a model working in parallel and a model
+     * feeling its way one step at a time, and the difference in what the turn cost, since each
+     * round re-sends the whole conversation.
+     */
+    private class ToolGroupRow(first: ChatRow) : ChatRow(BorderLayout()) {
+
+        private val tools = mutableListOf<ChatRow>()
+
+        /**
+         * Declared before the `init` below, which adds the first tool and reads it. A property
+         * initialised after an `init` block that uses it is still zero when that block runs, and
+         * this one is the difference between passing a width down and passing zero down.
+         */
+        private var availableWidth = -1
+
+        private val stack = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
+            isOpaque = false
+        }
+
+        /** How many calls are in the box, which grows as the round's tools are run one by one. */
+        private val header = JBLabel().apply {
+            font = JBFont.small()
+            foreground = ChatColors.muted
+            toolTipText = "Asked for together, in a single model response"
+        }
+
+        private val box = RoundedPanel(
+            BorderLayout(0, JBUI.scale(4)),
+            arc = { ChatMetrics.smallArc },
+            fill = { ChatColors.toolGroup },
+            stroke = { ChatColors.toolGroupBorder },
+        ).apply {
+            border = JBUI.Borders.empty(JBUI.scale(6))
+            add(header, BorderLayout.NORTH)
+            add(stack, BorderLayout.CENTER)
+        }
+
+        init {
+            add(box, BorderLayout.CENTER)
+            addTool(first)
+        }
+
+        fun addTool(row: ChatRow) {
+            tools += row
+            stack.add(row)
+            header.text = if (tools.size == 1) "1 tool call" else "${tools.size} tool calls"
+            // A width was handed down before this row existed, so it has to be passed on by hand --
+            // the group is only asked again when the transcript itself resizes.
+            if (availableWidth > 0) row.applyAvailableWidth(innerWidth(availableWidth))
+        }
+
+        override fun applyAvailableWidth(width: Int) {
+            availableWidth = width
+            val inner = innerWidth(width)
+            tools.forEach { it.applyAvailableWidth(inner) }
+        }
+
+        private fun innerWidth(width: Int) = width - 2 * JBUI.scale(6)
+
+        /** The calls in order, as the quoted lines each of them exports. */
+        override fun toMarkdown(): String? =
+            tools.mapNotNull { it.toMarkdown() }.joinToString("\n").takeIf { it.isNotEmpty() }
+    }
+
     /** One tool invocation, collapsed to a single line until clicked. */
     private class ToolRow(
         /**
@@ -505,6 +749,19 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
         private var expanded = false
         private var detailsLoaded = false
         private var availableWidth = -1
+
+        /**
+         * Where an offer to approve withheld output goes: along the bottom of the card, under the
+         * output it is about. Empty and hidden on every card that never has one, which is nearly all
+         * of them.
+         */
+        private val approvals = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+            isOpaque = false
+            isVisible = false
+        }
+
+        /** The Approve button once there is one, so a second offer is ignored and [closeApproval] can settle it. */
+        private var approveButton: CardButton? = null
 
         // Outlined, because a tool card now sits inside the AI's bubble, and fill alone is too
         // close to the bubble's own to tell them apart.
@@ -556,6 +813,7 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
 
             card.add(header, BorderLayout.NORTH)
             card.add(detailPane, BorderLayout.CENTER)
+            card.add(approvals, BorderLayout.SOUTH)
             add(card, BorderLayout.CENTER)
 
             val mouseListener = object : MouseAdapter() {
@@ -575,10 +833,11 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
             card.cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         }
 
-        // The detail pane and the copy button handle their own clicks, so toggling must not be
-        // wired onto them — otherwise selecting the output would collapse the card.
+        // The detail pane, the copy button and the approval strip handle their own clicks, so
+        // toggling must not be wired onto them — otherwise selecting the output would collapse the
+        // card, and so would approving it.
         private fun installRecursively(component: JComponent, listener: MouseAdapter) {
-            if (component === detailPane || component === copyButton) return
+            if (component === detailPane || component === copyButton || component === approvals) return
             component.addMouseListener(listener)
             component.components.filterIsInstance<JComponent>().forEach { installRecursively(it, listener) }
         }
@@ -597,6 +856,43 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
             setStatus(status)
             revalidate()
             repaint()
+        }
+
+        override fun offerApproval(tokens: Int, limit: Int, onApprove: () -> Boolean, onEdit: (() -> Unit)?) {
+            // One offer per card. The same call cannot overrun twice, but a redraw that reached here
+            // again would otherwise stack a second pair of buttons under the first.
+            if (approveButton != null) return
+
+            // The click settles the very button being clicked, which it reaches through the field
+            // rather than through itself: the field is assigned on the next line and the lambda does
+            // not run until someone presses it.
+            val approve = CardButton(
+                "Approve output",
+                "Send all ${"%,d".format(tokens)} tokens of this output to the model as $toolName's " +
+                    "result, over the ${"%,d".format(limit)}-token limit",
+            ) {
+                if (onApprove()) approveButton?.settle("Approved")
+            }
+            approveButton = approve
+            approvals.add(approve.component)
+
+            onEdit?.let { edit ->
+                approvals.add(
+                    CardButton(
+                        "Edit",
+                        "Open the output in an editor and cut it down; Approve then sends your version",
+                        edit,
+                    ).component
+                )
+            }
+
+            approvals.isVisible = true
+            revalidate()
+            repaint()
+        }
+
+        override fun closeApproval(label: String) {
+            approveButton?.settle(label)
         }
 
         private fun setStatus(status: ToolStatus) {
@@ -661,28 +957,6 @@ internal class ChatTranscript(private val project: Project, onCancel: () -> Unit
                     font = JBFont.small()
                     foreground = ChatColors.muted
                     iconTextGap = JBUI.scale(5)
-                },
-                BorderLayout.CENTER,
-            )
-        }
-    }
-
-    /**
-     * A link and a line of explanation, drawn where an error row would be and reading as one of
-     * them: something happened, and here is the one thing to do about it.
-     *
-     * An [ActionLink] rather than a button because it sits in the flow of the conversation rather
-     * than in a toolbar, and because the transcript is a stack of text -- a Swing button here draws
-     * as a raised box in the middle of a page.
-     */
-    private class ContinueRow(action: String, message: String, onAction: () -> Unit) :
-        ChatRow(BorderLayout(JBUI.scale(6), 0)) {
-        init {
-            add(ActionLink(action) { onAction() }.apply { font = JBFont.small() }, BorderLayout.WEST)
-            add(
-                JBLabel(message).apply {
-                    font = JBFont.small()
-                    foreground = ChatColors.muted
                 },
                 BorderLayout.CENTER,
             )

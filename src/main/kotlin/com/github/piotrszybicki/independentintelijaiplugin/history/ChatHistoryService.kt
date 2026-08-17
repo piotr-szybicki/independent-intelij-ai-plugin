@@ -32,6 +32,17 @@ data class StoredRow(
      * already run.
      */
     val status: String? = null,
+
+    /**
+     * Which request asked for this [TOOL] call, so a reopened chat draws the calls of one response
+     * boxed together the way the live transcript did.
+     *
+     * Nullable rather than defaulted to "" because Gson fills an absent field with null whatever
+     * the Kotlin type says, and every chat saved before this existed is missing it -- declaring it
+     * non-null would only mean the compiler stops warning about the null that is still there.
+     * Those rows come back ungrouped, which is what they looked like when they were written.
+     */
+    val requestId: String? = null,
 ) {
     companion object {
         const val USER = "user"

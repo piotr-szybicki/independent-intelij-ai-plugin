@@ -67,6 +67,14 @@ import java.util.concurrent.ConcurrentHashMap
  * own id for the message -- the only identifier that means anything on the provider's side, and what
  * a support ticket has to quote.
  *
+ * ### The second table
+ *
+ * [TOOL_TABLE] holds the tool calls, one row each, keyed back to the request whose response asked
+ * for them -- see [recordToolCall]. The bodies in [TABLE] already contain the same calls, but only
+ * as JSON inside two columns: what the join buys is that a tool call becomes a row, so how long a
+ * tool takes, how often it fails and how much of the context window its output eats are questions
+ * `GROUP BY tool_name` answers.
+ *
  * `request_body` and `response_body` hold the same two bodies as those files, so a row is the whole
  * exchange without leaving SQL. The files stay: they are what an editor folds and a diff compares,
  * and `conversation_id` with `request_id` names the directory holding them. The cost of the columns
@@ -78,6 +86,17 @@ object ModelUsageDatabase {
     private val fallback = Logger.getInstance(ModelUsageDatabase::class.java)
 
     const val TABLE = "model_requests"
+
+    /**
+     * One row per tool call, hanging off the request that asked for it.
+     *
+     * A table of its own rather than more columns on [TABLE], because the relationship is one to
+     * many: a single response can ask for several tools at once (see `toolUseBlocks` in
+     * `AICodingAgent.run`), and the alternative -- a JSON array in a column -- is the shape that
+     * makes "which tool is slowest", "which one fails most" and "what does read_project_file
+     * actually cost us" queries that cannot be written.
+     */
+    const val TOOL_TABLE = "model_tool_calls"
 
     /**
      * How long to leave a server alone after a failed write.
@@ -308,6 +327,107 @@ object ModelUsageDatabase {
         )
     }
 
+    // --- tool calls ---------------------------------------------------------------------------------
+
+    /**
+     * Records one tool call against the request whose response asked for it.
+     *
+     * [ordinal] is the call's place in that response, counted from zero, and it is what makes the
+     * row identifiable: several tools can be asked for at once, and `tool_use_id` -- the provider's
+     * own id for the block -- is the natural key only as long as there is one, which a compatible
+     * server that omits it does not guarantee. `(request_id, ordinal)` is unique either way, so a
+     * write that is somehow made twice updates its row instead of adding a second.
+     *
+     * Written after the tool has returned rather than before it starts, unlike [recordRequest]. A
+     * tool the loop never finished leaves no row at all here, which is the one thing this shape
+     * cannot record -- but the agent answers every `tool_use` block it opens, cancels included, so
+     * the case is a turn that died outright, and that is what the request row's `error` is for.
+     *
+     * [argumentTokens] and [resultTokens] are `TokenCounter`'s estimate, not the provider's count:
+     * the arguments and the result are both part of the *next* request's input, so this is what
+     * this call will cost to carry from here on, and summing the column per tool is the closest
+     * thing to an answer for which tool is eating the context window. Nothing bills on it -- the
+     * billed figures are [TABLE]'s token columns, which the provider reports.
+     */
+    fun recordToolCall(
+        conversationId: String,
+        requestId: String,
+        ordinal: Int,
+        toolUseId: String,
+        toolName: String,
+        arguments: String,
+        result: String,
+        outcome: String,
+        argumentTokens: Int,
+        resultTokens: Int,
+        durationMillis: Long,
+    ) {
+        // A request id is what the row hangs off; without one there is nothing to attach it to and
+        // the insert would only fail on the foreign key.
+        if (requestId.isBlank()) return
+
+        val document = asJson(arguments)
+        val stored = truncated(result)
+        submit(
+            """
+            INSERT INTO $TOOL_TABLE (
+                request_id, conversation_id, ordinal, tool_use_id, tool_name, outcome,
+                finished_at, duration_ms, arguments, result, argument_tokens, result_tokens
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                tool_use_id = ?, tool_name = ?, outcome = ?, finished_at = ?, duration_ms = ?,
+                arguments = ?, result = ?, argument_tokens = ?, result_tokens = ?
+            """.trimIndent(),
+        ) { finishedAt ->
+            setString(1, requestId)
+            setString(2, conversationId.ifBlank { UNASSIGNED })
+            setInt(3, ordinal)
+            setString(4, toolUseId.takeIf { it.isNotBlank() })
+            setString(5, toolName)
+            setString(6, outcome)
+            setTimestamp(7, finishedAt)
+            setLong(8, durationMillis)
+            setString(9, document)
+            setString(10, stored)
+            setInt(11, argumentTokens)
+            setInt(12, resultTokens)
+            setString(13, toolUseId.takeIf { it.isNotBlank() })
+            setString(14, toolName)
+            setString(15, outcome)
+            setTimestamp(16, finishedAt)
+            setLong(17, durationMillis)
+            setString(18, document)
+            setString(19, stored)
+            setInt(20, argumentTokens)
+            setInt(21, resultTokens)
+        }
+    }
+
+    /**
+     * How much of a tool result is kept.
+     *
+     * A cap rather than the whole thing because this column is the one place the plugin writes
+     * unbounded output to a server: a `read_project_file` on a generated source file is megabytes,
+     * and a single statement over MySQL's `max_allowed_packet` -- 4MB on a 5.7 server that has not
+     * been tuned -- fails the write rather than truncating it, taking the row with it. A million
+     * characters of the ASCII that tool output almost always is comes to about a megabyte, which
+     * leaves room for the rest of the statement under even that limit, and it is already far past
+     * anything anyone reads back.
+     *
+     * `result_tokens` is counted on the untruncated output, so the figure a row reports is what the
+     * call actually cost even when what it kept is shorter.
+     */
+    private const val MAX_RESULT_CHARS = 1_000_000
+
+    private fun truncated(result: String): String =
+        if (result.length <= MAX_RESULT_CHARS) {
+            result
+        } else {
+            result.take(MAX_RESULT_CHARS) +
+                "\n\n[... truncated: ${result.length - MAX_RESULT_CHARS} more characters were not recorded]"
+        }
+
     // --- plumbing -----------------------------------------------------------------------------------
 
     /**
@@ -412,6 +532,9 @@ object ModelUsageDatabase {
         val opened = open(target)
         try {
             opened.createStatement().use { it.execute(SCHEMA) }
+            // After the table it references: the foreign key is rejected outright if the parent is
+            // not there yet, and on a fresh database the statement above is what puts it there.
+            opened.createStatement().use { it.execute(TOOL_SCHEMA) }
             addMissingColumns(opened)
         } catch (e: Exception) {
             runCatching { opened.close() }
@@ -579,6 +702,53 @@ object ModelUsageDatabase {
     """.trimIndent()
 
     /**
+     * The tool calls one response asked for, one row each -- see [recordToolCall].
+     *
+     * The foreign key is what makes the table worth having in this shape: a tool call without the
+     * request that asked for it says nothing about why it happened, and `ON DELETE CASCADE` means
+     * clearing out old requests takes their calls with them rather than leaving rows pointing at
+     * nothing. It also means a row whose parent was never written is refused -- which is possible,
+     * since a request minted while the server was unreachable is dropped rather than queued -- and
+     * that is the right answer: recording the call would only invent a request that no row
+     * describes.
+     *
+     * `arguments` is MySQL's `JSON`, the same bargain [TABLE]'s bodies make: queryable
+     * (`arguments->>'$.path'`), and reformatted on the way in rather than kept byte for byte.
+     * `result` is `MEDIUMTEXT` instead, because a tool result is text -- a file, a diff, a stack
+     * trace -- and storing it as a JSON string would double every quote and newline in it for
+     * nothing.
+     *
+     * `tool_name` is indexed on its own: the queries this table exists for group by it.
+     *
+     * Nothing here needs [ADDED_COLUMNS] yet, because the table is new: everyone gets it created in
+     * this shape. A column added to it later does -- and [addMissingColumns] only walks [TABLE], so
+     * it would need the table naming as well as the column.
+     */
+    private val TOOL_SCHEMA = """
+        CREATE TABLE IF NOT EXISTS $TOOL_TABLE (
+            id              BIGINT       NOT NULL AUTO_INCREMENT,
+            request_id      VARCHAR(64)  NOT NULL,
+            conversation_id VARCHAR(191) NOT NULL,
+            ordinal         INT          NOT NULL,
+            tool_use_id     VARCHAR(191) NULL,
+            tool_name       VARCHAR(191) NOT NULL,
+            outcome         VARCHAR(32)  NOT NULL,
+            finished_at     DATETIME(3)  NOT NULL,
+            duration_ms     BIGINT       NULL,
+            arguments       JSON         NULL,
+            result          MEDIUMTEXT   NULL,
+            argument_tokens INT          NULL,
+            result_tokens   INT          NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY ${TOOL_TABLE}_call (request_id, ordinal),
+            KEY ${TOOL_TABLE}_tool (tool_name, finished_at),
+            KEY ${TOOL_TABLE}_conversation (conversation_id, finished_at),
+            CONSTRAINT ${TOOL_TABLE}_request
+                FOREIGN KEY (request_id) REFERENCES $TABLE (request_id) ON DELETE CASCADE
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    """.trimIndent()
+
+    /**
      * [body] as something a `JSON` column will accept.
      *
      * A body is normally JSON already, but not always: an error from a gateway in front of the
@@ -616,12 +786,18 @@ object ModelUsageDatabase {
                         if (it.next()) it.getLong(1) to it.getBigDecimal(2) else 0L to BigDecimal.ZERO
                     }
                 }
+                val toolCalls = handle.createStatement().use { statement ->
+                    statement.executeQuery("SELECT COUNT(*) FROM $TOOL_TABLE").use {
+                        if (it.next()) it.getLong(1) else 0L
+                    }
+                }
                 // Woken here as well as on a successful write, so a container that has just been
                 // started begins recording without waiting out the retry interval.
                 resetBackoff()
                 "Connected to MySQL $server.\n" +
                     "Database `$database`, table `$TABLE` holds $rows row(s), " +
-                    "${ModelPricing.format(spent)} of recorded cost."
+                    "${ModelPricing.format(spent)} of recorded cost.\n" +
+                    "Table `$TOOL_TABLE` holds $toolCalls tool call(s)."
             }
         } catch (e: Exception) {
             "Could not connect: ${e.message}"
