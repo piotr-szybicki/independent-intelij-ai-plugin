@@ -40,9 +40,10 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "get_file_structure"
     override val description =
-        "Outlines a file's classes, methods, fields and other declarations with their start lines " +
-            "(Structure view). Far cheaper than reading the whole file, and the lines feed " +
-            "read_project_file and edit_file_lines. Pass 'path' for a project file, or " +
+        "Outlines a file's classes, methods, fields and other declarations with the lines each " +
+            "one spans, as start-end, or a single number when it fits on one line (Structure " +
+            "view). Far cheaper than reading the whole file, and a range feeds " +
+            "read_project_file and edit_file_lines directly. Pass 'path' for a project file, or " +
             "'class_name' for a library or JDK class, whose lines feed read_library_class. For " +
             "one known symbol, use get_symbol_info."
     override val inputSchema: JsonObject = JsonObject().apply {
@@ -116,7 +117,8 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         }
 
         val width = outline.lineCount.toString().length
-        val blank = " ".repeat(width)
+        val columnWidth = width * 2 + 1
+        val blankRange = " ".repeat(columnWidth)
 
         return buildString {
             append(target.label).append(" — ").append(outline.lineCount).append(" lines, ")
@@ -124,7 +126,17 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             if (outline.truncated) append(" (truncated at $maxItems)")
             append(":\n")
             for (entry in outline.entries) {
-                if (entry.line != null) append("%${width}d".format(entry.line)) else append(blank)
+                val lineText = when {
+                    entry.startLine != null && entry.endLine != null -> {
+                        val start = "%${width}d".format(entry.startLine)
+                        val end = "%${width}d".format(entry.endLine)
+                        if (entry.startLine == entry.endLine) start else "$start-$end"
+                    }
+                    entry.startLine != null -> "%${width}d".format(entry.startLine)
+                    entry.endLine != null -> "%${width}d".format(entry.endLine)
+                    else -> null
+                }
+                append(lineText?.padStart(columnWidth) ?: blankRange)
                 append("  ")
                 append("  ".repeat(entry.depth))
                 append(entry.label)
@@ -175,7 +187,12 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         }
     }
 
-    private class Entry(val depth: Int, val line: Int?, val label: String)
+    private class Entry(
+        val depth: Int,
+        val startLine: Int?,
+        val endLine: Int?,
+        val label: String,
+    )
 
     private class Outline(
         val entries: List<Entry>,
@@ -259,18 +276,22 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             }
 
             val label = if (location.isNullOrEmpty()) text else "$text  $location"
-            entries.add(Entry(depth, lineOf(element, lines), label))
+            val range = lineRangeOf(element, lines)
+            entries.add(Entry(depth, range?.first, range?.second, label))
 
             if (walk(element.children, depth + 1, maxDepth, maxItems, entries, lines)) return true
         }
         return false
     }
 
-    private fun lineOf(element: TreeElement, lines: Lines): Int? {
+    private fun lineRangeOf(element: TreeElement, lines: Lines): Pair<Int?, Int?>? {
         val psi = (element as? StructureViewTreeElement)?.value as? PsiElement ?: return null
         if (!psi.isValid) return null
         val range = psi.textRange ?: return null
-        return lines.lineAt(range.startOffset)
+        val start = lines.lineAt(range.startOffset)
+        val endOffset = (range.endOffset - 1).coerceAtLeast(range.startOffset)
+        val end = lines.lineAt(endOffset)
+        return start to end
     }
 
     /**
@@ -303,4 +324,5 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             return index + 1
         }
     }
+
 }

@@ -19,7 +19,8 @@ class ReadProjectFileTool(private val project: Project) : AICodingAgentTool {
         "Reads a project file, returning the requested lines each prefixed with its line number, " +
             "plus the total line count. Omit start_line/end_line for the whole file. Those line " +
             "numbers are what edit_file_lines takes; never include the prefixes in content passed " +
-            "back."
+            "back. For a file you do not already know, outline it with get_file_structure first " +
+            "and read the range it gives for the declaration you want, rather than the whole file."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {

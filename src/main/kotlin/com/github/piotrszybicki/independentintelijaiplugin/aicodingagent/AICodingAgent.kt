@@ -173,6 +173,13 @@ class AICodingAgent(
             or check something, the tool call for it belongs in that same turn -- never end a turn
             on a statement of intent about work you have not done. When something takes several
             steps, take the first one now instead of describing the plan and stopping.
+
+            Outline before you read. For a file you do not already know, call get_file_structure
+            first and read only the ranges it points at. Each declaration comes back with the
+            span it covers -- start-end for anything spanning several lines, a single number
+            when it fits on one -- and that range is what read_project_file and edit_file_lines
+            take, so a method can be read on its own. Read a file whole only when the outline
+            shows it is small, or when what you need is code the outline does not name.
         """.trimIndent()
 
         /**
