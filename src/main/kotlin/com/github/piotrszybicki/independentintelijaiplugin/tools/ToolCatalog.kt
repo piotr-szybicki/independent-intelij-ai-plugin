@@ -46,8 +46,6 @@ object ToolCatalog {
     )
 
     val entries: List<Entry> = listOf(
-        Entry("get_editor_context", ToolCategory.READ, true, ::GetEditorContextTool),
-        Entry("list_open_files", ToolCategory.READ, true, ::ListOpenFilesTool),
         Entry("list_directory", ToolCategory.READ, true, ::ListDirectoryTool),
         Entry("file_exists", ToolCategory.READ, true, ::FileExistsTool),
         Entry("read_project_file", ToolCategory.READ, true, ::ReadProjectFileTool),

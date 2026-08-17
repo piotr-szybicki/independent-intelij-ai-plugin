@@ -9,9 +9,8 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodin
 /**
  * Lists what is in a project directory -- the tool for orienting in an unfamiliar codebase.
  *
- * find_in_files can only answer questions phrased as text searches, and list_open_files reports
- * what the user happens to have open, so without this the only way to see the project's shape was
- * a shell `ls`, which costs an approval dialog and differs per platform.
+ * find_in_files can only answer questions phrased as text searches, so without this the only way to
+ * see the project's shape was a shell `ls`, which costs an approval dialog and differs per platform.
  */
 class ListDirectoryTool(private val project: Project) : AICodingAgentTool {
 
