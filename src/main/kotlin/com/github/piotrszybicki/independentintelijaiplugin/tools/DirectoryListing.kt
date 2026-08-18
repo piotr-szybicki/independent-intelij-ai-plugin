@@ -59,6 +59,28 @@ object DirectoryListing {
         }
     }
 
+    // The same tree, built from a flat list of file paths and with no summary line of its own -- for
+    // a caller that has already counted what it found and has its own thing to say about it, such as
+    // find_by_name. A search that turns up fifty files in one package repeats the same eighty
+    // characters of prefix fifty times when it prints a path per line, which is the bulk of the
+    // answer and none of the information; this is the shape list_directory already answers in, so
+    // the model is reading a format it has seen rather than a second one invented for search.
+    //
+    // Ends with a newline when there is anything to show, and is empty when there is not.
+    fun tree(paths: List<String>): String {
+        val root = Dir("")
+        for (path in paths.distinct()) {
+            val segments = path.split('/', '\\').filter { it.isNotEmpty() }
+            if (segments.isEmpty()) continue
+            var parent = root
+            for (segment in segments.dropLast(1)) {
+                parent = parent.dirs.getOrPut(segment) { Dir(segment) }
+            }
+            parent.files.add(segments.last())
+        }
+        return buildString { appendDir(root, indent = 0) }
+    }
+
     private fun StringBuilder.appendDir(dir: Dir, indent: Int) {
         val pad = " ".repeat(indent)
         if (dir.files.isNotEmpty()) {

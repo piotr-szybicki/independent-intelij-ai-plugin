@@ -33,7 +33,9 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
     override val description =
         "Finds project items by name rather than content: type \"class\" (Go to Class), \"file\", " +
             "or \"action\" for an IDE action id, which is what run_action takes. Case-insensitive " +
-            "substring by default. To search contents, use find_in_files."
+            "substring by default. File results come back as a tree -- a directory on its own line " +
+            "ending in \"/\", its files on the indented lines below it -- so a file's path is its " +
+            "directory line joined to its name. To search contents, use find_in_files."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
@@ -100,7 +102,13 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
             append("${results.size} $type result(s) for \"$query\"")
             if (results.size >= maxResults) append(" (stopped at the limit; narrow the query to see the rest)")
             append(":\n")
-            results.forEach { append(it).append('\n') }
+            // Files are grouped into a tree rather than listed one path per line. A query like ".kt"
+            // matches every file in a package, and a path per line repeats that package's prefix
+            // once per file -- for a deep package that is most of the characters in the answer, and
+            // it is re-sent with every later request of the conversation. Classes and actions are
+            // names rather than paths and have nothing to group by, so they stay as they were.
+            if (type == "file") append(DirectoryListing.tree(results))
+            else results.forEach { append(it).append('\n') }
         }
     }
 

@@ -118,6 +118,7 @@ class AgentConfigurationTest {
         assertEquals(Effort.MEDIUM, configuration.effort)
         assertEquals(AgentConfiguration.DEFAULT_MAX_TOKENS, configuration.maxTokens)
         assertEquals(AgentConfiguration.DEFAULT_CONTEXT_WINDOW, configuration.contextWindowTokens)
+        assertEquals(AgentConfiguration.DEFAULT_REQUEST_TIMEOUT_SECONDS, configuration.requestTimeoutSeconds)
     }
 
     /**
@@ -151,6 +152,33 @@ class AgentConfigurationTest {
         assertEquals(32000, configuration.maxTokens)
         // Zero is a real answer here -- it switches compaction off rather than meaning "unset".
         assertEquals(0, configuration.contextWindowTokens)
+    }
+
+    @Test
+    fun `reads the request timeout when it is given`() {
+        val configuration = AgentConfiguration.parseAll(
+            """
+            [{
+              "name": "Slow", "model": "m", "url": "https://x/v1/messages", "token": "t",
+              "request-timeout-seconds": 300
+            }]
+            """.trimIndent(),
+        ).single()
+
+        assertEquals(300, configuration.requestTimeoutSeconds)
+    }
+
+    /** Zero would be a request that times out before it is sent, so it is reported like a bad cap. */
+    @Test
+    fun `refuses a request timeout below one second`() {
+        val zero = """
+            [{
+              "name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t",
+              "request-timeout-seconds": 0
+            }]
+        """.trimIndent()
+
+        assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll(zero) }
     }
 
     /** A reply cap of zero is a chat that cannot answer, so it is reported rather than replaced. */

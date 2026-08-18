@@ -5,17 +5,18 @@ import com.google.gson.JsonObject
 import com.intellij.find.FindModel
 import com.intellij.find.impl.FindInProjectUtil
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.editor.Document
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.usageView.UsageInfo
-import com.intellij.usages.FindUsagesProcessPresentation
 import com.intellij.usages.UsageViewPresentation
 import com.intellij.util.Processor
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
-import java.util.concurrent.atomic.AtomicInteger
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
+import com.github.piotrszybicki.independentintelijaiplugin.settings.FindInFilesConfig
 
 /**
  * Text search across the project -- the IDE's Find in Files, driven from the chat.
@@ -27,24 +28,52 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Complements find_usages, which resolves a symbol through the PSI. This one has no idea what the
  * text means -- use it for strings, comments, config keys, and anything that is not a declaration.
+ *
+ * Answers with locations and nothing else. It used to echo each matching line, which meant the query
+ * came back once per hit alongside up to two hundred characters of the line around it -- a search
+ * that found the same word in eighty places paid for eighty copies of it, and paid again on every
+ * later turn, because a tool result stays in the conversation. A line number is what the model
+ * actually acts on: it reads the file it decides to read, at the place this pointed it to.
+ *
+ * Three things bound the answer, in the order they bite:
+ *  - phrases the project has blocked outright, per [FindInFilesConfig];
+ *  - the number of files, which is what the caller sets and what usually stops a broad search;
+ *  - [MAX_TOTAL_MATCHES], which nothing sets, for the query that finds a thousand hits inside the
+ *    file limit.
  */
 class FindInFilesTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
-        private const val DEFAULT_MAX_RESULTS = 100
-        private const val MAX_MAX_RESULTS = 500
+        private val LOG = Logger.getInstance(FindInFilesTool::class.java)
 
-        /** Matching lines are echoed for context, not to reproduce the file. */
-        private const val MAX_LINE_CHARS = 200
+        /**
+         * Files, not matches. The old cap counted hits, which made "one match in each of five
+         * hundred files" and "five hundred matches in one file" the same size of answer when only
+         * the first is a search that has gone wrong. A hundred files is already more than a useful
+         * answer contains; past that the model needs a narrower query, not more of this one.
+         */
+        private const val DEFAULT_MAX_FILES = 100
+        private const val MAX_MAX_FILES = 100
+
+        /**
+         * The ceiling the file cap cannot enforce: a hundred files can hold any number of hits, and
+         * collecting them all is a search that never comes back. Generous enough that an ordinary
+         * search never reaches it, so hitting it reads as a fault in the query rather than as a
+         * limit worth tuning.
+         */
+        private const val MAX_TOTAL_MATCHES = 2_000
     }
+
+    /** Whether the search ran out, and on which cap -- the summary says which one it was. */
+    private enum class Limit { NONE, FILES, MATCHES }
 
     override val name = "find_in_files"
     override val description =
         "Plain text search across project files (Find in Files). Supports regex, case " +
             "sensitivity, whole-word, a file mask such as \"*.kt\", and a subdirectory scope. " +
-            "Results are grouped by file: the file's path on its own line, then its matches " +
-            "indented below it as \"<line number>: <matching line>\". To find uses of a " +
-            "declaration, use find_usages."
+            "Results are locations only, grouped by file: the file's path on its own line, then " +
+            "the line number of each match indented below it. Read the file to see the matching " +
+            "text. To find uses of a declaration, use find_usages."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
@@ -79,11 +108,13 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
                     "Restrict to a directory, relative to the project root. Omit to search the whole project.",
                 )
             })
-            add("max_results", JsonObject().apply {
+            add("max_files", JsonObject().apply {
                 addProperty("type", "integer")
                 addProperty(
                     "description",
-                    "Stop after this many matches. Defaults to $DEFAULT_MAX_RESULTS, maximum $MAX_MAX_RESULTS.",
+                    "Stop once matches have been found in this many files. Defaults to " +
+                        "$DEFAULT_MAX_FILES, which is also the maximum. Every match inside those " +
+                        "files is reported.",
                 )
             })
         })
@@ -94,8 +125,19 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         val query = input.get("query")?.asString.orEmpty()
         if (query.isEmpty()) return "Error: missing 'query'"
 
-        val maxResults = (input.get("max_results")?.asInt ?: DEFAULT_MAX_RESULTS)
-            .coerceIn(1, MAX_MAX_RESULTS)
+        blockedBy(query)?.let { phrase ->
+            // Named rather than refused blankly, so the next attempt is a different question rather
+            // than the same one in different case.
+            return "Error: \"$phrase\" is blocked in this project's \"${FindInFilesConfig.SECTION}\" " +
+                "settings -- it matches too much of the project to be worth listing. Search for " +
+                "something more specific, or use find_usages if it is a declaration you are after."
+        }
+
+        // "max_results" is what this was called while it counted matches. A conversation that has
+        // been going a while still has the old schema in it, and the old name means the new thing
+        // closely enough that refusing it would be pedantry.
+        val maxFiles = (input.get("max_files")?.asInt ?: input.get("max_results")?.asInt ?: DEFAULT_MAX_FILES)
+            .coerceIn(1, MAX_MAX_FILES)
 
         val model = FindModel().apply {
             stringToFind = query
@@ -119,7 +161,8 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         }
 
         val found = mutableListOf<UsageInfo>()
-        val seen = AtomicInteger(0)
+        val files = mutableSetOf<VirtualFile>()
+        var limit = Limit.NONE
         val presentation = FindInProjectUtil.setupProcessPresentation(UsageViewPresentation())
 
         val failure = runCatching {
@@ -130,8 +173,25 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
                     model,
                     project,
                     Processor { usage ->
-                        synchronized(found) { if (found.size < maxResults) found.add(usage) }
-                        seen.incrementAndGet() < maxResults
+                        // Which file a hit is in is a PSI question, so it needs read access; the
+                        // engine usually has it already, and asking again while it does is free.
+                        val file = ReadAction.compute<VirtualFile?, RuntimeException> { usage.virtualFile }
+                            ?: return@Processor true
+                        // Hits arrive from several threads, so the counting that decides when to
+                        // stop has to happen under one lock.
+                        synchronized(found) {
+                            if (file !in files && files.size >= maxFiles) {
+                                limit = Limit.FILES
+                                return@synchronized false
+                            }
+                            files.add(file)
+                            found.add(usage)
+                            if (found.size >= MAX_TOTAL_MATCHES) {
+                                limit = Limit.MATCHES
+                                return@synchronized false
+                            }
+                            true
+                        }
                     },
                     presentation,
                 )
@@ -143,10 +203,23 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
             return "Error: the search failed: ${it.message ?: it::class.java.simpleName}"
         }
 
-        return render(query, found, seen.get() >= maxResults)
+        return render(query, found, limit)
     }
 
-    private fun render(query: String, usages: List<UsageInfo>, truncated: Boolean): String {
+    /**
+     * The configured phrase that refuses [query], or null when the search may run.
+     *
+     * A section that will not parse blocks nothing rather than failing the search: the settings page
+     * is where a broken file gets reported, and a search that stopped working because of a stray
+     * comma somewhere else in the file would be a puzzle from inside the chat.
+     */
+    private fun blockedBy(query: String): String? {
+        val loaded = AgentConfigurations.getInstance(project).findInFiles()
+        loaded.error?.let { LOG.warn("blocking no find_in_files query: $it") }
+        return loaded.findInFiles.blocking(query)
+    }
+
+    private fun render(query: String, usages: List<UsageInfo>, limit: Limit): String {
         val matches = ReadAction.computeBlocking<List<MatchListing.Match>, RuntimeException> {
             usages.mapNotNull { usage ->
                 val file = usage.virtualFile ?: return@mapNotNull null
@@ -154,27 +227,24 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
                 val offset = usage.navigationOffset.takeIf { it in 0..document.textLength }
                     ?: return@mapNotNull null
 
-                val line = document.getLineNumber(offset)
-                MatchListing.Match(
-                    PsiTargets.relativePath(project, file),
-                    line + 1,
-                    lineText(document, line),
-                )
+                // No text: the location is the whole answer -- see the note on the class.
+                MatchListing.Match(PsiTargets.relativePath(project, file), document.getLineNumber(offset) + 1)
             }
         }
         if (matches.isEmpty()) return "No matches for \"$query\"."
 
-        return MatchListing.format(
-            "${MatchListing.count(matches)} match(es) for \"$query\"",
-            matches,
-            truncated,
-        )
-    }
-
-    private fun lineText(document: Document, line: Int): String {
-        val text = document.getText(
-            com.intellij.openapi.util.TextRange(document.getLineStartOffset(line), document.getLineEndOffset(line))
-        ).trim()
-        return if (text.length <= MAX_LINE_CHARS) text else text.take(MAX_LINE_CHARS) + "…"
+        val fileCount = matches.distinctBy { it.path }.size
+        val summary = buildString {
+            append("${MatchListing.count(matches)} line(s) in $fileCount file(s) for \"$query\"")
+            // Which cap ran out decides what a narrower query has to change: fewer files is a
+            // different word, while a hit on the line ceiling inside a handful of files is a mask
+            // or a directory away from being answerable.
+            when (limit) {
+                Limit.FILES -> append(", the most files this tool lists")
+                Limit.MATCHES -> append(", the most lines this tool lists")
+                Limit.NONE -> Unit
+            }
+        }
+        return MatchListing.format(summary, matches, truncated = limit != Limit.NONE)
     }
 }

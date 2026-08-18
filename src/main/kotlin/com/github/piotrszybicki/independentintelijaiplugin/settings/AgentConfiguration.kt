@@ -88,6 +88,18 @@ data class AgentConfiguration(
      */
     val contextWindowTokens: Int,
 
+    /**
+     * How long one request may take before the client gives up on it, in seconds.
+     *
+     * Per entry rather than one number for the whole plugin, because it is a property of what is at
+     * the other end: a reasoning model behind a busy gateway can think for minutes before its first
+     * byte, while a local server that has stopped answering is better given up on quickly.
+     *
+     * The whole exchange, not just the connection -- a request answered slowly spends this the same
+     * way one that is never answered does. Running out of it ends the turn with "Could not reach
+     * <url>: request timed out", which the transcript offers Retry on.
+     */
+    val requestTimeoutSeconds: Int,
     /** Ignored unless [protocol] is the Messages API: no other provider knows the header. */
     val apiVersion: String,
     /** Routing or tenancy headers a gateway needs. Never secrets -- the file is plain text. */
@@ -134,6 +146,7 @@ data class AgentConfiguration(
         addProperty(EFFORT, effort.fileName)
         addProperty(MAX_TOKENS, maxTokens)
         addProperty(CONTEXT_WINDOW, contextWindowTokens)
+        addProperty(REQUEST_TIMEOUT, requestTimeoutSeconds)
         add(
             CUSTOMIZATIONS,
             JsonObject().apply {
@@ -197,6 +210,12 @@ data class AgentConfiguration(
         const val DEFAULT_MAX_TOKENS = 8000
         const val DEFAULT_CONTEXT_WINDOW = 200_000
 
+        /**
+         * A minute, which is long enough for a thinking model to answer a full conversation and
+         * short enough that a gateway which has quietly stopped talking is noticed in one.
+         */
+        const val DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
+
         private const val CONFIGURATIONS = "configurations"
         private const val NAME = "name"
         private const val MODEL = "model"
@@ -209,6 +228,7 @@ data class AgentConfiguration(
         private const val EFFORT = "effort"
         private const val MAX_TOKENS = "max-tokens"
         private const val CONTEXT_WINDOW = "context-window"
+        private const val REQUEST_TIMEOUT = "request-timeout-seconds"
         private const val CUSTOMIZATIONS = "additional-customizations"
         private const val API_VERSION = "anthropic-version"
         private const val EXTRA_HEADERS = "extra-headers"
@@ -226,6 +246,7 @@ data class AgentConfiguration(
             effort = Effort.MEDIUM,
             maxTokens = DEFAULT_MAX_TOKENS,
             contextWindowTokens = DEFAULT_CONTEXT_WINDOW,
+            requestTimeoutSeconds = DEFAULT_REQUEST_TIMEOUT_SECONDS,
             apiVersion = DEFAULT_API_VERSION,
             extraHeaders = emptyMap(),
         )
@@ -271,6 +292,7 @@ data class AgentConfiguration(
                 effort = Effort.MEDIUM,
                 maxTokens = DEFAULT_MAX_TOKENS,
                 contextWindowTokens = DEFAULT_CONTEXT_WINDOW,
+                requestTimeoutSeconds = DEFAULT_REQUEST_TIMEOUT_SECONDS,
                 apiVersion = "",
                 extraHeaders = emptyMap(),
             ),
@@ -291,6 +313,9 @@ data class AgentConfiguration(
                 maxTokens = DEFAULT_MAX_TOKENS,
                 // A local model is usually served with far less window than it was trained for.
                 contextWindowTokens = 32_000,
+                // Longer than the default: a local model runs at whatever speed the machine has
+                // left, and the same prompt that answers in seconds on a server can take minutes.
+                requestTimeoutSeconds = 300,
                 apiVersion = "",
                 extraHeaders = emptyMap(),
             ),
@@ -439,6 +464,10 @@ data class AgentConfiguration(
                 // saved and acted on -- unlike the window below, where zero means "do not compact".
                 maxTokens = entry.int(name, MAX_TOKENS, DEFAULT_MAX_TOKENS, minimum = 1),
                 contextWindowTokens = entry.int(name, CONTEXT_WINDOW, DEFAULT_CONTEXT_WINDOW, minimum = 0),
+                // At least a second, and no way to say "wait forever": a request with no ceiling is
+                // a turn that hangs on "AI is working" with nothing to press but Stop, which is the
+                // state this field exists to let the user tune rather than remove.
+                requestTimeoutSeconds = entry.int(name, REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT_SECONDS, minimum = 1),
                 // Absent means the Messages API default rather than "send nothing", so a file
                 // written without the section keeps working against Anthropic. Present and empty
                 // is the way to say the header should be left off.
@@ -451,19 +480,21 @@ data class AgentConfiguration(
         /**
          * The file's whole contents, pretty-printed, as it is written on creation.
          *
-         * [database] is written out along with the configurations rather than left to be preserved,
-         * because this rewrites the whole file: a section that was not passed in is a section that
-         * would be dropped, and the one thing worse than a usage database that is not recording is
-         * one whose URL disappeared when an unrelated button was pressed.
+         * [database] and [findInFiles] are written out along with the configurations rather than
+         * left to be preserved, because this rewrites the whole file: a section that was not passed
+         * in is a section that would be dropped, and the one thing worse than a usage database that
+         * is not recording is one whose URL disappeared when an unrelated button was pressed.
          */
         fun render(
             configurations: List<AgentConfiguration>,
             database: UsageDatabaseConfig = UsageDatabaseConfig.OFF,
+            findInFiles: FindInFilesConfig = FindInFilesConfig.DEFAULT,
         ): String {
             val root = JsonObject().apply {
-                // First, because it is two lines and the array below is however many providers long
-                // -- a section at the bottom of that is a section nobody finds.
+                // First, because they are a few lines each and the array below is however many
+                // providers long -- a section at the bottom of that is a section nobody finds.
                 add(UsageDatabaseConfig.SECTION, database.toJson())
+                add(FindInFilesConfig.SECTION, findInFiles.toJson())
                 add(CONFIGURATIONS, JsonArray().apply { configurations.forEach { add(it.toJson()) } })
             }
             return GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root) + "\n"

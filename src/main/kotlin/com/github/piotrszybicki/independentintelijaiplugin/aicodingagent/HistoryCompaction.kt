@@ -59,7 +59,9 @@ object HistoryCompaction {
      * Not the window itself: the reply, its thinking, and whatever the next round of tool calls
      * returns all have to fit above whatever is left, and none of them are known when this runs.
      */
-    private const val COMPACT_ABOVE = 0.60
+    // Internal because the context meter colours on it: the point at which the user's bar changes
+    // colour and the point at which this fires are the same fact, and two copies of it would drift.
+    internal const val COMPACT_ABOVE = 0.60
 
     /**
      * What a pass tries to get back down to. Well below [COMPACT_ABOVE] on purpose -- see the note
@@ -204,18 +206,25 @@ object HistoryCompaction {
     fun compact(
         history: MutableList<ChatMessage>,
         contextWindowTokens: Int,
-        overheadTokens: Int = 0,
+        overheadChars: Int = 0,
+        // What a character is worth in this conversation. Left at the standing guess by default and
+        // given [ContextMeter]'s calibrated figure once there is one, so that the gauge the user
+        // reads and the threshold this fires on are the same measurement -- a bar sitting at 45%
+        // when compaction runs at its 60% mark looks like a bug in whichever of the two is right.
+        tokensPerChar: Double = ContextMeter.DEFAULT_TOKENS_PER_CHAR,
         summarizer: Summarizer? = null,
     ): Result {
-        val overheadChars = overheadTokens.coerceAtLeast(0) * CHARS_PER_TOKEN
-        var chars = charsOf(history) + overheadChars
-        val before = chars / CHARS_PER_TOKEN
+        var chars = charsOf(history) + overheadChars.coerceAtLeast(0)
+        val before = tokensIn(chars, tokensPerChar)
         if (contextWindowTokens <= 0) return Result(0, before, before)
 
-        val triggerChars = contextWindowTokens * COMPACT_ABOVE * CHARS_PER_TOKEN
+        // The window converted into characters once, rather than the history converted into tokens
+        // on every comparison below: the history is what changes as the pass runs.
+        val windowChars = contextWindowTokens / tokensPerChar
+        val triggerChars = windowChars * COMPACT_ABOVE
         if (chars < triggerChars) return Result(0, before, before)
 
-        val targetChars = contextWindowTokens * COMPACT_DOWN_TO * CHARS_PER_TOKEN
+        val targetChars = windowChars * COMPACT_DOWN_TO
         val elidable = (history.size - PROTECTED_TAIL_MESSAGES).coerceAtLeast(0)
 
         // Oldest first: the earliest output is the least likely to still be what the model is
@@ -238,10 +247,13 @@ object HistoryCompaction {
         }
 
         val summarized = if (chars > targetChars && summarizer != null) summarize(history, summarizer) else 0
-        if (summarized > 0) chars = charsOf(history) + overheadChars
+        if (summarized > 0) chars = charsOf(history) + overheadChars.coerceAtLeast(0)
 
-        return Result(evicted, before, chars / CHARS_PER_TOKEN, summarized)
+        return Result(evicted, before, tokensIn(chars, tokensPerChar), summarized)
     }
+
+    private fun tokensIn(chars: Int, tokensPerChar: Double): Int =
+        (chars.coerceAtLeast(0) * tokensPerChar).toInt()
 
     /**
      * Replaces the oldest part of [history] with prose from [summarizer], and returns how many
@@ -284,12 +296,22 @@ object HistoryCompaction {
      * of thousands of tokens on every request, and leaving them out would have compaction hold off
      * until well past the point the window actually runs out.
      */
-    fun overheadTokens(system: String?, tools: List<ToolDefinition>): Int {
+    fun overheadTokens(system: String?, tools: List<ToolDefinition>): Int =
+        overheadChars(system, tools) / CHARS_PER_TOKEN
+
+    /**
+     * The fixed part of every request -- system prompt and tool schemas -- in characters.
+     *
+     * Characters rather than tokens because that is what [compact] and [ContextMeter] both weigh,
+     * and rounding to tokens here would mean rounding at the default ratio and then correcting a
+     * figure that has already lost its precision.
+     */
+    fun overheadChars(system: String?, tools: List<ToolDefinition>): Int {
         var chars = system?.length ?: 0
         for (tool in tools) {
             chars += tool.name.length + tool.description.length + tool.input_schema.toString().length
         }
-        return chars / CHARS_PER_TOKEN
+        return chars
     }
 
     /**
@@ -300,7 +322,7 @@ object HistoryCompaction {
      * that drifted out of step with a list the agent loop mutates in place would be the harder thing
      * to get right.
      */
-    private fun charsOf(messages: List<ChatMessage>): Int = messages.sumOf { it.content.toString().length }
+    internal fun charsOf(messages: List<ChatMessage>): Int = messages.sumOf { it.content.toString().length }
 
     /**
      * The index a summarising pass may cut at: everything before it is summarised away, everything

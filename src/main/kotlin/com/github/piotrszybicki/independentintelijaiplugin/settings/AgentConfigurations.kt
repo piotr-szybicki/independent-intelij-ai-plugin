@@ -45,6 +45,13 @@ class AgentConfigurations(private val project: Project) {
     data class LoadedDatabase(val database: UsageDatabaseConfig, val error: String?)
 
     /**
+     * What one read of the `find-in-files` section produced, kept apart from the other two for the
+     * same reason they are kept apart from each other: a typo in the blocked-phrase list must not
+     * cost the chat its providers, and a broken provider entry must not quietly unblock a search.
+     */
+    data class LoadedFindInFiles(val findInFiles: FindInFilesConfig, val error: String?)
+
+    /**
      * Where the file is: what [AgentConfiguration.PATH_ENV_VAR] names, or the project root, or null
      * for a project with no directory on disk and no variable set.
      *
@@ -98,7 +105,13 @@ class AgentConfigurations(private val project: Project) {
             LOG.info("\$${AgentConfiguration.PATH_ENV_VAR} names $file, which is not there; not creating it")
             return null
         }
-        val failure = save(AgentConfiguration.render(AgentConfiguration.STARTER, UsageDatabaseConfig.OFF))
+        val failure = save(
+            AgentConfiguration.render(
+                AgentConfiguration.STARTER,
+                UsageDatabaseConfig.OFF,
+                FindInFilesConfig.DEFAULT,
+            ),
+        )
         if (failure != null) return null
         LOG.info("wrote a starter configuration file to $file")
         return file
@@ -119,8 +132,11 @@ class AgentConfigurations(private val project: Project) {
      * Deliberately not automatic. It reformats a file the user owns and may be part-way through
      * editing, which is a thing to do when asked rather than on every project open.
      */
-    fun rewrite(configurations: List<AgentConfiguration>, database: UsageDatabaseConfig): String? =
-        save(AgentConfiguration.render(configurations, database))
+    fun rewrite(
+        configurations: List<AgentConfiguration>,
+        database: UsageDatabaseConfig,
+        findInFiles: FindInFilesConfig,
+    ): String? = save(AgentConfiguration.render(configurations, database, findInFiles))
 
     /**
      * Puts [text] in the file, through the VFS and inside a write action.
@@ -228,6 +244,31 @@ class AgentConfigurations(private val project: Project) {
             LoadedDatabase(UsageDatabaseConfig.OFF, "${AgentConfiguration.FILE_NAME} is ${e.message}")
         } catch (e: Exception) {
             LoadedDatabase(UsageDatabaseConfig.OFF, "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}")
+        }
+    }
+
+    /**
+     * The `find-in-files` section, or [FindInFilesConfig.DEFAULT] and the reason when it cannot be
+     * read.
+     *
+     * Read on every call like everything else here, so adding a phrase to the list takes effect on
+     * the next search rather than on the next IDE start -- which is the point of it: the phrase gets
+     * added because a search has just come back with the whole project in it.
+     */
+    fun findInFiles(): LoadedFindInFiles {
+        val file = path ?: return LoadedFindInFiles(FindInFilesConfig.DEFAULT, null)
+        // Missing is not an error, on the same reasoning as the database section above: a project
+        // that blocks nothing never writes the section.
+        if (!Files.exists(file)) return LoadedFindInFiles(FindInFilesConfig.DEFAULT, null)
+        return try {
+            LoadedFindInFiles(FindInFilesConfig.parse(text().orEmpty()), null)
+        } catch (e: AgentConfigurationException) {
+            LoadedFindInFiles(FindInFilesConfig.DEFAULT, "${AgentConfiguration.FILE_NAME} is ${e.message}")
+        } catch (e: Exception) {
+            LoadedFindInFiles(
+                FindInFilesConfig.DEFAULT,
+                "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}",
+            )
         }
     }
 

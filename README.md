@@ -51,6 +51,9 @@ project root, written with three example entries the first time a project is ope
     "url": "",
     "enabled": true
   },
+  "find-in-files": {
+    "blocked-phrases": []
+  },
   "configurations": [
     {
       "name": "Anthropic Claude",
@@ -64,6 +67,7 @@ project root, written with three example entries the first time a project is ope
       "effort": "medium",
       "max-tokens": 8000,
       "context-window": 200000,
+      "request-timeout-seconds": 60,
       "additional-customizations": {
         "anthropic-version": "2023-06-01",
         "extra-headers": {}
@@ -114,8 +118,31 @@ Everything after `token` is optional and has a default:
 | `effort` | `low`, `medium`, `high`, `xhigh`, `max`, `provider-default` | `medium` |
 | `max-tokens` | the reply cap, thinking included | `8000` |
 | `context-window` | what compaction measures against; `0` switches it off | `200000` |
+| `request-timeout-seconds` | how long one request may take before the turn fails with "request timed out"; raise it for slow reasoning models or a local server | `60` |
 | `additional-customizations.anthropic-version` | sent only on the Messages API; empty omits the header | `2023-06-01` there, nothing elsewhere |
 | `additional-customizations.extra-headers` | routing or tenancy headers for a gateway | none |
+
+The same file's **`find-in-files`** section lists the searches `find_in_files` refuses outright.
+Every project has a handful of words that appear in every file it has, and asking where `public` is
+returns a listing the length of the project, learns nothing from it, and leaves the whole thing in
+the conversation to be re-sent on every turn afterwards. Nothing is blocked until you say so.
+
+```json
+"find-in-files": {
+  "blocked-phrases": ["public", "import", "TODO"]
+}
+```
+
+A phrase blocks a search when it is the **whole** query, ignoring case and surrounding space —
+blocking `get` does not block `getUserConfiguration`, because a longer query containing a blocked
+word is the narrower search that was being asked for. The model is told which phrase stopped it, so
+it asks a better question rather than retrying the same one in a different case. Edits take effect
+on the next search; there is no restart.
+
+`find_in_files` answers with locations only — the file's path, then the line number of each match
+below it — and stops after **100 files**. It used to echo each matching line, which meant the query
+came back once per hit with up to two hundred characters of context around it, permanently, in every
+later request of that conversation.
 
 The same file's **`usage-database`** section says where one row per request is recorded — a MySQL
 JDBC URL in `url`, and `enabled` to stop the writing without losing it. An empty URL, or no section

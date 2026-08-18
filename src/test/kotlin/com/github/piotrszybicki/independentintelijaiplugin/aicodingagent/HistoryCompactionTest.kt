@@ -160,14 +160,14 @@ class HistoryCompactionTest {
     fun `counts the system prompt and tool schemas against the window`() {
         val history = historyOf(turns = 10)
         val untouched = history.toList()
-        val overhead = HistoryCompaction.estimateTokens(historyOf(turns = 10))
+        val overhead = HistoryCompaction.charsOf(historyOf(turns = 10))
 
         // The same history is left alone on its own and compacted once the fixed part of the
         // request is counted too -- which is the whole point of measuring it. Thirty tool schemas
         // and a system prompt are not a rounding error next to a young conversation.
         assertTrue(HistoryCompaction.compact(history, WINDOW).isEmpty)
         assertEquals(untouched, history)
-        assertFalse(HistoryCompaction.compact(history, WINDOW, overheadTokens = overhead).isEmpty)
+        assertFalse(HistoryCompaction.compact(history, WINDOW, overheadChars = overhead).isEmpty)
     }
 
     @Test

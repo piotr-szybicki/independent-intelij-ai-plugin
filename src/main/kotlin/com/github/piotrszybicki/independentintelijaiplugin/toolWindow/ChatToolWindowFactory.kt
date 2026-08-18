@@ -32,6 +32,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodin
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentUsage
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ContextMeter
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.HistoryCompaction
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ReasoningOptions
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
@@ -260,6 +261,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private var usage = SessionUsage()
 
+        // One per conversation, reset with it: see [ContextMeter].
+        private val contextMeter = ContextMeter()
+
         private val session = ChangeSessionService.getInstance(project)
 
         /**
@@ -412,6 +416,24 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         /**
+         * How full the context window is, as against [usageLabel]'s running total of what the
+         * conversation has cost. Two different questions, so two different labels: one climbs for
+         * as long as the chat is open, the other can go down.
+         */
+        private val contextLabel = JBLabel().apply {
+            font = JBFont.small()
+            foreground = ChatColors.muted
+        }
+
+        // Right-aligned and laid out by the flow rather than pinned east, so that the two read as
+        // one group and neither moves when the other is empty.
+        private val meterRow = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(10), 0)).apply {
+            isOpaque = false
+            add(contextLabel)
+            add(usageLabel)
+        }
+
+        /**
          * The two share the strip under the composer. A row rather than one label, because
          * [statusLabel] is cleared and rewritten by everything that has something to say -- [setBusy]
          * most of all -- and the count has to survive that.
@@ -419,7 +441,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val statusRow = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
             isOpaque = false
             add(statusLabel, BorderLayout.CENTER)
-            add(usageLabel, BorderLayout.EAST)
+            add(meterRow, BorderLayout.EAST)
         }
 
         /** One thing riding along with the next message: [body] is sent, [summary] labels the chip. */
@@ -800,6 +822,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
             raisedMaxTokens = 0
             seedSelectionFromDefault()
             setUsage(SessionUsage())
+            // A different conversation, so both the anchor and what was learned about the
+            // tokenizer go with the old one -- and the label is cleared rather than left showing
+            // the last chat's figure until the first response of this one.
+            contextMeter.reset()
+            setContext(0, 0)
             beginTurnCost()
             transcript.clear()
             clearAttachments()
@@ -1242,6 +1269,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             ApplicationManager.getApplication().invokeLater { showCompaction(result) }
                         }
 
+                        override fun onContext(usedTokens: Int, windowTokens: Int) {
+                            ApplicationManager.getApplication().invokeLater {
+                                setContext(usedTokens, windowTokens)
+                            }
+                        }
+
                         override fun onToolStarted(
                             call: AICodingAgent.ToolCallId,
                             name: String,
@@ -1328,7 +1361,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             }
                         }
                     }, isCancelled = cancelled::get, reasoning = reasoning, conversationId = conversationId,
-                        maxToolOutputTokens = maxToolOutputTokens)
+                        maxToolOutputTokens = maxToolOutputTokens, meter = contextMeter)
                     ApplicationManager.getApplication().invokeLater { endTurn() }
                 } catch (e: Throwable) {
                     // Throwable, not Exception: whatever comes out of a turn, the composer has to be
@@ -1357,7 +1390,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
                                 } else {
                                     emptyList()
                                 }
-                                showError(message)
+                                // Which request died is the whole of what the user has to act on,
+                                // and the provider message never says: "request timed out" reads as
+                                // the prompt having failed when what timed out was the round of tool
+                                // results five calls later.
+                                showError(
+                                    if (dropped.isEmpty()) "Sending the last round of tool results failed: $message"
+                                    else message,
+                                )
                                 offerRetry(sizeBeforeTurn, dropped)
                             }.onFailure { log.warn("Could not report the failure in the transcript", it) }
                         }
@@ -1647,6 +1687,55 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 append("Input in total: ${"%,d".format(total.totalInputTokens)}<br>")
                 append("Output: ${"%,d".format(total.outputTokens)}<br><br>")
                 append("A request that failed is not counted.</html>")
+            }
+        }
+
+        /**
+         * Show how much of the context window this conversation is using.
+         *
+         * [used] is the agent's figure: the last request's prompt as the provider counted it, plus
+         * whatever has been added to the history since. A [window] of zero is a configuration that
+         * does not declare one, and then only the absolute figure is shown -- a percentage of an
+         * unknown is worse than no percentage.
+         */
+        private fun setContext(used: Int, window: Int) {
+            if (used <= 0) {
+                contextLabel.text = ""
+                contextLabel.toolTipText = null
+                return
+            }
+
+            val share = if (window > 0) used.toDouble() / window else null
+            contextLabel.text = buildString {
+                append("◱ ${formatTokens(used)}")
+                if (window > 0) append(" / ${formatTokens(window)}")
+                share?.let { append("  ${(it * 100).roundToInt()}%") }
+            }
+            contextLabel.foreground = when {
+                share == null -> ChatColors.muted
+                share >= CONTEXT_FULL -> ChatColors.error
+                share >= HistoryCompaction.COMPACT_ABOVE -> ChatColors.warning
+                else -> ChatColors.muted
+            }
+            contextLabel.toolTipText = buildString {
+                append("<html>Context in use: ${"%,d".format(used)} tokens")
+                if (window > 0) append(" of ${"%,d".format(window)}")
+                append(".<br><br>")
+                append("What the next request would send: the system prompt, the tool ")
+                append("descriptions and the whole conversation. Unlike the token counts beside ")
+                append("it, this is not a running total -- it falls when the history is ")
+                append("compacted.<br><br>")
+                if (contextMeter.anchor > 0) {
+                    append("Measured from what the provider counted for the last request, plus an ")
+                    append("estimate of what has been added since.")
+                } else {
+                    append("Estimated: no request has been counted for this conversation yet.")
+                }
+                if (window > 0) {
+                    val at = (HistoryCompaction.COMPACT_ABOVE * 100).roundToInt()
+                    append("<br><br>Older tool output starts being dropped above $at%.")
+                }
+                append("</html>")
             }
         }
 
@@ -1968,6 +2057,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         private companion object {
             private val prettyJson = GsonBuilder().setPrettyPrinting().create()
+
+            // Where the context meter turns red. Past compaction's own threshold, so it means what
+            // compaction has not been able to fix: what is left is the protected tail and the
+            // summary, and the next thing to go is the conversation itself.
+            private const val CONTEXT_FULL = 0.85
         }
     }
 }

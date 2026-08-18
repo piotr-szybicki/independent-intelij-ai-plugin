@@ -7,6 +7,7 @@ import com.intellij.util.ui.HTMLEditorKitBuilder
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import java.awt.BasicStroke
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.Font
@@ -14,6 +15,7 @@ import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.LayoutManager
 import java.awt.RenderingHints
+import java.awt.geom.RoundRectangle2D
 import javax.swing.JEditorPane
 import javax.swing.JPanel
 import javax.swing.JTextPane
@@ -44,6 +46,9 @@ internal object ChatColors {
      * as "this went wrong" in every theme, including the ones that pick their own red.
      */
     val error: Color get() = JBColor.namedColor("Component.errorFocusColor", 0xE53E4D, 0x8B3C3C)
+
+    /** For a figure worth noticing but not yet worth acting on -- see the context meter. */
+    val warning: Color get() = JBColor.namedColor("Component.warningFocusColor", 0xE0A200, 0xA07800)
 
     /** Bubble behind the user's own messages: the theme background nudged towards the accent hue. */
     val userBubble: Color get() = mix(background, accent, if (JBColor.isBright()) 0.10 else 0.22)
@@ -102,6 +107,8 @@ internal open class RoundedPanel(
     private val arc: () -> Int = { ChatMetrics.arc },
     private val fill: () -> Color? = { null },
     private val stroke: () -> Color? = { null },
+    /** How thick that outline is drawn, in pixels -- the caller scales it. */
+    private val strokeWidth: () -> Float = { 1f },
 ) : JPanel(layout) {
 
     init {
@@ -119,7 +126,16 @@ internal open class RoundedPanel(
             }
             stroke()?.let {
                 g2.color = it
-                g2.drawRoundRect(0, 0, width - 1, height - 1, arcSize, arcSize)
+                // Inset by half the pen, because a stroke straddles the path it follows: drawn from
+                // 0,0 anything wider than a hairline loses its outer half over the component's edge.
+                val pen = strokeWidth()
+                g2.stroke = BasicStroke(pen)
+                val inset = pen / 2f
+                g2.draw(
+                    RoundRectangle2D.Float(
+                        inset, inset, width - pen, height - pen, arcSize.toFloat(), arcSize.toFloat(),
+                    )
+                )
             }
         } finally {
             g2.dispose()

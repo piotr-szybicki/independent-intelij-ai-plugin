@@ -40,7 +40,21 @@ data class AICodingAgentUsage(
     val output_tokens: Int = 0,
     val cache_creation_input_tokens: Int = 0,
     val cache_read_input_tokens: Int = 0,
-)
+) {
+
+    /**
+     * Everything the model read on this request: the system prompt, the tool schemas and the whole
+     * history, however it was billed.
+     *
+     * All three fields have to be summed. Caching splits the prompt across them rather than adding
+     * to it -- with the breakpoints this client sets, [input_tokens] on a warm request is the
+     * newest turn alone, and the conversation it continues is in [cache_read_input_tokens]. Reading
+     * [input_tokens] on its own would report a long conversation as a short one, and would jump
+     * about as the breakpoints move.
+     */
+    val promptTokens: Int
+        get() = input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+}
 
 /**
  * What a conversation has spent, summed over every request made in it.
@@ -201,7 +215,10 @@ object AICodingAgentClient {
 
         val request = HttpRequest.newBuilder()
             .uri(URI.create(endpoint.url))
-            .timeout(Duration.ofSeconds(60))
+            // The configuration's, not a constant: how long is too long is a property of the
+            // provider, and one number cannot be right for both a reasoning model behind a gateway
+            // and a local server -- see [AgentConfiguration.requestTimeoutSeconds].
+            .timeout(Duration.ofSeconds(endpoint.requestTimeoutSeconds.toLong()))
             .apply { endpoint.headers().forEach { (name, value) -> header(name, value) } }
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
             .build()

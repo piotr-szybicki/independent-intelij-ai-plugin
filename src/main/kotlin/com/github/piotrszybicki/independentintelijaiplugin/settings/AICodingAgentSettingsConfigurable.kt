@@ -484,6 +484,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
             append(" &nbsp;&middot;&nbsp; Max tokens: ").append(selected.maxTokens)
             append(" &nbsp;&middot;&nbsp; Context window: ")
             append(if (selected.contextWindowTokens == 0) "unlimited" else selected.contextWindowTokens.toString())
+            append(" &nbsp;&middot;&nbsp; Request timeout: ").append(selected.requestTimeoutSeconds).append("s")
             append("<br/>anthropic-version: <code>").append(escape(selected.apiVersion.ifBlank { "not sent" })).append("</code>")
             append(" &nbsp;&middot;&nbsp; Extra headers: ").append(escape(headers))
             append("</html>")
@@ -571,7 +572,17 @@ class AICodingAgentSettingsConfigurable : Configurable {
             )
             return
         }
-        if (service.text() == AgentConfiguration.render(current.configurations, database.database)) {
+        val findInFiles = service.findInFiles()
+        if (findInFiles.error != null) {
+            Messages.showErrorDialog(
+                "${findInFiles.error}\n\nFix that section first -- rewriting the file now would drop it.",
+                "Configuration File",
+            )
+            return
+        }
+        if (service.text() ==
+            AgentConfiguration.render(current.configurations, database.database, findInFiles.findInFiles)
+        ) {
             Messages.showInfoMessage(
                 "${AgentConfiguration.FILE_NAME} already spells out every field.",
                 "Configuration File",
@@ -592,7 +603,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
         )
         if (confirmed != Messages.YES) return
 
-        val failure = service.rewrite(current.configurations, database.database)
+        val failure = service.rewrite(current.configurations, database.database, findInFiles.findInFiles)
         if (failure != null) {
             Messages.showErrorDialog(failure, "Configuration File")
             return

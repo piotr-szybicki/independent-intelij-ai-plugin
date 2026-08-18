@@ -104,4 +104,52 @@ class DirectoryListingTest {
     fun `reports an empty directory as empty`() {
         assertEquals("src/ is empty.", DirectoryListing.format("src", emptyList(), truncated = false))
     }
+
+    // What find_by_name's file results are rendered through. The prefix is the whole point: a search
+    // for ".kt" matches every file in a package, and a path per line is that package's name once per
+    // file -- the bulk of the answer and none of the information.
+    @Test
+    fun `the tree says a deep package once rather than once per file`() {
+        assertEquals(
+            """
+            com/example/deep/
+              A.kt, B.kt, C.kt
+
+            """.trimIndent(),
+            DirectoryListing.tree(
+                listOf(
+                    "com/example/deep/A.kt",
+                    "com/example/deep/B.kt",
+                    "com/example/deep/C.kt",
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun `the tree keeps files that sit in the project root`() {
+        assertEquals(
+            """
+            build.gradle.kts
+            src/main/
+              Main.kt
+
+            """.trimIndent(),
+            DirectoryListing.tree(listOf("build.gradle.kts", "src/main/Main.kt")),
+        )
+    }
+
+    // The walk can reach one file by two routes, and the same name twice reads as two files.
+    @Test
+    fun `the tree lists a repeated path once`() {
+        assertEquals(
+            "src/\n  A.kt\n",
+            DirectoryListing.tree(listOf("src/A.kt", "src/A.kt")),
+        )
+    }
+
+    @Test
+    fun `the tree of nothing is nothing`() {
+        assertEquals("", DirectoryListing.tree(emptyList()))
+    }
 }

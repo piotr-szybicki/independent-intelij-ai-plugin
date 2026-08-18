@@ -152,6 +152,19 @@ class AICodingAgent(
          * it spent a request of its own, and detail from the early conversation is now gone for good.
          */
         fun onCompacted(result: HistoryCompaction.Result) {}
+
+        /**
+         * How full the context window is, reported whenever the answer changes: around every
+         * request, once the tool results of a round are in, and after a compaction has made room.
+         *
+         * Separate from [onUsage] rather than derived from it, because the two are different
+         * questions. Usage is cumulative and counts every request including the summarizer's;
+         * this is the state of one conversation, and a summarization -- which sends the old
+         * history off to one side -- must not be mistaken for the conversation growing.
+         *
+         * [windowTokens] is zero when the configuration does not declare a window.
+         */
+        fun onContext(usedTokens: Int, windowTokens: Int) {}
     }
 
     companion object {
@@ -362,6 +375,10 @@ class AICodingAgent(
         reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
         conversationId: String = "",
         maxToolOutputTokens: Int = 0,
+        // The conversation's meter, not the turn's: what it has learned about this history and this
+        // model is worth keeping between turns, and a fresh one every turn would spend the first
+        // request of each guessing at what it already knew.
+        meter: ContextMeter = ContextMeter(),
     ) {
         // Once for the whole turn, not once per iteration: connecting to an MCP server is not free,
         // and a tool list that changed underneath the loop would leave the model calling a tool
@@ -374,7 +391,11 @@ class AICodingAgent(
         val system = systemPrompt(available)
         // Both halves are fixed for the turn, so what they cost is measured once rather than on
         // every iteration -- and it is not small: thirty tool schemas are most of a short request.
-        val overhead = HistoryCompaction.overheadTokens(system, toolDefinitions)
+        val overheadChars = HistoryCompaction.overheadChars(system, toolDefinitions)
+
+        // Measured on demand rather than tracked, because every caller of this already holds the
+        // history it wants measured and the meter costs one walk of it.
+        fun reportContext() = listener.onContext(meter.estimate(history, overheadChars), contextWindowTokens)
 
         // A budget rather than a fixed count: the cap is there to stop a runaway loop, not to end a
         // long piece of work, and only the user can tell the two apart. When it runs out the loop
@@ -414,17 +435,27 @@ class AICodingAgent(
                         endpoint, model, messages, toolDefinitions, system, reasoning, listener, conversationId,
                     )
                 }
-                HistoryCompaction.compact(history, contextWindowTokens, overhead, summarizer)
+                HistoryCompaction.compact(history, contextWindowTokens, overheadChars, meter.tokensPerChar, summarizer)
                     .takeIf { !it.isEmpty }?.let {
                         log.info(
                             "Compacted the conversation: dropped ${it.evicted} tool result(s), " +
                                 "summarised ${it.summarizedMessages} message(s), " +
                                 "~${it.beforeTokens} tokens -> ~${it.afterTokens}",
                         )
+                        // The messages the last response was counted against have just been
+                        // rewritten, so what the provider said about them no longer describes what
+                        // is there -- and it is too high by exactly the room this pass made.
+                        meter.invalidateAnchor()
                         listener.onCompacted(it)
                     }
+                reportContext()
 
                 if (isCancelled()) return
+                // What the prompt about to go out is made of, kept for the calibration below: after
+                // the response lands the history has grown by the reply, and the two figures the
+                // meter needs are measured either side of that.
+                val sentMessages = history.size
+                val sentChars = HistoryCompaction.charsOf(history) + overheadChars
                 val turn = AICodingAgentClient.sendMessage(
                     endpoint, model, tokenCap, history, toolDefinitions, system, reasoning, conversationId,
                 )
@@ -436,6 +467,18 @@ class AICodingAgent(
                 val droppedToolUse = content.size() < turn.content.size()
                 if (content.size() > 0) {
                     history.add(ChatMessage("assistant", content))
+                }
+                // After the reply reaches the history, because the reply is part of the next
+                // request: what the meter anchors on is the conversation the next prompt starts
+                // from, not the one this prompt was.
+                turn.usage?.let {
+                    meter.observe(
+                        promptTokens = it.promptTokens,
+                        outputTokens = it.output_tokens,
+                        promptChars = sentChars,
+                        coveredMessages = if (content.size() > 0) sentMessages + 1 else sentMessages,
+                    )
+                    reportContext()
                 }
 
                 for (block in content) {
@@ -565,6 +608,10 @@ class AICodingAgent(
                 }
 
                 history.add(ChatMessage("user", toolResults))
+                // A round of tool results can be most of what a turn costs, and the loop may go
+                // round many times before the next response corrects the figure -- so the meter is
+                // told here rather than left to catch up.
+                reportContext()
                 // After the results reach the history, never before: leaving the round unanswered
                 // would be exactly the dangling `tool_use` that kills a conversation for good.
                 if (overruns.isNotEmpty()) {

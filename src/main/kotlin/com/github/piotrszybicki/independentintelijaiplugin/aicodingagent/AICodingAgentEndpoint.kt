@@ -19,6 +19,14 @@ data class AICodingAgentEndpoint(
     val protocol: WireProtocol,
     val apiVersion: String,
     val extraHeaders: Map<String, String>,
+    /**
+     * How long one request may take before it is given up on, in seconds. See
+     * [AgentConfiguration.requestTimeoutSeconds] for why it is per configuration.
+     *
+     * Defaulted, unlike the transport fields above it: an endpoint built by hand -- a test, a probe
+     * -- has an opinion about where it points and none about how long it may take.
+     */
+    val requestTimeoutSeconds: Int = AgentConfiguration.DEFAULT_REQUEST_TIMEOUT_SECONDS,
     /** Which entry of the configuration file this came from, for naming it in an error. */
     val configurationName: String = "",
     /** The variable the token was meant to come from, when it names one and the name is unset. */
@@ -92,6 +100,7 @@ data class AICodingAgentEndpoint(
             protocol = configuration.protocol,
             apiVersion = configuration.apiVersion.trim(),
             extraHeaders = configuration.extraHeaders,
+            requestTimeoutSeconds = configuration.requestTimeoutSeconds,
             configurationName = configuration.name,
             tokenEnvVar = configuration.tokenEnvVar,
         )

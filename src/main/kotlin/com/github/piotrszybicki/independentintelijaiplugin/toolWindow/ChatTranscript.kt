@@ -58,8 +58,36 @@ internal class ChatTranscript(
      */
     private var lastTurn: AiTurnRow? = null
 
-    /** The last request the user sent, which is the one [markRequestFailed] is about. */
+    /** The last request the user sent, and the first of the turn it started. */
     private var lastUserRow: UserRow? = null
+
+    /**
+     * The last round of tool calls drawn, which is what every request after the first one carries.
+     *
+     * Reset by a new user message and not by the end of a turn: Continue and Retry both send the
+     * conversation on from the results in this box, so it stays the request in flight until
+     * something the user typed replaces it.
+     */
+    private var lastToolGroup: ToolGroupRow? = null
+
+    /** The row currently framed in red, so the mark comes off whatever it went on. */
+    private var failedRequest: FailedRequest? = null
+
+    /**
+     * The last error drawn, which is where the Retry for that request also goes.
+     *
+     * Both ends of the failure carry it on purpose. A turn that ran a dozen tools before it fell
+     * over leaves the request screens above the error that ended it -- a button only up there is
+     * one nobody sees, and a red frame only down here would not say which message it was about.
+     */
+    private var lastErrorRow: ErrorRow? = null
+
+    /**
+     * The error row carrying a live Retry, which is not always [lastErrorRow] by the time the offer
+     * is taken back: approving a withheld output draws an error row of its own, and clearing that
+     * one would leave the real offer sitting there, live and about a conversation that has moved on.
+     */
+    private var retryOffered: ErrorRow? = null
 
     private val content = TranscriptPanel().apply {
         isOpaque = true
@@ -130,30 +158,49 @@ internal class ChatTranscript(
         // Whatever failed before, this is the request a retry would be about now -- so the red frame
         // and the button go with the row that is no longer the last one.
         clearRequestFailure()
+        // A new prompt is a new turn, whose first request carries no tool results -- so a failure
+        // on it belongs to the message being added here rather than to the round above it.
+        lastToolGroup = null
         addRow(UserRow(markdown).also { lastUserRow = it })
     }
 
     /**
-     * Marks the last request as one the model never answered: its bubble is framed in red and a
-     * Retry button appears under it.
+     * Marks the request the model never answered: framed in red, with a Retry button under it.
      *
-     * On the request rather than beside the error line, because what a retry sends is that message
-     * -- and after a long turn the error can be a screen away from the thing it is about.
+     * Which row that is depends on how far the turn got. One turn is a chain of requests -- the
+     * prompt, then one per round of tool calls, each carrying the results of the round before it --
+     * and the one that failed is the last one drawn. So a turn that fell over five rounds in frames
+     * the box of tool results that went out with it, not the message that started the turn: the
+     * prompt was answered long ago, and framing it would blame the wrong thing and offer to re-send
+     * something the model has already replied to.
      *
-     * Does nothing when the conversation is being replayed from disk or was started by something
-     * other than a user message: there is no row to mark, and [onRetry] is simply never wired up.
+     * The offer is repeated under the error line itself, because the request it is about can be
+     * screens above the failure that reports it.
+     *
+     * Does nothing when there is no row to mark -- a conversation replayed from disk, or one that
+     * failed before anything was drawn: [onRetry] is simply never wired up.
      */
     fun markRequestFailed(onRetry: () -> Unit) {
-        val row = lastUserRow ?: return
-        row.markFailed(onRetry)
+        // The round of tool results when the turn had got that far, and what the user typed only
+        // when it had not: the failed request is the one that was in flight, not the one that
+        // started the turn it belonged to.
+        val request = lastToolGroup ?: lastUserRow
+        request?.markFailed(onRetry)
+        failedRequest = request
+        lastErrorRow?.let {
+            it.offerRetry(onRetry)
+            retryOffered = it
+        }
         content.revalidate()
         content.repaint()
     }
 
     /** Takes the mark and the button away -- the retry has been taken, or the offer has expired. */
     fun clearRequestFailure() {
-        val row = lastUserRow ?: return
-        row.clearFailure()
+        failedRequest?.clearFailure()
+        failedRequest = null
+        retryOffered?.clearRetry()
+        retryOffered = null
         content.revalidate()
         content.repaint()
     }
@@ -244,7 +291,7 @@ internal class ChatTranscript(
      */
     fun addError(message: String) {
         closeToolGroup()
-        addRow(ErrorRow(message))
+        addRow(ErrorRow(message).also { lastErrorRow = it })
     }
 
     /** Puts [row] in the AI's open bubble, opening one if the model has not spoken since the last turn ended. */
@@ -308,6 +355,7 @@ internal class ChatTranscript(
             val fresh = ToolGroupRow(row)
             placeInAiTurn(fresh)
             currentGroup = fresh
+            lastToolGroup = fresh
             currentGroupRequestId = requestId
             return
         }
@@ -353,6 +401,10 @@ internal class ChatTranscript(
         currentTurn = null
         lastTurn = null
         lastUserRow = null
+        lastToolGroup = null
+        failedRequest = null
+        lastErrorRow = null
+        retryOffered = null
         pendingCost = null
         closeToolGroup()
         content.removeAll()
@@ -501,7 +553,21 @@ internal class ChatTranscript(
         }
     }
 
-    private class UserRow(markdown: String) : ChatRow(BorderLayout()) {
+    /**
+     * A row that can stand for the request that failed: framed in red, with a Retry under it.
+     *
+     * Two rows implement it because one turn is several requests. The first carries what the user
+     * typed; every one after it carries the results of the tools the model asked for. A failure five
+     * rounds in has nothing to do with the prompt, and framing the prompt would say it had.
+     */
+    private interface FailedRequest {
+
+        fun markFailed(action: () -> Unit)
+
+        fun clearFailure()
+    }
+
+    private class UserRow(markdown: String) : ChatRow(BorderLayout()), FailedRequest {
 
         private val body = HtmlTextPane()
 
@@ -538,6 +604,9 @@ internal class ChatTranscript(
             BorderLayout(0, JBUI.scale(6)),
             fill = { ChatColors.userBubble },
             stroke = { if (failed) ChatColors.error else ChatColors.userBubbleBorder },
+            // Twice the usual pen once it is red: a hairline in the theme's error colour is easy to
+            // scroll past, and this frame is the whole point of marking the request at all.
+            strokeWidth = { if (failed) JBUI.scale(2).toFloat() else 1f },
         ).apply {
             border = JBUI.Borders.empty(ChatMetrics.bubblePadding)
             add(body, BorderLayout.CENTER)
@@ -551,7 +620,7 @@ internal class ChatTranscript(
         }
 
         /** The model never answered this one: red frame, and a way to send it again. */
-        fun markFailed(action: () -> Unit) {
+        override fun markFailed(action: () -> Unit) {
             onRetry = action
             failed = true
             footer.isVisible = true
@@ -560,7 +629,7 @@ internal class ChatTranscript(
         }
 
         /** Back to an ordinary request, because the offer to retry is over or has been taken. */
-        fun clearFailure() {
+        override fun clearFailure() {
             if (!failed) return
             onRetry = null
             failed = false
@@ -732,7 +801,7 @@ internal class ChatTranscript(
      * feeling its way one step at a time, and the difference in what the turn cost, since each
      * round re-sends the whole conversation.
      */
-    private class ToolGroupRow(first: ChatRow) : ChatRow(BorderLayout()) {
+    private class ToolGroupRow(first: ChatRow) : ChatRow(BorderLayout()), FailedRequest {
 
         private val tools = mutableListOf<ChatRow>()
 
@@ -754,15 +823,53 @@ internal class ChatTranscript(
             toolTipText = "Asked for together, in a single model response"
         }
 
+        /** True once the request that carried these results is the one that failed. */
+        private var failed = false
+
+        private var onRetry: (() -> Unit)? = null
+
+        /**
+         * Retry for the round rather than for the conversation: what it sends again is the request
+         * these results went out in, which is the request that failed.
+         */
+        private val retry = CardButton("Retry", "Send these tool results to the model again") {
+            onRetry?.invoke()
+        }
+
+        private val actions = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+            isOpaque = false
+            isVisible = false
+            add(retry.component)
+        }
+
         private val box = RoundedPanel(
             BorderLayout(0, JBUI.scale(4)),
             arc = { ChatMetrics.smallArc },
             fill = { ChatColors.toolGroup },
-            stroke = { ChatColors.toolGroupBorder },
+            stroke = { if (failed) ChatColors.error else ChatColors.toolGroupBorder },
+            strokeWidth = { if (failed) JBUI.scale(2).toFloat() else 1f },
         ).apply {
             border = JBUI.Borders.empty(JBUI.scale(6))
             add(header, BorderLayout.NORTH)
             add(stack, BorderLayout.CENTER)
+            add(actions, BorderLayout.SOUTH)
+        }
+
+        override fun markFailed(action: () -> Unit) {
+            onRetry = action
+            failed = true
+            actions.isVisible = true
+            revalidate()
+            repaint()
+        }
+
+        override fun clearFailure() {
+            if (!failed) return
+            onRetry = null
+            failed = false
+            actions.isVisible = false
+            revalidate()
+            repaint()
         }
 
         init {
@@ -1030,7 +1137,28 @@ internal class ChatTranscript(
             text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     }
 
-    private class ErrorRow(message: String) : ChatRow(BorderLayout()) {
+    private class ErrorRow(message: String) : ChatRow(BorderLayout(0, JBUI.scale(4))) {
+
+        /** What Retry does, or null on the errors nothing can be done about -- which is most of them. */
+        private var onRetry: (() -> Unit)? = null
+
+        /**
+         * The same offer as the one on the failed request's bubble, kept next to the line that
+         * reports the failure -- the one part of it the user is certainly looking at.
+         *
+         * Read through the field rather than captured, for the reason [UserRow] does it too: the
+         * offer is re-made on every failure and the button outlives any one of them.
+         */
+        private val retry = CardButton("Retry", "Send this request to the model again") {
+            onRetry?.invoke()
+        }
+
+        private val actions = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+            isOpaque = false
+            isVisible = false
+            add(retry.component)
+        }
+
         init {
             add(
                 JBLabel(message, AllIcons.General.BalloonError, SwingConstants.LEFT).apply {
@@ -1040,6 +1168,23 @@ internal class ChatTranscript(
                 },
                 BorderLayout.CENTER,
             )
+            add(actions, BorderLayout.SOUTH)
+        }
+
+        fun offerRetry(action: () -> Unit) {
+            onRetry = action
+            actions.isVisible = true
+            revalidate()
+            repaint()
+        }
+
+        /** Takes the button away again: the retry has been taken, or the offer has expired. */
+        fun clearRetry() {
+            if (!actions.isVisible) return
+            onRetry = null
+            actions.isVisible = false
+            revalidate()
+            repaint()
         }
     }
 
