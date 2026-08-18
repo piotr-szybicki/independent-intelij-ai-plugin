@@ -40,6 +40,9 @@
              through a save dialog and knows it happened, so the balloon is only there for the path
              and the link that opens it. -->
         <notificationGroup id="AICodingAgent.Export" displayType="BALLOON"/>
+        <!-- What a Javadoc sweep did. Fades: it is a summary of a change the user just asked for and
+             can see in the editor, not something that needs dismissing. -->
+        <notificationGroup id="AICodingAgent.Cleanup" displayType="BALLOON"/>
     </extensions>
 
     <actions>
@@ -49,6 +52,14 @@
                 description="Start a new AI chat about the selected code"
                 icon="/icons/chatAboutCode.svg">
             <add-to-group group-id="Floating.CodeToolbar" anchor="last"/>
+        </action>
+        <!-- Under Tools, and in the project view's context menu so the selection there can scope it. -->
+        <action id="AICodingAgent.RemoveJavadoc"
+                class="com.github.piotrszybicki.independentintelijaiplugin.cleanup.RemoveJavadocAction"
+                text="Remove Javadoc Comments..."
+                description="Strip Javadoc-form comments from the project, or from the selected files">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
     </actions>
 </idea-plugin>
