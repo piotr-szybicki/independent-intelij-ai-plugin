@@ -797,6 +797,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
             // Reopening is not choosing, so the default is left alone: coming back to an old chat on
             // a cheap model must not quietly make that the model every new chat starts on.
             setUsage(chat.usage ?: SessionUsage())
+            // No overhead passed, and none needed: an anchor is a figure the provider gave for a
+            // whole request, so the system prompt and the tool schemas are already inside it. When
+            // there is no anchor there is nothing worth showing either -- see [StoredChat.context].
+            contextMeter.restore(chat.context)
+            setContext(
+                if (contextMeter.anchor > 0) contextMeter.estimate(history, overheadChars = 0) else 0,
+                contextWindowTokens(),
+            )
             chat.transcript.forEach { render(it) }
             ApplicationManager.getApplication().executeOnPooledThread { chatHistory.setActiveId(chat.id) }
         }
@@ -843,10 +851,21 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 messages = history.toList(),
                 transcript = rows.toList(),
                 usage = usage,
+                context = contextMeter.snapshot(),
                 configurationName = chatConfiguration,
                 model = chatModel,
             )
         }
+
+        /**
+         * This conversation's window, resolved the way the next turn will resolve it.
+         *
+         * Read from the configuration each time rather than held, for the same reason the turn
+         * reads it: the file is the record, and an entry edited while the chat sat open must not
+         * leave the meter measuring against a window that is no longer there.
+         */
+        private fun contextWindowTokens(): Int =
+            AgentConfigurations.getInstance(project).resolve(chatConfiguration, chatModel).contextWindowTokens
 
         /**
          * @param active false when the user is leaving this chat, which also stops it being the one

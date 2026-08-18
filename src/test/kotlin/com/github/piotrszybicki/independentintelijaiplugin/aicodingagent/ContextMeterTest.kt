@@ -127,6 +127,41 @@ class ContextMeterTest {
         assertEquals(ContextMeter.DEFAULT_TOKENS_PER_CHAR, meter.tokensPerChar, 0.0001)
     }
 
+    @Test
+    fun `comes back from a saved state with the figure it was saved with`() {
+        val history = historyOf(4)
+        val saved = ContextMeter()
+        saved.observe(promptTokens = 50_000, outputTokens = 700, promptChars = 100_000, coveredMessages = history.size)
+
+        val reopened = ContextMeter()
+        reopened.restore(saved.snapshot())
+
+        // Including the system prompt and the tool schemas, which the history it was restored
+        // alongside does not contain: they were part of what the provider counted.
+        assertEquals(50_700, reopened.estimate(history, overheadChars = 0))
+        assertEquals(0.5, reopened.tokensPerChar, 0.0001)
+    }
+
+    @Test
+    fun `shows nothing for a chat saved before the meter existed`() {
+        val meter = ContextMeter()
+        meter.observe(promptTokens = 50_000, outputTokens = 0, promptChars = 100_000, coveredMessages = 4)
+
+        meter.restore(null)
+
+        assertEquals(0, meter.anchor)
+        assertEquals(ContextMeter.DEFAULT_TOKENS_PER_CHAR, meter.tokensPerChar, 0.0001)
+    }
+
+    @Test
+    fun `refuses a saved ratio that would make every later estimate nonsense`() {
+        val meter = ContextMeter()
+
+        meter.restore(ContextMeter.State(anchorTokens = 10, anchorMessages = 1, tokensPerChar = 0.0))
+
+        assertEquals(ContextMeter.DEFAULT_TOKENS_PER_CHAR, meter.tokensPerChar, 0.0001)
+    }
+
     private fun historyOf(messages: Int): List<ChatMessage> =
         (0 until messages).map { message(if (it % 2 == 0) "user" else "assistant", "m".repeat(MESSAGE_CHARS)) }
 

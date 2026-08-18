@@ -108,5 +108,41 @@ class ContextMeter {
         tokensPerChar = DEFAULT_TOKENS_PER_CHAR
     }
 
+    /**
+     * What a meter knows, in a form that can be written to disk with the conversation it describes.
+     *
+     * Saved rather than recomputed, because none of it can be worked out again from the messages:
+     * the anchor is what a provider said about a request that has already been and gone, and the
+     * ratio is what several of those taught us. A reopened chat with no anchor would have to guess
+     * at its own size -- and guess low, since the system prompt and the tool schemas are not in the
+     * history it was saved with.
+     */
+    data class State(
+        val anchorTokens: Int = 0,
+        val anchorMessages: Int = 0,
+        val tokensPerChar: Double = DEFAULT_TOKENS_PER_CHAR,
+    )
+
+    fun snapshot(): State = State(anchorTokens, anchorMessages, tokensPerChar)
+
+    /**
+     * Take up where a saved conversation left off. A null state -- a chat written before any of
+     * this was recorded -- resets instead, leaving the meter with nothing to show until the next
+     * response gives it something.
+     */
+    fun restore(state: State?) {
+        if (state == null) {
+            reset()
+            return
+        }
+        anchorTokens = state.anchorTokens.coerceAtLeast(0)
+        anchorMessages = state.anchorMessages.coerceAtLeast(0)
+        // Read back through the same guard the live figure goes through: the file is editable, and
+        // a zero here would make every later estimate zero.
+        tokensPerChar = state.tokensPerChar
+            .takeIf { it >= MIN_TOKENS_PER_CHAR && it <= MAX_TOKENS_PER_CHAR }
+            ?: DEFAULT_TOKENS_PER_CHAR
+    }
+
     private fun tokens(chars: Int): Int = (chars.coerceAtLeast(0) * tokensPerChar).toInt()
 }

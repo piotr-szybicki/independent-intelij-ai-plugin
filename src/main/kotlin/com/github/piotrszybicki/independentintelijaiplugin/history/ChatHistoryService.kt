@@ -1,6 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.history
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ContextMeter
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
 import com.google.gson.Gson
 import com.intellij.openapi.application.PathManager
@@ -85,6 +86,17 @@ data class StoredChat(
      * no recovering it after the fact, so those come back at zero and count on from there.
      */
     val usage: SessionUsage? = null,
+
+    /**
+     * How full the context window was when this chat was last written, or null for one saved before
+     * the meter existed.
+     *
+     * Kept because it cannot be recomputed: it is what a provider counted for a request that is
+     * over, and the messages alone do not carry the system prompt or the tool schemas that were
+     * sent with them. A chat that comes back without it shows no figure until its next reply, in
+     * preference to one that is short by everything the history does not contain.
+     */
+    val context: ContextMeter.State? = null,
 
     /**
      * Which entry of the configuration file this chat was sending to, and which of that entry's
