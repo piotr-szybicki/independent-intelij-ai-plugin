@@ -1,6 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
-import com.intellij.diagnostic.LoadingState
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.HTMLEditorKitBuilder
@@ -134,13 +134,17 @@ internal open class RoundedPanel(
  * service reads the registry in its constructor: when a restored tool window builds its panes during
  * frame init, the registry is not loaded yet and the platform logs an error. The AWT logical family
  * is a fine stand-in for the rare pane built that early.
+ *
+ * `getServiceIfCreated` is the guard rather than a startup-phase check, because it says exactly what
+ * the rule is -- use the scheme when something else has already brought the service up, never be the
+ * caller that brings it up. `LoadingState`, which this used to ask, is @ApiStatus.Internal and fails
+ * the plugin verifier.
  */
-internal fun chatCodeFontName(): String =
-    if (LoadingState.COMPONENTS_LOADED.isOccurred) {
-        EditorColorsManager.getInstance().globalScheme.editorFontName
-    } else {
-        Font.MONOSPACED
-    }
+internal fun chatCodeFontName(): String {
+    val colors = ApplicationManager.getApplication()?.getServiceIfCreated(EditorColorsManager::class.java)
+        ?: return Font.MONOSPACED
+    return colors.globalScheme.editorFontName
+}
 
 /**
  * Read-only HTML pane sized for a vertical stack: [applyWidth] pins it to the width the transcript

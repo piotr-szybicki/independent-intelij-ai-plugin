@@ -4,7 +4,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.codeInsight.CodeSmellInfo
 import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
-import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerImpl
+import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -170,16 +170,25 @@ class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
             }
             val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@computeBlocking null
 
-            DaemonCodeAnalyzerImpl.getHighlights(document, minSeverity, project).map { info ->
+            // processHighlights is the public form of what the daemon holds: the highlights the
+            // markup model carries for [document], filtered to [minSeverity] and above. Its
+            // impl-class sibling, DaemonCodeAnalyzerImpl.getHighlights, is @ApiStatus.Internal
+            // and fails the plugin verifier.
+            val problems = mutableListOf<Problem>()
+            DaemonCodeAnalyzerEx.processHighlights(
+                document, project, minSeverity, 0, document.textLength,
+            ) { info: HighlightInfo ->
                 val offset = info.startOffset.coerceIn(0, document.textLength)
                 val line = document.getLineNumber(offset)
-                Problem(
+                problems += Problem(
                     info.severity,
                     line + 1,
                     offset - document.getLineStartOffset(line) + 1,
                     describe(info.description ?: ""),
                 )
+                true
             }
+            problems
         }
 
     private fun describe(raw: String): String {

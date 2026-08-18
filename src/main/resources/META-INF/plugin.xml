@@ -30,6 +30,10 @@
              is not there. -->
         <postStartupActivity
             implementation="com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurationStartup"/>
+        <!-- Releases the chat restore that a tool window rebuilt during frame init holds back, so a
+             restart resumes the conversation. -->
+        <postStartupActivity
+            implementation="com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatRestoreActivity"/>
         <!-- Sticky: the only thing reported through it is why the tool window will not open. -->
         <notificationGroup id="AICodingAgent" displayType="STICKY_BALLOON"/>
         <!-- Where a reply was exported to. Its own group so it can fade: the user has just been

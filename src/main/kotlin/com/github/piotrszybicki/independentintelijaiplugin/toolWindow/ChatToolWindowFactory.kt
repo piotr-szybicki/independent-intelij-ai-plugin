@@ -13,7 +13,6 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAwareAction
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.startup.StartupManager
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
@@ -112,6 +111,34 @@ class ChatToolWindowFactory : ToolWindowFactory {
          * yesterday's list is the same staleness as a bar that never refreshed at all.
          */
         fun refreshProviderBars() = panels.values.forEach { it.refreshProviderBar() }
+
+        /**
+         * Tells a panel that was rebuilt during frame init that the project is open, so it can read
+         * the chat it was last left on. Called from [ChatRestoreActivity]; no-op when the tool window
+         * has not been opened yet, because a panel built later restores itself -- see
+         * `ChatPanel.restoreLastChat`.
+         */
+        internal fun projectOpened(project: Project) {
+            // On the EDT, where [panels] and [openedProjects] are both written and read: that is
+            // what keeps the two restore paths from racing, given this runs on whatever thread the
+            // startup activity was dispatched to.
+            ApplicationManager.getApplication().invokeLater({
+                openedProjects += project
+                panels[project]?.restoreLastChatNow()
+            }, project.disposed)
+        }
+
+        /**
+         * The projects [projectOpened] has been called for. A panel built after its project is open
+         * finds it here and restores itself; one built before does not, and waits to be called.
+         *
+         * Weak keys, like [panels]: an entry outlives nothing.
+         */
+        private val openedProjects: MutableSet<Project> =
+            java.util.Collections.newSetFromMap(java.util.WeakHashMap())
+
+        /** Whether [projectOpened] has already run for [project]. EDT only. */
+        internal fun isOpened(project: Project) = project in openedProjects
     }
 
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -205,6 +232,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val chatHistory by lazy { ChatHistoryService.getInstance(project) }
         private var chatId = ChatHistoryService.newChatId()
         private var chatCreatedAt = System.currentTimeMillis()
+
+        /**
+         * Set by whichever half of [restoreLastChat] gets there first, so the last chat is read once
+         * even when both do. Declared up here rather than beside the function because the init block
+         * calls [restoreLastChat], and a property declared after that call is still null when it runs.
+         */
+        private val restoreStarted = AtomicBoolean(false)
 
         /**
          * The output cap this conversation has earned above the configured one, or 0 while it has
@@ -662,12 +696,24 @@ class ChatToolWindowFactory : ToolWindowFactory {
          *
          * Held back until the project is open rather than run from the constructor: a restored tool
          * window is built during frame init, and reading files -- let alone instantiating a service
-         * to do it -- is not something to be doing while the IDE is still starting. `runAfterOpened`
-         * fires straight away when the window is opened by hand later on.
+         * to do it -- is not something to be doing while the IDE is still starting.
+         *
+         * In two halves because `StartupManager.runAfterOpened`, which used to be both, is
+         * @ApiStatus.Internal and so fails the plugin verifier. A tool window opened by hand after
+         * startup takes the first half and restores straight away; one rebuilt during frame init
+         * takes the second, where [ChatRestoreActivity] -- an ordinary `postStartupActivity` -- calls
+         * [restoreLastChatNow] once the project is open.
          */
         private fun restoreLastChat() {
-            StartupManager.getInstance(project).runAfterOpened {
-                val chat = chatHistory.activeId()?.let { chatHistory.load(it) } ?: return@runAfterOpened
+            if (isOpened(project)) restoreLastChatNow()
+        }
+
+        /** @see restoreLastChat */
+        fun restoreLastChatNow() {
+            if (!restoreStarted.compareAndSet(false, true)) return
+            // Off the EDT: this reads the chat off disk, and one caller is the panel's constructor.
+            ApplicationManager.getApplication().executeOnPooledThread {
+                val chat = chatHistory.activeId()?.let { chatHistory.load(it) } ?: return@executeOnPooledThread
                 ApplicationManager.getApplication().invokeLater({
                     // Reading the files took a moment; if the user has already started talking in
                     // the meantime, their conversation wins.
