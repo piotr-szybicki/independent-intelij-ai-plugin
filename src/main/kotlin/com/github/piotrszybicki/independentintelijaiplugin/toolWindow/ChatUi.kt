@@ -189,7 +189,6 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
     private fun addStyles(sheet: StyleSheet) {
         val codeFont = chatCodeFontName()
         val codeBackground = ChatColors.hex(ChatColors.codeBackground)
-        val quoteBorder = ChatColors.hex(ChatColors.mix(ChatColors.background, ChatColors.foreground, 0.25))
         sheet.addRule("body { margin: 0; padding: 0; }")
         sheet.addRule("p { margin: 0 0 ${JBUI.scale(6)}px 0; }")
         sheet.addRule("ul, ol { margin: ${JBUI.scale(4)}px 0 ${JBUI.scale(6)}px ${JBUI.scale(18)}px; }")

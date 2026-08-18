@@ -73,17 +73,16 @@ internal object ChatHistoryPopup {
             .setAdText("Enter opens a chat, Delete removes it")
             .registerKeyboardAction(
                 KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0),
-                ActionListener {
-                    val victim = selected
-                    if (victim != null) {
-                        service.delete(victim.id)
-                        if (victim.id == currentId) onCurrentDeleted()
-                        // The list cannot be refreshed from out here, so the popup closes rather
-                        // than going on offering a chat that is no longer there.
-                        popup?.cancel()
-                    }
-                },
-            )
+            ) {
+                val victim = selected
+                if (victim != null) {
+                    service.delete(victim.id)
+                    if (victim.id == currentId) onCurrentDeleted()
+                    // The list cannot be refreshed from out here, so the popup closes rather
+                    // than going on offering a chat that is no longer there.
+                    popup?.cancel()
+                }
+            }
 
         selected?.let { builder.setSelectedValue(it, true) }
 
