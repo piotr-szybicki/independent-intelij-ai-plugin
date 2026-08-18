@@ -42,8 +42,9 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
     override val description =
         "Plain text search across project files (Find in Files). Supports regex, case " +
             "sensitivity, whole-word, a file mask such as \"*.kt\", and a subdirectory scope. " +
-            "Returns path:line with the matching line. To find uses of a declaration, use " +
-            "find_usages."
+            "Results are grouped by file: the file's path on its own line, then its matches " +
+            "indented below it as \"<line number>: <matching line>\". To find uses of a " +
+            "declaration, use find_usages."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
@@ -146,9 +147,7 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
     }
 
     private fun render(query: String, usages: List<UsageInfo>, truncated: Boolean): String {
-        if (usages.isEmpty()) return "No matches for \"$query\"."
-
-        val lines = ReadAction.computeBlocking<List<String>, RuntimeException> {
+        val matches = ReadAction.computeBlocking<List<MatchListing.Match>, RuntimeException> {
             usages.mapNotNull { usage ->
                 val file = usage.virtualFile ?: return@mapNotNull null
                 val document = FileDocumentManager.getInstance().getDocument(file) ?: return@mapNotNull null
@@ -156,18 +155,20 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
                     ?: return@mapNotNull null
 
                 val line = document.getLineNumber(offset)
-                "${PsiTargets.relativePath(project, file)}:${line + 1}: ${lineText(document, line)}"
+                MatchListing.Match(
+                    PsiTargets.relativePath(project, file),
+                    line + 1,
+                    lineText(document, line),
+                )
             }
         }
+        if (matches.isEmpty()) return "No matches for \"$query\"."
 
-        // Grouped only by being sorted: the engine walks file by file, so equal paths already sit
-        // together, and a flat list stays greppable for the model.
-        return buildString {
-            append("${lines.size} match(es) for \"$query\"")
-            if (truncated) append(" (stopped at the limit; narrow the query, mask or directory to see the rest)")
-            append(":\n")
-            lines.forEach { append(it).append('\n') }
-        }
+        return MatchListing.format(
+            "${MatchListing.count(matches)} match(es) for \"$query\"",
+            matches,
+            truncated,
+        )
     }
 
     private fun lineText(document: Document, line: Int): String {
