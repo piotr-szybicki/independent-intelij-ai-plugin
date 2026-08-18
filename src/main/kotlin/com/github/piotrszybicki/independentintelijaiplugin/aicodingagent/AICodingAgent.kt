@@ -256,10 +256,54 @@ class AICodingAgent(
         if (facts.isEmpty()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$facts"
     }
 
-    /** [basePrompt] with this turn's skill listing on the end. */
-    private fun systemPrompt(): String {
-        val listing = runCatching { skills() }.getOrDefault("").trim()
-        return if (listing.isEmpty()) basePrompt else "$basePrompt\n\n$listing"
+    /**
+     * [basePrompt] with this turn's comment rule and skill listing on the end.
+     *
+     * The comment rule is conditional on the tools it names being switched on, and that is not a
+     * detail: told to store its documentation with a tool it has not been given, the model can only
+     * either disobey or stop writing documentation at all. Conditional on the *tools*, not on
+     * whether any comment has been stored yet -- the rule is about what to write from now on.
+     */
+    private fun systemPrompt(available: List<AICodingAgentTool>): String {
+        val names = available.mapTo(mutableSetOf()) { it.name }
+        val parts = mutableListOf(basePrompt)
+        commentRule(names)?.let { parts.add(it) }
+        runCatching { skills() }.getOrDefault("").trim().takeIf { it.isNotEmpty() }?.let { parts.add(it) }
+        return parts.joinToString("\n\n")
+    }
+
+    /**
+     * How to write comments when the documentation lives in the database.
+     *
+     * Two halves, each following its own tool: writing the marker needs `insert_comment`, and reading
+     * one back needs `get_comment`. A project with only the reader enabled is a project whose
+     * comments were stored once and are not being added to, and telling it to keep storing would be
+     * wrong.
+     */
+    private fun commentRule(enabled: Set<String>): String? {
+        val writes = "insert_comment" in enabled
+        val reads = "get_comment" in enabled
+        if (!writes && !reads) return null
+
+        val rules = mutableListOf<String>()
+        if (writes) {
+            rules.add(
+                "Documentation comments are kept in a database rather than in the files. When what " +
+                    "you are writing would be a Javadoc or KDoc block -- anything of the /** ... */ " +
+                    "form -- call insert_comment with the comment text and write the " +
+                    "\"// comment_id: <id>\" line it gives you back at the place that comment " +
+                    "belongs. Never write a /** ... */ block into a file. Comments starting with // " +
+                    "are written into the code as normal.",
+            )
+        }
+        if (reads) {
+            rules.add(
+                "A \"// comment_id: N\" line in a file is a stored comment, and is the documentation " +
+                    "for whatever follows it. Call get_comment with N to read it -- the code around " +
+                    "it may make no sense without what it says.",
+            )
+        }
+        return rules.joinToString("\n\n")
     }
 
     private val log = Logger.getInstance(AICodingAgent::class.java)
@@ -327,7 +371,7 @@ class AICodingAgent(
         val toolDefinitions = available.map { it.toDefinition() }
         // Same reasoning as the tool list: resolved once for the whole turn, so the system prompt
         // cannot change underneath the loop between one iteration and the next.
-        val system = systemPrompt()
+        val system = systemPrompt(available)
         // Both halves are fixed for the turn, so what they cost is measured once rather than on
         // every iteration -- and it is not small: thirty tool schemas are most of a short request.
         val overhead = HistoryCompaction.overheadTokens(system, toolDefinitions)

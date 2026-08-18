@@ -5,7 +5,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.cleanup
  *
  * Pure string work, and deliberately so: which comments to cut is decided from the comment's own
  * text, and how much to cut with it from the text around it, so the whole judgement is testable
- * without a project, a document or a PSI tree. [JavadocSweep] is the part that needs those.
+ * without a project, a document or a PSI tree. [CommentSweep] is the part that needs those.
  *
  * "Javadoc" here means the syntax rather than the language: a block opening with a slash and two
  * stars, which is a Javadoc comment in Java and a KDoc one in Kotlin, and is written the same way in
@@ -47,6 +47,22 @@ object JavadocComments {
     }
 
     /**
+     * Whether the comment at `[commentStart, commentEnd)` has its lines to itself -- nothing but
+     * whitespace before it on its first line and after it on its last.
+     *
+     * The question behind two different decisions: how much goes when a comment is deleted, and
+     * whether a comment can be replaced by a line comment at all. A doc comment with code beside it
+     * cannot -- `// comment_id: 4` would swallow the rest of the line -- so [StoreJavadoc] leaves
+     * those where they are.
+     */
+    fun isAlone(fileText: String, commentStart: Int, commentEnd: Int): Boolean {
+        val lineStart = fileText.lastIndexOf('\n', commentStart - 1) + 1
+        val lineEnd = fileText.indexOf('\n', commentEnd).takeIf { it >= 0 } ?: fileText.length
+        return fileText.substring(lineStart, commentStart).isBlank() &&
+            fileText.substring(commentEnd, lineEnd).isBlank()
+    }
+
+    /**
      * How much of [fileText] to delete for the comment occupying `[commentStart, commentEnd)`.
      *
      * A comment with nothing but whitespace on either side of it takes its whole line -- or lines --
@@ -59,9 +75,7 @@ object JavadocComments {
         val lineStart = fileText.lastIndexOf('\n', commentStart - 1) + 1
         val lineEnd = fileText.indexOf('\n', commentEnd).takeIf { it >= 0 } ?: fileText.length
 
-        val alone = fileText.substring(lineStart, commentStart).isBlank() &&
-            fileText.substring(commentEnd, lineEnd).isBlank()
-        if (alone) {
+        if (isAlone(fileText, commentStart, commentEnd)) {
             // The line break goes too, unless the comment ends the file and there is none.
             return Removal(lineStart, if (lineEnd < fileText.length) lineEnd + 1 else fileText.length)
         }

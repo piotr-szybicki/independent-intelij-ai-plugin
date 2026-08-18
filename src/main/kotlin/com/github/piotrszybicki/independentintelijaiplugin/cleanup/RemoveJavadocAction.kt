@@ -1,15 +1,11 @@
 package com.github.piotrszybicki.independentintelijaiplugin.cleanup
 
 import com.github.piotrszybicki.independentintelijaiplugin.tools.PsiTargets
-import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
-import com.intellij.openapi.progress.ProgressIndicator
-import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 
@@ -19,12 +15,10 @@ import com.intellij.openapi.vfs.VirtualFile
  * A user-driven action rather than one of the model tools -- it is here to be run by hand and its
  * effect looked at, which is why it reports what it did, does the whole thing as one undoable
  * change, and offers to count without touching anything.
+ *
+ * The one that throws the comments away. [MoveCommentsToDatabaseAction] is the one that keeps them.
  */
 class RemoveJavadocAction : AnAction() {
-
-    private companion object {
-        const val NOTIFICATION_GROUP = "AICodingAgent.Cleanup"
-    }
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
@@ -41,38 +35,27 @@ class RemoveJavadocAction : AnAction() {
         val dialog = RemoveJavadocDialog(project, selection)
         if (!dialog.showAndGet()) return
 
-        val roots = if (dialog.useSelection && selection.isNotEmpty()) {
-            selection
-        } else {
-            listOfNotNull(projectRoot(project))
-        }
+        val roots = SweepScope.roots(project, selection, dialog.useSelection)
         if (roots.isEmpty()) {
-            notify(project, "Nowhere to look", "The project has no directory on disk.", NotificationType.WARNING)
+            SweepRunner.notify(
+                project,
+                "Nowhere to look",
+                "The project has no directory on disk.",
+                NotificationType.WARNING,
+            )
             return
         }
 
         val dryRun = dialog.dryRun
-        val sweep = JavadocSweep(project, roots, dialog.onlyBlank, dryRun)
+        val sweep = CommentSweep(project, roots, DeleteJavadoc(dialog.onlyBlank), dryRun)
         val title = if (dryRun) "Counting Javadoc comments" else "Removing Javadoc comments"
 
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, title, true) {
-            private var report: JavadocSweep.Report? = null
-
-            override fun run(indicator: ProgressIndicator) {
-                report = sweep.run(indicator)
-            }
-
-            override fun onSuccess() {
-                report?.let { notifyResult(project, it, dryRun) }
-            }
-        })
+        SweepRunner.launch(project, title, sweep) { report -> notifyResult(project, report, dryRun) }
     }
 
-    private fun projectRoot(project: Project): VirtualFile? = PsiTargets.resolveProjectFile(project, ".")
-
-    private fun notifyResult(project: Project, report: JavadocSweep.Report, dryRun: Boolean) {
+    private fun notifyResult(project: Project, report: CommentSweep.Report, dryRun: Boolean) {
         if (report.comments == 0) {
-            notify(
+            SweepRunner.notify(
                 project,
                 "No Javadoc comments found",
                 "Looked at ${report.scannedFiles} file(s).",
@@ -82,7 +65,7 @@ class RemoveJavadocAction : AnAction() {
         }
 
         if (dryRun) {
-            notify(
+            SweepRunner.notify(
                 project,
                 "${report.comments} Javadoc comment(s) would be removed",
                 "In ${report.filesWithComments} of ${report.scannedFiles} file(s). Nothing was changed.",
@@ -92,25 +75,24 @@ class RemoveJavadocAction : AnAction() {
         }
 
         val lines = mutableListOf("From ${report.changedFiles} of ${report.scannedFiles} file(s) scanned.")
-        if (report.skipped.isNotEmpty()) {
-            // Read-only, or changed between the scan and the write -- either way the file still has
-            // its comments, and saying which ones is the difference between a warning and a mystery.
-            lines.add("Left alone (read-only, or edited while the sweep ran): ${report.skipped.joinToString(", ")}")
-        }
-        lines.add("Undo in any edited file takes the whole sweep back.")
+        lines.addAll(SweepRunner.footer(report))
 
-        notify(
+        SweepRunner.notify(
             project,
-            "Removed ${report.removed} Javadoc comment(s)",
+            "Removed ${report.applied} Javadoc comment(s)",
             lines.joinToString("<br/>"),
             if (report.skipped.isEmpty()) NotificationType.INFORMATION else NotificationType.WARNING,
         )
     }
+}
 
-    private fun notify(project: Project, title: String, content: String, type: NotificationType) {
-        NotificationGroupManager.getInstance()
-            .getNotificationGroup(NOTIFICATION_GROUP)
-            .createNotification(title, content, type)
-            .notify(project)
-    }
+/** Where a sweep runs: the selection when the dialog offered it and the user took it, else the project. */
+internal object SweepScope {
+
+    fun roots(project: Project, selection: List<VirtualFile>, useSelection: Boolean): List<VirtualFile> =
+        if (useSelection && selection.isNotEmpty()) {
+            selection
+        } else {
+            listOfNotNull(PsiTargets.resolveProjectFile(project, "."))
+        }
 }

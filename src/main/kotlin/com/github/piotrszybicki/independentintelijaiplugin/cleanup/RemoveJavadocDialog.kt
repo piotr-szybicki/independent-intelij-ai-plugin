@@ -61,8 +61,8 @@ class RemoveJavadocDialog(project: Project, private val selection: List<VirtualF
         row { cell(reportOnly) }
         row {
             comment(
-                "The whole sweep is one change: Undo in any edited file takes all of it back, and " +
-                    "nothing is written to disk until the files are saved.",
+                "The whole sweep is one change: Undo in any edited file takes all of it back. The " +
+                    "files it changes are saved when it finishes.",
             )
         }
     }

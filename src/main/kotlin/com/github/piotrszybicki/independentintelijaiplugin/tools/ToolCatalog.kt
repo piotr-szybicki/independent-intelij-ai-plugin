@@ -54,6 +54,10 @@ object ToolCatalog {
         // project's library configuration, which is not something a read-only setup should do.
         Entry("attach_library_sources", ToolCategory.READ, false, ::AttachLibrarySourcesTool),
 
+        // Off with its writing half: a project that does not keep its documentation in the database
+        // has nothing to look up, and the pair is only coherent together.
+        Entry("get_comment", ToolCategory.READ, false, ::GetCommentTool),
+
         Entry("find_in_files", ToolCategory.NAVIGATE, true, ::FindInFilesTool),
         Entry("find_by_name", ToolCategory.NAVIGATE, true, ::FindByNameTool),
         Entry("find_usages", ToolCategory.NAVIGATE, true, ::FindUsagesTool),
@@ -75,6 +79,9 @@ object ToolCatalog {
         Entry("safe_delete", ToolCategory.EDIT, false, ::SafeDeleteTool),
         Entry("add_import", ToolCategory.EDIT, false, ::AddImportTool),
         Entry("insert_member", ToolCategory.EDIT, false, ::InsertMemberTool),
+        // Enabling this changes how the model writes code: the system prompt gains the rule that
+        // documentation goes to the database and only line comments are written into files.
+        Entry("insert_comment", ToolCategory.EDIT, false, ::InsertCommentTool),
 
         Entry("run_configuration", ToolCategory.RUN, false, ::RunConfigurationTool),
         Entry("run_at_location", ToolCategory.RUN, false, ::RunAtLocationTool),
