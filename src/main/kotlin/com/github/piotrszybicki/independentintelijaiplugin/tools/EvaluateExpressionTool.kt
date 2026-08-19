@@ -66,9 +66,9 @@ class EvaluateExpressionTool(private val project: Project) : AICodingAgentTool {
         val live = XDebuggerManager.getInstance(project).debugSessions.filterNot { it.isStopped }
         return if (live.isEmpty()) {
             "No debug session is running, so there is no frame to evaluate in. Set a breakpoint with " +
-                "toggle_breakpoint and start one with start_debug_configuration -- or with " +
-                "run_at_location and debug=true when nothing suitable is saved -- then wait for it " +
-                "with await_breakpoint."
+                "toggle_breakpoint and start one with start_debug_configuration -- attaching to a " +
+                "process you started with run_shell_command under -agentlib:jdwp when nothing " +
+                "suitable is saved -- then wait for it with await_breakpoint."
         } else {
             "The debugger is running (${live.joinToString { it.sessionName }}) but is not paused, so " +
                 "there is no frame to evaluate in. Use await_breakpoint to wait for it to stop first."

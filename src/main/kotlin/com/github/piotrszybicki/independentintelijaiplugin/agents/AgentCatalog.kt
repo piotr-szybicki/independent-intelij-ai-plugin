@@ -70,7 +70,7 @@ object AgentCatalog {
             """.trimIndent(),
             tools = AgentToolPolicy.of(
                 READING_TOOLS + WRITING_TOOLS +
-                    listOf("get_file_problems", "git_status", "git_diff", "run_configuration", "run_at_location"),
+                    listOf("get_file_problems", "git_status", "git_diff", "run_shell_command"),
             ),
         ),
         AgentDefinition(

@@ -113,7 +113,7 @@ internal class ChatTranscript(
         )
     }
 
-    fun lastTurnMarkdown(): String = lastTurn?.toMarkdown().orEmpty()
+    fun lastTurnMarkdown(): String = lastTurn?.finalMarkdown().orEmpty()
 
     fun markRequestFailed(onRetry: () -> Unit) {
         val request = lastToolGroup ?: lastUserRow

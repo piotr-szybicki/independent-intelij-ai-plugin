@@ -283,7 +283,7 @@ roster: one entry per agent, and `tools` is the array that decides what it may c
   {
     "name": "coding-agent",
     "tools": ["read_project_file", "get_file_structure", "find_in_files",
-              "edit_file_lines", "create_file", "get_file_problems", "run_configuration"],
+              "edit_file_lines", "create_file", "get_file_problems", "run_shell_command"],
     "model": "claude-opus-5"
   },
   {

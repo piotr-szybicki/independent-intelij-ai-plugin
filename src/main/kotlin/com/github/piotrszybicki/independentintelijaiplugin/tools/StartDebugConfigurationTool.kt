@@ -19,8 +19,10 @@ class StartDebugConfigurationTool(private val project: Project) : AICodingAgentT
     override val description =
         "Starts an existing run configuration under the debugger by name, including Remote JVM " +
             "Debug configurations that attach to a running process. Naming one that does not " +
-            "exist returns the ones that do. For a test with no configuration yet, use " +
-            "run_at_location with debug=true. Follow with await_breakpoint."
+            "exist returns the ones that do. When nothing saved covers what you want to debug, " +
+            "start the process yourself with run_shell_command under " +
+            "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005 and attach to " +
+            "it with a Remote JVM Debug configuration on that port. Follow with await_breakpoint."
     override val inputSchema: JsonObject = JsonObject().apply {
         addProperty("type", "object")
         add("properties", JsonObject().apply {
@@ -60,17 +62,19 @@ class StartDebugConfigurationTool(private val project: Project) : AICodingAgentT
 
     private fun notFound(name: String, all: List<RunnerAndConfigurationSettings>): String {
         if (all.isEmpty()) {
-            return "Error: the project has no run configurations. Use run_at_location with " +
-                "debug=true to debug a test class or method directly, or ask the user to create a " +
-                "configuration (Run | Edit Configurations) and tell you its name."
+            return "Error: the project has no run configurations. Debugging needs one to attach " +
+                "with: ask the user to create a Remote JVM Debug configuration " +
+                "(Run | Edit Configurations) and tell you its name, then start the process " +
+                "yourself with run_shell_command under the matching -agentlib:jdwp options."
         }
 
         val names = all.map { it.name }
         val listed = names.take(MAX_LISTED).joinToString("\n") { "  $it" }
         val more = if (names.size > MAX_LISTED) "\n  ... and ${names.size - MAX_LISTED} more" else ""
         return "Error: no run configuration named \"$name\". The project has:\n$listed$more\n\n" +
-            "If you were trying to debug a test class or method, use run_at_location with its file " +
-            "and line and debug=true instead -- that produces the configuration the way the " +
-            "editor's gutter Debug button does."
+            "If you were trying to debug a test class or method, run it with run_shell_command " +
+            "under -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005 -- a " +
+            "short timeout_seconds is enough, since it waits for a debugger and keeps running in " +
+            "the terminal -- then attach to it with a Remote JVM Debug configuration on that port."
     }
 }

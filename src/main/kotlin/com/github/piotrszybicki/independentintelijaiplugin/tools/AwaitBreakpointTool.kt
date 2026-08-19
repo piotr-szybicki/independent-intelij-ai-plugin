@@ -47,8 +47,9 @@ class AwaitBreakpointTool(private val project: Project) : AICodingAgentTool {
         val sessions = XDebuggerManager.getInstance(project).debugSessions.filterNot { it.isStopped }
         return if (sessions.isEmpty()) {
             "No debug session is running, so nothing can hit a breakpoint. Start one with " +
-                "start_debug_configuration if a configuration covers what you want to debug, or " +
-                "with run_at_location and debug=true if none does."
+                "start_debug_configuration -- if nothing saved covers what you want to debug, " +
+                "start the process with run_shell_command under -agentlib:jdwp and attach to it " +
+                "with a Remote JVM Debug configuration."
         } else {
             "The debugger did not stop within ${timeoutSeconds}s. It is running " +
                 "(${sessions.joinToString { it.sessionName }}) but has not reached a breakpoint -- " +

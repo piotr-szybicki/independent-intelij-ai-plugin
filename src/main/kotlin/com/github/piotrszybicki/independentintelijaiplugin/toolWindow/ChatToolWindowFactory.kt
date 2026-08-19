@@ -638,7 +638,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 return
             }
 
-            val path = AgentFiles.spec(project, definition, transcript.lastTurnMarkdown())
+            val reply = transcript.lastTurnMarkdown()
+            val path = AgentFiles.spec(project, definition, reply)
             if (path == null) {
                 showError("The specification for @${definition.name} could not be written to .cache.")
                 return
@@ -656,7 +657,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
             showHandoff(index, handoff, definition.description)
             AgentFiles.open(project, path)
             saveCurrentChat(active = true)
-            statusLabel.text = "Edit the spec, then press Proceed to start @${definition.name}."
+            statusLabel.text = if (reply.isBlank()) {
+                "There was no closing reply to draft from, so the spec starts from @${definition.name}'s template."
+            } else {
+                "Edit the spec, then press Proceed to start @${definition.name}."
+            }
         }
 
         private fun showHandoff(index: Int, handoff: AgentHandoff, description: String) {

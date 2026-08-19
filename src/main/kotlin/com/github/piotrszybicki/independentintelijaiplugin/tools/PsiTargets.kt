@@ -80,26 +80,6 @@ object PsiTargets {
             PsiManager.getInstance(project).findFile(vf)
         }
 
-    fun elementAtLine(project: Project, relativePath: String, line: Int): PsiElement? =
-        ReadAction.computeBlocking<PsiElement?, RuntimeException> {
-            val vf = resolveProjectFile(project, relativePath) ?: return@computeBlocking null
-            val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking null
-            val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@computeBlocking null
-
-            val lineIndex = line - 1
-            if (lineIndex < 0 || lineIndex >= document.lineCount) return@computeBlocking null
-            val lineStart = document.getLineStartOffset(lineIndex)
-            val lineEnd = document.getLineEndOffset(lineIndex)
-
-            var offset = lineStart
-            while (offset < lineEnd) {
-                val leaf = psiFile.findElementAt(offset)
-                if (leaf != null && leaf.text.isNotBlank()) return@computeBlocking leaf
-                offset = leaf?.textRange?.endOffset?.coerceAtLeast(offset + 1) ?: (offset + 1)
-            }
-            psiFile.findElementAt(lineStart) ?: psiFile
-        }
-
     fun isInProject(project: Project, element: PsiElement): Boolean {
         val vf = ReadAction.computeBlocking<VirtualFile?, RuntimeException> { element.containingFile?.virtualFile }
             ?: return false

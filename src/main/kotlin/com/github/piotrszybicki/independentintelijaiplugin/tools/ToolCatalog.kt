@@ -55,8 +55,6 @@ object ToolCatalog {
         Entry("safe_delete", ToolCategory.EDIT, false, ::SafeDeleteTool),
         Entry("insert_comment", ToolCategory.EDIT, false, ::InsertCommentTool),
 
-        Entry("run_configuration", ToolCategory.RUN, false, ::RunConfigurationTool),
-        Entry("run_at_location", ToolCategory.RUN, false, ::RunAtLocationTool),
         Entry("run_action", ToolCategory.RUN, false, ::RunActionTool),
         Entry("run_shell_command", ToolCategory.RUN, false, ::RunShellCommandTool),
 

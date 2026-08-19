@@ -19,8 +19,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         private const val MAX_TIMEOUT_SECONDS = 600
         private const val POLL_INTERVAL_MILLIS = 150L
 
-        private const val MAX_OUTPUT_CHARS = 20_000
-
         private const val TAB_NAME = "AI"
 
         fun shellDialect(project: Project): String = when (Shell.of(project)) {
@@ -43,9 +41,9 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "run_shell_command"
     override val description =
-        "Runs a shell command in the IDE's Terminal and returns its exit code and output. For " +
-            "builds, git, and anything with no run configuration; prefer run_configuration when " +
-            "one exists, as it reports per-test results. The user approves each command and " +
+        "Runs a shell command in the IDE's Terminal and returns its exit code and output. This is " +
+            "how you build, run tests, and verify a change: use the project's own build or test " +
+            "command, the way you would from a terminal. The user approves each command and " +
             "watches it run, so send one purposeful command rather than a chain of exploratory " +
             "ones. Use the file tools to read and edit files. Interactive commands hang until the " +
             "user types into the terminal or interrupts."
@@ -188,10 +186,7 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         if (start >= end) return ""
 
         val body = delta.substring(start, end).trim('\n', '\r', ' ')
-        if (body.length <= MAX_OUTPUT_CHARS) return body
-
-        return "[TRUNCATED: first ${body.length - MAX_OUTPUT_CHARS} characters omitted]\n" +
-            body.takeLast(MAX_OUTPUT_CHARS)
+        return ConsoleDigest.of(body, project.basePath)
     }
 
 

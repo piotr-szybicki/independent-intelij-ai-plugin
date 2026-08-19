@@ -47,7 +47,7 @@ internal class AiTurnRow(
     ) { returnToParent() }.apply { isVisible = onReturn != null }
 
     private fun returnToParent() {
-        if (onReturn?.invoke(toMarkdown()) == true) returnSummary.settle("Returned")
+        if (onReturn?.invoke(finalMarkdown()) == true) returnSummary.settle("Returned")
     }
 
     private val continueTurn = CardButton(
@@ -111,4 +111,9 @@ internal class AiTurnRow(
     }
 
     override fun toMarkdown(): String = contents.mapNotNull { it.toMarkdown() }.joinToString("\n\n")
+
+    fun finalMarkdown(): String {
+        val lastTool = contents.indexOfLast { it is ToolGroupRow || it is ToolRow }
+        return contents.drop(lastTool + 1).mapNotNull { it.toMarkdown() }.joinToString("\n\n")
+    }
 }

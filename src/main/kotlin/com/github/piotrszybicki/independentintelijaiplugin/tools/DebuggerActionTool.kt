@@ -86,7 +86,8 @@ class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
 
         val session = XDebuggerManager.getInstance(project).currentSession?.takeUnless { it.isStopped }
             ?: return "Error: no debug session is running. Start one with start_debug_configuration, " +
-                "or with run_at_location and debug=true when nothing suitable is saved."
+                "attaching to a process you started with run_shell_command under -agentlib:jdwp " +
+                "when nothing suitable is saved."
 
         if (action.needsPause && !session.isPaused) {
             return "Error: the debugger is running, not stopped, so \"$actionId\" does not apply. " +
