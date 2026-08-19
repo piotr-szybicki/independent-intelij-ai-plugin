@@ -25,6 +25,8 @@ class AgentConfigurations(private val project: Project) {
 
     data class LoadedAgents(val roster: AgentRosterConfig, val error: String?)
 
+    data class LoadedSummarizer(val summarizer: SummarizerConfig, val error: String?)
+
     val path: Path?
         get() = configuredPath() ?: project.basePath?.let { Paths.get(it, AgentConfiguration.FILE_NAME) }
 
@@ -65,7 +67,8 @@ class AgentConfigurations(private val project: Project) {
         database: UsageDatabaseConfig,
         findInFiles: FindInFilesConfig,
         agents: AgentRosterConfig,
-    ): String? = save(AgentConfiguration.render(configurations, database, findInFiles, agents))
+        summarizer: SummarizerConfig,
+    ): String? = save(AgentConfiguration.render(configurations, database, findInFiles, agents, summarizer))
 
     private fun save(text: String): String? {
         configuredPath()?.let {
@@ -154,6 +157,21 @@ class AgentConfigurations(private val project: Project) {
         } catch (e: Exception) {
             LoadedAgents(
                 AgentRosterConfig.EMPTY,
+                "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}",
+            )
+        }
+    }
+
+    fun summarizer(): LoadedSummarizer {
+        val file = path ?: return LoadedSummarizer(SummarizerConfig.DEFAULT, null)
+        if (!Files.exists(file)) return LoadedSummarizer(SummarizerConfig.DEFAULT, null)
+        return try {
+            LoadedSummarizer(SummarizerConfig.parse(text().orEmpty()), null)
+        } catch (e: AgentConfigurationException) {
+            LoadedSummarizer(SummarizerConfig.DEFAULT, "${AgentConfiguration.FILE_NAME} is ${e.message}")
+        } catch (e: Exception) {
+            LoadedSummarizer(
+                SummarizerConfig.DEFAULT,
                 "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}",
             )
         }

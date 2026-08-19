@@ -499,10 +499,24 @@ class AICodingAgentSettingsConfigurable : Configurable {
             )
             return
         }
+        val summarizer = service.summarizer()
+        if (summarizer.error != null) {
+            Messages.showErrorDialog(
+                "${summarizer.error}\n\nFix that section first -- rewriting the file now would drop it.",
+                "Configuration File",
+            )
+            return
+        }
         val roster = AgentCatalog.rosterFor(project)
 
         if (service.text() ==
-            AgentConfiguration.render(current.configurations, database.database, findInFiles.findInFiles, roster)
+            AgentConfiguration.render(
+                current.configurations,
+                database.database,
+                findInFiles.findInFiles,
+                roster,
+                summarizer.summarizer,
+            )
         ) {
             Messages.showInfoMessage(
                 "${AgentConfiguration.FILE_NAME} already spells out every field.",
@@ -524,7 +538,13 @@ class AICodingAgentSettingsConfigurable : Configurable {
         )
         if (confirmed != Messages.YES) return
 
-        val failure = service.rewrite(current.configurations, database.database, findInFiles.findInFiles, roster)
+        val failure = service.rewrite(
+            current.configurations,
+            database.database,
+            findInFiles.findInFiles,
+            roster,
+            summarizer.summarizer,
+        )
         if (failure != null) {
             Messages.showErrorDialog(failure, "Configuration File")
             return

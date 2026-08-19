@@ -312,10 +312,12 @@ data class AgentConfiguration(
             database: UsageDatabaseConfig = UsageDatabaseConfig.OFF,
             findInFiles: FindInFilesConfig = FindInFilesConfig.DEFAULT,
             agents: AgentRosterConfig = AgentRosterConfig.EMPTY,
+            summarizer: SummarizerConfig = SummarizerConfig.DEFAULT,
         ): String {
             val root = JsonObject().apply {
                 add(UsageDatabaseConfig.SECTION, database.toJson())
                 add(FindInFilesConfig.SECTION, findInFiles.toJson())
+                add(SummarizerConfig.SECTION, summarizer.toJson())
                 if (agents.agents.isNotEmpty()) add(AgentRosterConfig.SECTION, agents.toJson())
                 add(CONFIGURATIONS, JsonArray().apply { configurations.forEach { add(it.toJson()) } })
             }

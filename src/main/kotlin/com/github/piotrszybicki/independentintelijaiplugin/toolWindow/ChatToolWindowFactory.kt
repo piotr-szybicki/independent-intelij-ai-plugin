@@ -29,6 +29,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentToolPolicy
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgent
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentUsage
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ContextMeter
@@ -50,6 +51,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigu
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunShellCommandTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.SummarizeTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -158,23 +160,26 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val mcp by lazy { McpService.getInstance(project) }
         private val builtInTools = ToolCatalog.buildAll(project)
         private val shellTool = builtInTools.filterIsInstance<RunShellCommandTool>().firstOrNull()
+        private val summarizeTool = builtInTools.filterIsInstance<SummarizeTool>().firstOrNull()
         private val log = Logger.getInstance(ChatToolWindowFactory::class.java)
 
         private var activeAgent: AgentDefinition? = null
         private var agentSession: AgentSession? = null
 
+        private fun agentTools(): List<AICodingAgentTool> {
+            val mcpTools = mcp.tools()
+            val policy = activeAgent?.tools ?: AgentToolPolicy.INHERIT
+            return ChangeTrackingTool.wrapAll(
+                policy.select(
+                    everything = builtInTools + mcpTools,
+                    enabledInSettings = ToolCatalog.enabledIn(builtInTools) + mcpTools,
+                ),
+                session,
+            )
+        }
+
         private val agent = AICodingAgent(
-            tools = {
-                val mcpTools = mcp.tools()
-                val policy = activeAgent?.tools ?: AgentToolPolicy.INHERIT
-                ChangeTrackingTool.wrapAll(
-                    policy.select(
-                        everything = builtInTools + mcpTools,
-                        enabledInSettings = ToolCatalog.enabledIn(builtInTools) + mcpTools,
-                    ),
-                    session,
-                )
-            },
+            tools = { agentTools() },
             environment = { ProjectEnvironment.describe(project) },
             skills = { SkillCatalog.describe(project) },
         )
@@ -845,6 +850,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val contextWindow = configuration.contextWindowTokens
             val conversationId = chatId
             val agentPrompt = activeAgent?.prompt.orEmpty()
+
+            summarizeTool?.bind(agentTools(), conversationId, providerBar.configurationName)
 
             cancelled.set(false)
             beginTurnCost()

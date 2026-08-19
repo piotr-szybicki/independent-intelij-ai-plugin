@@ -14,6 +14,8 @@ enum class ToolCategory(val displayName: String) {
     EDIT("Editing and fixing"),
     RUN("Running code"),
     DEBUG("Debugging"),
+
+    SUPPORT("Cutting output down"),
 }
 
 object ToolCatalog {
@@ -63,6 +65,8 @@ object ToolCatalog {
         Entry("await_breakpoint", ToolCategory.DEBUG, false, ::AwaitBreakpointTool),
         Entry("debugger_action", ToolCategory.DEBUG, false, ::DebuggerActionTool),
         Entry("evaluate_expression", ToolCategory.DEBUG, false, ::EvaluateExpressionTool),
+
+        Entry("summarize", ToolCategory.SUPPORT, false, ::SummarizeTool),
     )
 
     val DEFAULT_ENABLED: String = format(entries.filter { it.onByDefault }.map { it.name })

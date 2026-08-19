@@ -54,6 +54,14 @@ project root, written with three example entries the first time a project is ope
   "find-in-files": {
     "blocked-phrases": ["public", "private", "import", "TODO", "comment_id"]
   },
+  "summarizer": {
+    "configuration": "Anthropic Claude",
+    "model": "claude-haiku-4-5-20251001",
+    "max-tokens": 1500,
+    "min-input-tokens": 400,
+    "thinking": "off",
+    "prompt": ""
+  },
   "configurations": [
     {
       "name": "Anthropic Claude",
@@ -161,6 +169,65 @@ on the next search; there is no restart.
 below it — and stops after **100 files**. It used to echo each matching line, which meant the query
 came back once per hit with up to two hundred characters of context around it, permanently, in every
 later request of that conversation.
+
+### Paying a cheap model to read the long output
+
+The **`summarize`** tool runs another tool and hands back a summary of what it returned, written by a
+second model that can be a much cheaper one. It takes the tool's name in `tool`, that tool's own
+arguments in `input`, and — worth writing every time — a `focus` saying what the summary has to
+answer:
+
+```json
+{
+  "tool": "run_shell_command",
+  "input": {"command": "./gradlew test"},
+  "focus": "which tests failed, with the assertion message and the file each is in"
+}
+```
+
+The point is what a tool call costs *after* it returns. Its output is a message in the conversation
+from then on, re-sent in full with every later request of that chat, so a test run that came back
+twelve thousand tokens long is paid for on every turn that follows. Summarising it once, on a model
+priced a fraction of the one doing the work, replaces those twelve thousand with a few hundred for
+the rest of the conversation.
+
+What the summary leaves out is gone — the original is **not** kept for the model, and it is told so,
+so it can run the call again, narrowed, when it needs the exact text. That is the trade, and it is
+why the description tells the model not to reach for this when it needs something word for word,
+such as a file it is about to edit. **You** still see the whole output: the tool card in the
+transcript holds what the inner tool returned, and a shell command is in the Terminal tab as usual.
+
+The **`summarizer`** section of the configuration file says who writes them:
+
+| Field | Values | Default |
+| --- | --- | --- |
+| `configuration` | which entry in `configurations` to send the summarising request to | the provider the chat itself is on |
+| `model` | which model to ask that provider for; it does **not** have to be in that entry's `models`, since nothing chooses it from the dropdown | that entry's own `model` |
+| `max-tokens` | the cap on the summary itself | `1500` |
+| `min-input-tokens` | output shorter than this comes back as it is, unsummarised — there is nothing to save and a round trip to lose | `400` |
+| `thinking` | `off`, `on`, `provider-default`, exactly as in a `configurations` entry | `off` |
+| `prompt` | added after the built-in instructions, for a standing rule of your own | none |
+
+`thinking` defaults to **`off`** and is sent as such rather than left out: `"thinking":
+{"type": "disabled"}` on the Messages API, `"reasoning": {"effort": "none"}` on Responses.
+Compressing text that is already in front of the model is not what a reasoning budget is for, and a
+reasoning model left on its provider's default spends more thinking about the summary than the
+summary saves. When it is `off` no `effort` is sent either; set it to `on` and the request carries
+the `effort` of the entry it is going to. A model whose API refuses to be told `none` — some of the
+GPT-5 family take `minimal` as their floor — needs `provider-default` here, or `on` with a `low`
+effort on that entry.
+
+`summarize` is **off** until you select it under <kbd>Settings</kbd> > <kbd>Tools</kbd> >
+<kbd>AICodingAgent</kbd>, like the other tools that spend money or change things. The request is recorded in the usage
+database against the same conversation as the rest of the chat, so its cost shows up in
+`model_requests` under the summariser's model name; the chat's own token meter counts only what the
+main model sent and received.
+
+If the summariser cannot be reached, names a configuration that is not in the file, or comes back
+empty, the tool's own output is returned in full with a line saying which of those happened. A
+failure to compress is not a reason to lose what the tool already did — though the full output may
+then be over **Tokens per tool result** and be withheld, which is the same offer to approve or edit
+as any other oversized call.
 
 The same file's **`usage-database`** section says where one row per request is recorded — a MySQL
 JDBC URL in `url`, and `enabled` to stop the writing without losing it. An empty URL, or no section
