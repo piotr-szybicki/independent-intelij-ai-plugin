@@ -20,6 +20,13 @@ import com.intellij.ui.content.ContentFactory
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentCatalog
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentDefinition
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentFiles
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentHandoff
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentToolPolicy
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgent
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentUsage
@@ -153,8 +160,21 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val shellTool = builtInTools.filterIsInstance<RunShellCommandTool>().firstOrNull()
         private val log = Logger.getInstance(ChatToolWindowFactory::class.java)
 
+        private var activeAgent: AgentDefinition? = null
+        private var agentSession: AgentSession? = null
+
         private val agent = AICodingAgent(
-            tools = { ChangeTrackingTool.wrapAll(ToolCatalog.enabledIn(builtInTools) + mcp.tools(), session) },
+            tools = {
+                val mcpTools = mcp.tools()
+                val policy = activeAgent?.tools ?: AgentToolPolicy.INHERIT
+                ChangeTrackingTool.wrapAll(
+                    policy.select(
+                        everything = builtInTools + mcpTools,
+                        enabledInSettings = ToolCatalog.enabledIn(builtInTools) + mcpTools,
+                    ),
+                    session,
+                )
+            },
             environment = { ProjectEnvironment.describe(project) },
             skills = { SkillCatalog.describe(project) },
         )
@@ -198,12 +218,22 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         private val providerBar = ProviderBar(project) { statusLabel.text = it }
 
+        private val agentBanner = AgentBanner(
+            onOpenParent = { openChat(it) },
+            onOpenSpec = { openAgentFile() },
+        )
+
         private val changesBarPanel = ChangesBar(project, session, { statusLabel.text = it }) {
             composer.revalidate()
             composer.repaint()
         }
 
         private val chatAttachments = ChatAttachments(project, { statusLabel.text = it }) {
+            composer.revalidate()
+            composer.repaint()
+        }
+
+        private val agentReturns = AgentReturnsBar(project, { openAgentFile(it) }) {
             composer.revalidate()
             composer.repaint()
         }
@@ -254,7 +284,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         private val composerTop: JPanel = JPanel(BorderLayout(0, JBUI.scale(5))).apply {
             isOpaque = false
-            add(changesBarPanel.component, BorderLayout.NORTH)
+            add(
+                JPanel(BorderLayout(0, JBUI.scale(5))).apply {
+                    isOpaque = false
+                    add(changesBarPanel.component, BorderLayout.NORTH)
+                    add(agentReturns.component, BorderLayout.SOUTH)
+                },
+                BorderLayout.NORTH,
+            )
             add(chatAttachments.component, BorderLayout.CENTER)
         }
 
@@ -269,10 +306,16 @@ class ChatToolWindowFactory : ToolWindowFactory {
             add(statusRow, BorderLayout.SOUTH)
         }
 
+        private val header: JPanel = JPanel(BorderLayout()).apply {
+            isOpaque = false
+            add(providerBar.component, BorderLayout.NORTH)
+            add(agentBanner.component, BorderLayout.SOUTH)
+        }
+
         val component: JComponent = JPanel(BorderLayout()).apply {
             isOpaque = true
             background = ChatColors.background
-            add(providerBar.component, BorderLayout.NORTH)
+            add(header, BorderLayout.NORTH)
             add(transcript.component, BorderLayout.CENTER)
             add(composer, BorderLayout.SOUTH)
         }
@@ -295,6 +338,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 override fun focusGained(e: FocusEvent) = inputCard.repaint()
                 override fun focusLost(e: FocusEvent) = inputCard.repaint()
             })
+
+            AgentMentionPopup(project, input) { beginHandoff(it) }.install()
 
             session.addListener(sessionListener)
             changesBarPanel.update(session.changedFileCount)
@@ -335,6 +380,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         fun showHistory(e: AnActionEvent) {
             ChatHistoryPopup.show(
+                project = project,
                 service = chatHistory,
                 chats = chatHistory.chats(),
                 currentId = chatId,
@@ -365,6 +411,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             resetConversation(chat.id, chat.createdAt)
             history.addAll(chat.messages)
             rows.addAll(chat.transcript)
+            applyAgent(chat.agent)
+            agentReturns.set(chat.returns.orEmpty())
             providerBar.setSelection(chat.configurationName, chat.model)
             setUsage(chat.usage ?: SessionUsage())
             contextMeter.restore(chat.context)
@@ -372,8 +420,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 if (contextMeter.anchor > 0) contextMeter.estimate(history, overheadChars = 0) else 0,
                 contextWindowTokens(),
             )
-            chat.transcript.forEach { render(it) }
+            rows.forEachIndexed { index, row -> render(index, row) }
             ApplicationManager.getApplication().executeOnPooledThread { chatHistory.setActiveId(chat.id) }
+        }
+
+        private fun applyAgent(session: AgentSession?, known: AgentDefinition? = null) {
+            agentSession = session
+            activeAgent = session?.let {
+                known ?: AgentCatalog.find(project, it.agentName) ?: AgentCatalog.placeholderFor(it.agentName)
+            }
+            agentBanner.show(session, activeAgent?.tools?.describe())
+            transcript.onReturnSummary = if (session?.parentChatId == null) null else ::returnSummary
         }
 
         private fun resetConversation(
@@ -387,6 +444,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             runningTool = null
             runningToolIndex = -1
             withheldCards.clear()
+            applyAgent(null)
             shellTool?.forgetApprovals()
             mcp.forgetApprovals()
             raisedMaxTokens = 0
@@ -397,6 +455,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             beginTurnCost()
             transcript.clear()
             chatAttachments.clear()
+            agentReturns.clear()
         }
 
         private fun snapshot(): StoredChat? {
@@ -412,6 +471,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 context = contextMeter.snapshot(),
                 configurationName = providerBar.configurationName,
                 model = providerBar.modelName,
+                agent = agentSession,
+                returns = agentReturns.returns(),
             )
         }
 
@@ -549,8 +610,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
             transcript.addError(message)
         }
 
-        private fun render(row: StoredRow) {
+        private fun render(index: Int, row: StoredRow) {
             when (row.kind) {
+                StoredRow.HANDOFF -> row.handoff?.let { showHandoff(index, it, row.summary) }
                 StoredRow.USER -> transcript.addUserMessage(row.text)
                 StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
                 StoredRow.TOOL ->
@@ -570,26 +632,186 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
 
+        private fun beginHandoff(definition: AgentDefinition) {
+            if (!sendButton.isEnabled) {
+                statusLabel.text = "Wait for the current reply to finish before handing over."
+                return
+            }
+
+            val path = AgentFiles.spec(project, definition, transcript.lastTurnMarkdown())
+            if (path == null) {
+                showError("The specification for @${definition.name} could not be written to .cache.")
+                return
+            }
+
+            val handoff = AgentHandoff(definition.name, path.toString(), chatId)
+            val index = rows.size
+            rows += StoredRow(
+                StoredRow.HANDOFF,
+                name = definition.name,
+                summary = definition.description,
+                text = AgentFiles.displayPath(project, path),
+                handoff = handoff,
+            )
+            showHandoff(index, handoff, definition.description)
+            AgentFiles.open(project, path)
+            saveCurrentChat(active = true)
+            statusLabel.text = "Edit the spec, then press Proceed to start @${definition.name}."
+        }
+
+        private fun showHandoff(index: Int, handoff: AgentHandoff, description: String) {
+            val path = Path.of(handoff.specPath)
+            transcript.addHandoff(
+                agentName = handoff.agentName,
+                description = description,
+                specName = AgentFiles.displayPath(project, path),
+                state = handoff.state,
+                onOpenSpec = { openAgentFile(path) },
+                onProceed = { proceedWithHandoff(index) },
+                onCancel = { cancelHandoff(index) },
+                onOpenChat = { rows.getOrNull(index)?.handoff?.childChatId?.let { openChat(it) } },
+            )
+        }
+
+        private fun proceedWithHandoff(index: Int): Boolean {
+            val stored = rows.getOrNull(index) ?: return false
+            val handoff = stored.handoff?.takeIf { !it.isSettled } ?: return false
+            if (!sendButton.isEnabled) {
+                statusLabel.text = "Wait for the current reply to finish before handing over."
+                return false
+            }
+
+            val definition = AgentCatalog.find(project, handoff.agentName)
+            if (definition == null) {
+                showError("@${handoff.agentName} is no longer defined, so nothing was handed over.")
+                return false
+            }
+
+            val path = Path.of(handoff.specPath)
+            val spec = AgentFiles.read(path)?.takeIf { it.isNotBlank() }
+            if (spec == null) {
+                showError(
+                    "${AgentFiles.displayPath(project, path)} is empty or could not be read, " +
+                        "so nothing was handed over.",
+                )
+                return false
+            }
+
+            val childId = ChatHistoryService.newChatId()
+            val session = AgentSession(definition.name, chatId, handoff.specPath)
+            rows[index] = stored.copy(
+                handoff = handoff.copy(childChatId = childId, state = AgentHandoff.PROCEEDED),
+            )
+            saveCurrentChat(active = false)
+            startAgentChat(childId, definition, session, spec, path)
+            return true
+        }
+
+        private fun cancelHandoff(index: Int) {
+            val stored = rows.getOrNull(index) ?: return
+            val handoff = stored.handoff?.takeIf { !it.isSettled } ?: return
+            rows[index] = stored.copy(handoff = handoff.copy(state = AgentHandoff.CANCELLED))
+            saveCurrentChat(active = true)
+            statusLabel.text = "The hand-off to @${handoff.agentName} was dropped."
+        }
+
+        private fun startAgentChat(
+            childId: String,
+            definition: AgentDefinition,
+            session: AgentSession,
+            spec: String,
+            path: Path,
+        ) {
+            resetConversation(childId)
+            applyAgent(session, definition)
+            providerBar.setSelection(definition.configurationName, definition.model)
+            input.text = ""
+            chatAttachments.clear()
+
+            val displayPath = AgentFiles.displayPath(project, path)
+            history.add(ChatMessage.text("user", spec))
+            showUserMessage("**Specification for @${definition.name}** — `$displayPath`\n\n$spec")
+            startTurn(0)
+            statusLabel.text = "@${definition.name} is working from $displayPath."
+        }
+
+        private fun openAgentFile(path: Path? = agentSession?.specPath?.let { Path.of(it) }) {
+            if (path == null) return
+            if (!AgentFiles.open(project, path)) showError("$path could not be opened.")
+        }
+
+        private fun returnSummary(markdown: String): Boolean {
+            val session = agentSession ?: return false
+            val parentChatId = session.parentChatId ?: return false
+
+            val path = AgentFiles.summary(project, session.agentName, markdown)
+            if (path == null) {
+                showError("The summary could not be written to .cache.")
+                return false
+            }
+
+            val returned = AgentReturn(session.agentName, chatId, path.toString())
+            if (!chatHistory.addReturn(parentChatId, returned)) {
+                showError("The chat that started this agent is no longer in the history, so nothing was returned.")
+                return false
+            }
+
+            AgentFiles.open(project, path)
+            statusLabel.text =
+                "Returned to the chat that started this agent — edit ${AgentFiles.displayPath(project, path)} " +
+                    "there before sending it."
+            return true
+        }
+
+        private data class PrependedBlock(val marker: String, val body: String)
+
+        private fun returnedBlocks(): List<PrependedBlock> {
+            val pending = agentReturns.returns()
+            if (pending.isEmpty()) return emptyList()
+
+            val blocks = mutableListOf<PrependedBlock>()
+            val unreadable = mutableListOf<String>()
+            for (returned in pending) {
+                val path = Path.of(returned.path)
+                val name = AgentFiles.displayPath(project, path)
+                val text = AgentFiles.read(path)?.takeIf { it.isNotBlank() }
+                if (text == null) {
+                    unreadable += name
+                    continue
+                }
+                blocks += PrependedBlock(
+                    marker = "📥 `@${returned.agentName} — $name`",
+                    body = "A summary returned by @${returned.agentName}, from the chat that ran it:\n\n$text",
+                )
+            }
+            if (unreadable.isNotEmpty()) {
+                showError("Nothing could be read from ${unreadable.joinToString(", ")}.")
+            }
+            return blocks
+        }
+
         private fun send() {
             if (!sendButton.isEnabled) return
             val text = input.text.trim()
             val attachments = chatAttachments.attachments()
-            if (text.isEmpty() && attachments.isEmpty()) return
+            val prepended = returnedBlocks() +
+                attachments.map { PrependedBlock("📎 `${it.summary}`", it.body) }
+            if (text.isEmpty() && prepended.isEmpty()) return
 
-            val attached = attachments.joinToString("\n\n") { it.body }
+            val attached = prepended.joinToString("\n\n") { it.body }
             val messageText = when {
-                attachments.isEmpty() -> text
+                prepended.isEmpty() -> text
                 text.isEmpty() -> attached
                 else -> "$attached\n\n$text"
             }
 
-            val markers = if (attachments.size == 1) {
-                "📎 `${attachments.first().summary}`"
+            val markers = if (prepended.size == 1) {
+                prepended.first().marker
             } else {
-                attachments.joinToString("\n") { "- 📎 `${it.summary}`" }
+                prepended.joinToString("\n") { "- ${it.marker}" }
             }
             val displayText = when {
-                attachments.isEmpty() -> text
+                prepended.isEmpty() -> text
                 text.isEmpty() -> markers
                 else -> "$markers\n\n$text"
             }
@@ -599,6 +821,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             showUserMessage(displayText)
             input.text = ""
             chatAttachments.clear()
+            agentReturns.clear()
 
             startTurn(sizeBeforeTurn)
         }
@@ -616,6 +839,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val maxToolOutputTokens = AICodingAgentSettingsState.getInstance().state.maxToolOutputTokens
             val contextWindow = configuration.contextWindowTokens
             val conversationId = chatId
+            val agentPrompt = activeAgent?.prompt.orEmpty()
 
             cancelled.set(false)
             beginTurnCost()
@@ -733,7 +957,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             }
                         }
                     }, isCancelled = cancelled::get, reasoning = reasoning, conversationId = conversationId,
-                        maxToolOutputTokens = maxToolOutputTokens, meter = contextMeter)
+                        maxToolOutputTokens = maxToolOutputTokens, meter = contextMeter,
+                        agentPrompt = agentPrompt)
                     ApplicationManager.getApplication().invokeLater { endTurn() }
                 } catch (e: Throwable) {
                     log.warn("The turn failed", e)

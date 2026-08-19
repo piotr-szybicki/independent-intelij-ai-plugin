@@ -44,6 +44,12 @@ internal class PlaceholderRow : ChatRow(VerticalLayout(JBUI.scale(4), VerticalLa
                 foreground = ChatColors.muted
             }
         )
+        add(
+            JBLabel("Type @ to hand the work over to an agent", SwingConstants.CENTER).apply {
+                font = JBFont.small()
+                foreground = ChatColors.muted
+            }
+        )
     }
 }
 

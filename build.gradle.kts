@@ -27,6 +27,13 @@ tasks.withType<JavaCompile>().configureEach {
     options.release = 25
 }
 
+
+tasks.register<JavaExec>("runHelloWorld") {
+    group = "application"
+    description = "Runs the Hello World application."
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("MainKt")
+}
 dependencies {
     testImplementation("junit:junit:4.13.2")
 

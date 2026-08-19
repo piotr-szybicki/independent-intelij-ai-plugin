@@ -4,9 +4,12 @@ import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistorySe
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatSummary
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
 import com.intellij.ui.ColoredListCellRenderer
+import com.intellij.ui.InplaceButton
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.util.text.DateFormatUtil
 import com.intellij.util.ui.EmptyIcon
@@ -19,6 +22,7 @@ import javax.swing.ListSelectionModel
 internal object ChatHistoryPopup {
 
     fun show(
+        project: Project,
         service: ChatHistoryService,
         chats: List<ChatSummary>,
         currentId: String,
@@ -42,6 +46,9 @@ internal object ChatHistoryPopup {
                 hasFocus: Boolean,
             ) {
                 icon = if (value.id == currentId) AllIcons.Actions.Forward else EmptyIcon.ICON_16
+                value.agentName?.let {
+                    append("@$it  ", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, ChatColors.accent))
+                }
                 append(value.title)
                 append(
                     "  ${DateFormatUtil.formatPrettyDateTime(value.updatedAt)}",
@@ -59,9 +66,18 @@ internal object ChatHistoryPopup {
             .setResizable(true)
             .setRenderer(renderer)
             .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-            .setNamerForFiltering { it.title }
+            .setNamerForFiltering { listOfNotNull(it.agentName, it.title).joinToString(" ") }
             .setItemSelectedCallback { selected = it }
             .setItemChosenCallback { onOpen(it.id) }
+            .setSettingButton(
+                InplaceButton("Delete All Chats", AllIcons.Actions.GC) {
+                    popup?.cancel()
+                    if (confirmDeleteAll(project, chats.size)) {
+                        service.deleteAll()
+                        onCurrentDeleted()
+                    }
+                },
+            )
             .setAdText("Enter opens a chat, Delete removes it")
             .registerKeyboardAction(
                 KeyStroke.getKeyStroke(KeyEvent.VK_DELETE, 0),
@@ -80,4 +96,12 @@ internal object ChatHistoryPopup {
         popup = created
         created.showInBestPositionFor(dataContext)
     }
+
+    private fun confirmDeleteAll(project: Project, count: Int): Boolean =
+        Messages.showYesNoDialog(
+            project,
+            "Delete all $count saved ${if (count == 1) "chat" else "chats"}? This cannot be undone.",
+            "Delete Chat History",
+            Messages.getWarningIcon(),
+        ) == Messages.YES
 }

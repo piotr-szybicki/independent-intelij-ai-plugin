@@ -23,6 +23,8 @@ class AgentConfigurations(private val project: Project) {
 
     data class LoadedFindInFiles(val findInFiles: FindInFilesConfig, val error: String?)
 
+    data class LoadedAgents(val roster: AgentRosterConfig, val error: String?)
+
     val path: Path?
         get() = configuredPath() ?: project.basePath?.let { Paths.get(it, AgentConfiguration.FILE_NAME) }
 
@@ -62,7 +64,8 @@ class AgentConfigurations(private val project: Project) {
         configurations: List<AgentConfiguration>,
         database: UsageDatabaseConfig,
         findInFiles: FindInFilesConfig,
-    ): String? = save(AgentConfiguration.render(configurations, database, findInFiles))
+        agents: AgentRosterConfig,
+    ): String? = save(AgentConfiguration.render(configurations, database, findInFiles, agents))
 
     private fun save(text: String): String? {
         configuredPath()?.let {
@@ -136,6 +139,21 @@ class AgentConfigurations(private val project: Project) {
         } catch (e: Exception) {
             LoadedFindInFiles(
                 FindInFilesConfig.DEFAULT,
+                "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}",
+            )
+        }
+    }
+
+    fun agents(): LoadedAgents {
+        val file = path ?: return LoadedAgents(AgentRosterConfig.EMPTY, null)
+        if (!Files.exists(file)) return LoadedAgents(AgentRosterConfig.EMPTY, null)
+        return try {
+            LoadedAgents(AgentRosterConfig.parse(text().orEmpty()), null)
+        } catch (e: AgentConfigurationException) {
+            LoadedAgents(AgentRosterConfig.EMPTY, "${AgentConfiguration.FILE_NAME} is ${e.message}")
+        } catch (e: Exception) {
+            LoadedAgents(
+                AgentRosterConfig.EMPTY,
                 "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}",
             )
         }

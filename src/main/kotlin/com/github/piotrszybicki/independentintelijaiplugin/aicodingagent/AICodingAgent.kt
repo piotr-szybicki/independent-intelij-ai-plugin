@@ -84,9 +84,10 @@ class AICodingAgent(
         if (facts.isEmpty()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$facts"
     }
 
-    private fun systemPrompt(available: List<AICodingAgentTool>): String {
+    private fun systemPrompt(available: List<AICodingAgentTool>, agentPrompt: String): String {
         val names = available.mapTo(mutableSetOf()) { it.name }
         val parts = mutableListOf(basePrompt)
+        agentPrompt.trim().takeIf { it.isNotEmpty() }?.let { parts.add(it) }
         commentRule(names)?.let { parts.add(it) }
         runCatching { skills() }.getOrDefault("").trim().takeIf { it.isNotEmpty() }?.let { parts.add(it) }
         return parts.joinToString("\n\n")
@@ -133,11 +134,12 @@ class AICodingAgent(
         conversationId: String = "",
         maxToolOutputTokens: Int = 0,
         meter: ContextMeter = ContextMeter(),
+        agentPrompt: String = "",
     ) {
         val available = tools()
         val toolsByName = available.associateBy { it.name }
         val toolDefinitions = available.map { it.toDefinition() }
-        val system = systemPrompt(available)
+        val system = systemPrompt(available, agentPrompt)
         val overheadChars = HistoryCompaction.overheadChars(system, toolDefinitions)
 
         fun reportContext() = listener.onContext(meter.estimate(history, overheadChars), contextWindowTokens)

@@ -230,6 +230,103 @@ note has gone to the provider and replacing what it stands for would be rewritin
 sent. The conversation is never stuck either way. Files in `.cache/` are never deleted by the plugin;
 empty the folder whenever you like.
 
+### Handing work to an agent
+
+Work out **what** to build in the main chat, then hand the building over. Type **`@`** anywhere in
+the message box and a dropdown of the available agents opens at the caret; keep typing to filter it,
+<kbd>Enter</kbd> picks one and <kbd>Escape</kbd> leaves the `@` where it is.
+
+Picking one drops an **agent hand-off** card into the transcript and writes the last reply — the same
+Markdown **Export MD** would have saved — to **`.cache/<agent>-spec-<stamp>.md`**, which opens in the
+editor. That file is the brief, and the whole of it is what the agent is started with, so cut, add
+and rewrite until it says what you mean. **Open spec** brings it back if you closed it. Nothing has
+been sent yet.
+
+**Proceed** reads the file as it stands in the editor — unsaved edits count — and opens a **new
+chat** running that agent, with the spec as its opening message and the agent's own instructions in
+place of the ordinary ones. The card settles to **Handed off** with an **Open agent chat** link, and
+the agent chat carries a banner naming the agent, with **Spec** and **Back to the chat that started
+it**. In the chat history the agent's chats are listed with **`@name`** in front of the title, so a
+hand-off is never mistaken for an ordinary conversation. **Cancel** drops the hand-off and leaves the
+spec file on disk.
+
+The way back is the mirror of the way out. Under any reply in the agent chat, **Return summary**
+writes that reply to **`.cache/<agent>-summary-<stamp>.md`** and opens it — trim it to what the other
+chat actually needs — and hands the file to the chat that started the agent. The button settles to
+*Returned*.
+
+That chat picks it up in a **Returned by agents** section above the message box, its own section
+above your attachments: one chip per summary, click it to open the file, ✕ to drop it. It goes with
+your **next message**, read from the file as it stands at that moment, so edits made after returning
+still count. Send, and the chip clears like an attachment does. The section survives the chat being
+closed and reopened, which is the point — the agent usually finishes while you are looking at
+something else.
+
+Two agents come built in. **`@coding-agent`** implements the spec and reports what it changed and
+what it verified. **`@review-agent`** judges the code against the spec and has reading and navigation
+tools only — there is nothing for it to edit with, by design.
+
+#### What an agent may call
+
+**An agent's tools are its own, not the chat's.** The tools on the settings page are what *you* get
+in the main chat; an agent that names its tools gets exactly those, whether or not you have them
+switched on. That is deliberate: `@coding-agent` can create, edit, move, delete and rename from the
+first message, in a chat you started from a specification you approved, without leaving those tools
+armed in every conversation you have. An agent that names no tools inherits the settings page as
+before. The banner at the top of an agent chat lists what that chat can call.
+
+The **`agents`** section of `independent-ai-plugin-settings.json` is where you say so. It is the
+roster: one entry per agent, and `tools` is the array that decides what it may call.
+
+```json
+"agents": [
+  {
+    "name": "coding-agent",
+    "tools": ["read_project_file", "get_file_structure", "find_in_files",
+              "edit_file_lines", "create_file", "get_file_problems", "run_configuration"],
+    "model": "claude-opus-5"
+  },
+  {
+    "name": "migrator",
+    "description": "Moves calls from the old API to the new one.",
+    "prompt": "You migrate call sites, one file at a time...",
+    "tools": ["*", "-run_shell_command", "-delete_file"]
+  }
+]
+```
+
+An entry naming an agent that already exists — built in, or an `AGENT.md` — overrides it, field by
+field: `tools` replaces its tool list, `description`, `prompt`, `configuration` and `model` replace
+theirs when they are not empty. An entry naming an agent nothing else defines creates one, and then
+`prompt` is its whole brief. `"tools": []` or no `tools` at all means *inherit the settings page*,
+`["*"]` means every tool there is, and a `-name` entry takes one away. Left-out fields keep whatever
+the built-in or the `AGENT.md` said, so overriding just the tools is two lines.
+
+**Fill In Defaults** on the settings page writes the section out at the values it is already running
+on — the quickest way to see every agent's real tool list and start editing from it. Prompts that
+live in code or in an `AGENT.md` are not copied into the JSON; only what you wrote there stays there.
+
+Add your own as **`.agents/<name>/AGENT.md`** in the project (`.claude/agents/*.md` and
+`~/.claude/agents/*.md` are read too). Everything below the frontmatter is the agent's system prompt,
+and a file's agent replaces a built-in one of the same name:
+
+```markdown
+---
+name: test-writer
+description: Writes the tests for a change that is already made.
+tools: read_project_file, get_file_structure, find_in_files, create_file, edit_file_lines
+model: claude-sonnet-4-5
+---
+
+You write tests, and nothing else...
+```
+
+`tools` is the tools that agent may call — a list to allow exactly those, `*` for every tool there
+is, or `-name` entries to take a few away. Leave it out and the agent inherits the settings page.
+`configuration` and `model` name the provider and model its chats open on, and `spec_template` is
+what its spec file starts from when there is no reply to draft one out of. The `agents` section of
+the settings file overrides any of this.
+
 ### Running it
 
 `runIde` starts a separate sandbox IDE with the plugin installed. It does not touch your day-to-day

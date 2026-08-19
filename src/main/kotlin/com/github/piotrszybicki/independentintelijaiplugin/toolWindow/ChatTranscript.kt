@@ -25,6 +25,8 @@ internal class ChatTranscript(
     private val thinkingRow = ThinkingRow(onCancel)
     private var lastAppliedWidth = -1
 
+    var onReturnSummary: ((String) -> Boolean)? = null
+
     private var currentTurn: AiTurnRow? = null
 
     private var lastTurn: AiTurnRow? = null
@@ -87,6 +89,31 @@ internal class ChatTranscript(
         lastToolGroup = null
         addRow(UserRow(markdown).also { lastUserRow = it })
     }
+
+    fun addHandoff(
+        agentName: String,
+        description: String,
+        specName: String,
+        state: String,
+        onOpenSpec: () -> Unit,
+        onProceed: () -> Boolean,
+        onCancel: () -> Unit,
+        onOpenChat: () -> Unit,
+    ) {
+        endAiTurn()
+        lastToolGroup = null
+        addRow(
+            AgentHandoffRow(
+                agentName, description, specName, state,
+                onOpenSpec = onOpenSpec,
+                onProceed = onProceed,
+                onCancel = onCancel,
+                onOpenChat = onOpenChat,
+            )
+        )
+    }
+
+    fun lastTurnMarkdown(): String = lastTurn?.toMarkdown().orEmpty()
 
     fun markRequestFailed(onRetry: () -> Unit) {
         val request = lastToolGroup ?: lastUserRow
@@ -165,6 +192,7 @@ internal class ChatTranscript(
                     row,
                     onExport = { markdown -> TranscriptExport.save(project, markdown) },
                     onContinue = onContinue,
+                    onReturn = onReturnSummary,
                 ).also { fresh ->
                     currentTurn = fresh
                     lastTurn = fresh

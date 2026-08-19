@@ -13,6 +13,7 @@ internal class AiTurnRow(
     first: ChatRow,
     onExport: (String) -> Unit,
     onContinue: () -> Unit,
+    private val onReturn: ((String) -> Boolean)? = null,
 ) : ChatRow(BorderLayout()) {
 
     private val contents = mutableListOf<ChatRow>()
@@ -40,6 +41,15 @@ internal class AiTurnRow(
         onExport(toMarkdown())
     }
 
+    private val returnSummary = CardButton(
+        "Return summary",
+        "Send this reply back to the chat that started this agent, as a file you can edit first",
+    ) { returnToParent() }.apply { isVisible = onReturn != null }
+
+    private fun returnToParent() {
+        if (onReturn?.invoke(toMarkdown()) == true) returnSummary.settle("Returned")
+    }
+
     private val continueTurn = CardButton(
         "Continue",
         "Send the conversation again and carry on from where the limit stopped this turn",
@@ -58,6 +68,7 @@ internal class AiTurnRow(
             JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
                 isOpaque = false
                 add(export.component)
+                add(returnSummary.component)
                 add(continueTurn.component)
             },
             BorderLayout.WEST,

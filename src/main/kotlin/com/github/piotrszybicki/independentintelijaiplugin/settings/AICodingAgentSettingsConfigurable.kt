@@ -20,6 +20,7 @@ import com.intellij.ui.dsl.builder.columns
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpConfigException
@@ -490,8 +491,18 @@ class AICodingAgentSettingsConfigurable : Configurable {
             )
             return
         }
+        val agents = service.agents()
+        if (agents.error != null) {
+            Messages.showErrorDialog(
+                "${agents.error}\n\nFix that section first -- rewriting the file now would drop it.",
+                "Configuration File",
+            )
+            return
+        }
+        val roster = AgentCatalog.rosterFor(project)
+
         if (service.text() ==
-            AgentConfiguration.render(current.configurations, database.database, findInFiles.findInFiles)
+            AgentConfiguration.render(current.configurations, database.database, findInFiles.findInFiles, roster)
         ) {
             Messages.showInfoMessage(
                 "${AgentConfiguration.FILE_NAME} already spells out every field.",
@@ -513,7 +524,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
         )
         if (confirmed != Messages.YES) return
 
-        val failure = service.rewrite(current.configurations, database.database, findInFiles.findInFiles)
+        val failure = service.rewrite(current.configurations, database.database, findInFiles.findInFiles, roster)
         if (failure != null) {
             Messages.showErrorDialog(failure, "Configuration File")
             return

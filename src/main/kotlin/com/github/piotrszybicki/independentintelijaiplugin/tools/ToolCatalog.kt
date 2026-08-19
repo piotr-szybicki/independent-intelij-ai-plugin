@@ -53,8 +53,6 @@ object ToolCatalog {
         Entry("delete_file", ToolCategory.EDIT, false, ::DeleteFileTool),
         Entry("rename_symbol", ToolCategory.EDIT, false, ::RenameSymbolTool),
         Entry("safe_delete", ToolCategory.EDIT, false, ::SafeDeleteTool),
-        Entry("add_import", ToolCategory.EDIT, false, ::AddImportTool),
-        Entry("insert_member", ToolCategory.EDIT, false, ::InsertMemberTool),
         Entry("insert_comment", ToolCategory.EDIT, false, ::InsertCommentTool),
 
         Entry("run_configuration", ToolCategory.RUN, false, ::RunConfigurationTool),

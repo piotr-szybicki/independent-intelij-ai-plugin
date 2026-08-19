@@ -1,5 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.history
 
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentHandoff
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ContextMeter
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
@@ -23,12 +26,16 @@ data class StoredRow(
     val status: String? = null,
 
     val requestId: String? = null,
+
+    val handoff: AgentHandoff? = null,
 ) {
     companion object {
         const val USER = "user"
         const val ASSISTANT = "assistant"
         const val TOOL = "tool"
         const val ERROR = "error"
+
+        const val HANDOFF = "handoff"
 
         const val THINKING = "thinking"
 
@@ -52,9 +59,19 @@ data class StoredChat(
 
     val configurationName: String? = null,
     val model: String? = null,
+
+    val agent: AgentSession? = null,
+
+    val returns: List<AgentReturn>? = null,
 )
 
-data class ChatSummary(val id: String, val title: String, val updatedAt: Long)
+data class ChatSummary(
+    val id: String,
+    val title: String,
+    val updatedAt: Long,
+
+    val agentName: String? = null,
+)
 
 @Service(Service.Level.PROJECT)
 class ChatHistoryService(project: Project) {
@@ -98,12 +115,23 @@ class ChatHistoryService(project: Project) {
 
                 val index = readIndex()
                 index.chats.removeAll { it.id == chat.id }
-                index.chats.add(ChatSummary(chat.id, chat.title, chat.updatedAt))
+                index.chats.add(ChatSummary(chat.id, chat.title, chat.updatedAt, chat.agent?.agentName))
                 index.chats.sortByDescending { it.updatedAt }
                 index.activeId = if (active) chat.id else index.activeId?.takeIf { it != chat.id }
                 prune(index)
                 writeIndex(index)
             }.onFailure { log.warn("Could not save chat ${chat.id}: ${it.message}") }
+        }
+    }
+
+    fun addReturn(chatId: String, returned: AgentReturn): Boolean {
+        synchronized(lock) {
+            val chat = load(chatId) ?: return false
+            save(
+                chat.copy(returns = chat.returns.orEmpty() + returned, updatedAt = System.currentTimeMillis()),
+                active = readIndex().activeId == chatId,
+            )
+            return true
         }
     }
 
@@ -119,6 +147,14 @@ class ChatHistoryService(project: Project) {
         }
     }
 
+    fun deleteAll() {
+        synchronized(lock) {
+            runCatching {
+                chatIdsOnDisk().forEach { id -> Files.deleteIfExists(fileFor(id)) }
+                writeIndex(Index(null, mutableListOf()))
+            }.onFailure { log.warn("Could not delete the chat history: ${it.message}") }
+        }
+    }
 
     private fun fileFor(id: String): Path = directory.resolve("$id.json")
 
@@ -131,7 +167,7 @@ class ChatHistoryService(project: Project) {
 
     private fun rebuildIndex(): Index {
         val summaries = chatIdsOnDisk()
-            .mapNotNull { id -> load(id)?.let { ChatSummary(it.id, it.title, it.updatedAt) } }
+            .mapNotNull { id -> load(id)?.let { ChatSummary(it.id, it.title, it.updatedAt, it.agent?.agentName) } }
             .sortedByDescending { it.updatedAt }
 
         val index = Index(null, summaries.toMutableList())
