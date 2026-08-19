@@ -21,32 +21,14 @@ import com.intellij.psi.PsiManager
 import com.intellij.util.Processor
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Alt+Enter, as a tool: applies the fix the IDE already worked out instead of having the model
- * hand-edit its way to the same result.
- *
- * `get_file_problems` reports "unresolved reference 'Foo'" and the model then guesses an import,
- * writes it, re-checks, and sometimes guesses again. The IDE knew the answer -- and the fully
- * qualified name -- the moment it drew the squiggle. This hands that answer over.
- *
- * Two modes, because the model cannot name a fix it has not seen: called without `fix` it lists
- * what is available at the line, called with one it applies it.
- *
- * The file is opened in an editor to do this. That is not incidental -- quick fixes are
- * [com.intellij.codeInsight.intention.IntentionAction]s and take an `Editor`, and the analysis whose
- * fixes these are only runs for open files -- but it does mean this tool has a visible side effect
- * the read-only tools do not.
- */
 class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
-        /** How long to let the daemon finish before asking anyway with whatever it has. */
         private const val ANALYSIS_TIMEOUT_MILLIS = 10_000L
         private const val POLL_INTERVAL_MILLIS = 100L
 
         private const val MAX_LISTED = 25
 
-        /** `getAvailableFixes` takes a pass id to restrict to; -1 means every pass. */
         private const val ALL_PASSES = -1
     }
 
@@ -127,7 +109,6 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
         return apply(vf, editor, matches.single(), path, line)
     }
 
-    /** One available fix, with its display text captured while it was safe to read. */
     private class Fix(val label: String, val descriptor: HighlightInfo.IntentionActionDescriptor)
 
     private fun match(fixes: List<Fix>, requested: String): List<Fix> {
@@ -148,7 +129,6 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
         return editor
     }
 
-    /** Waits for the daemon to settle, since a file opened a moment ago has no highlights yet. */
     private fun awaitAnalysis(vf: VirtualFile) {
         val deadline = System.currentTimeMillis() + ANALYSIS_TIMEOUT_MILLIS
         while (System.currentTimeMillis() < deadline) {
@@ -169,13 +149,6 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
         return result
     }
 
-    /**
-     * The fixes offered anywhere on [line].
-     *
-     * `getAvailableFixes` answers for a single offset, and the model only knows the line, so this
-     * asks at the start of every problem that touches the line rather than hoping the line's first
-     * character is where the squiggle happens to begin.
-     */
     private fun gather(vf: VirtualFile, editor: Editor, line: Int): List<Fix> {
         val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return emptyList()
         val document = FileDocumentManager.getInstance().getDocument(vf) ?: return emptyList()

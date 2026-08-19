@@ -9,13 +9,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Covers the translation between the plugin's Anthropic-shaped conversation and the OpenAI wire
- * formats.
- *
- * Everything here fails at the far end of a network call if it is wrong, as a 400 about a field
- * name -- which is exactly the class of bug that made this layer necessary in the first place.
- */
 class OpenAiProtocolTest {
 
     private val tool = ToolDefinition(
@@ -65,7 +58,6 @@ class OpenAiProtocolTest {
         )
     }
 
-    /** A `tool` message has to follow the assistant turn that asked for it, before anything else. */
     @Test
     fun `emits tool results before the text they were merged with`() {
         val mixed = ChatMessage("user", JsonArray().apply {
@@ -93,11 +85,6 @@ class OpenAiProtocolTest {
         assertEquals("object", declared.getAsJsonObject("function").getAsJsonObject("parameters").get("type").asString)
     }
 
-    /**
-     * The key is what routes the request to the machine holding this chat's cached prefix. Without
-     * it every conversation hashes alike -- one system prompt, one set of tool schemas -- and they
-     * compete for a single machine's cache instead of each keeping their own.
-     */
     @Test
     fun `names the conversation so the cached prefix can be found again`() {
         val body = OpenAiProtocol.chatCompletionsRequest(
@@ -107,7 +94,6 @@ class OpenAiProtocolTest {
         assertEquals("chat-1", body.get("prompt_cache_key").asString)
     }
 
-    /** A placeholder shared by every caller would route them all back onto one machine. */
     @Test
     fun `leaves the cache key out when there is no conversation to name`() {
         val blank = OpenAiProtocol.chatCompletionsRequest(
@@ -155,7 +141,6 @@ class OpenAiProtocolTest {
         assertEquals("a.kt", call.getAsJsonObject("input").get("path").asString)
     }
 
-    /** `max_tokens` is the reason the agent offers to continue, so the mapping has to be exact. */
     @Test
     fun `maps a length finish reason onto the one the agent acts on`() {
         val turn = OpenAiProtocol.parseChatCompletions(
@@ -177,11 +162,6 @@ class OpenAiProtocolTest {
         assertEquals(1, turn.content.size())
     }
 
-    /**
-     * `prompt_tokens` is the whole prompt, cached part included, where the plugin's own shape keeps
-     * the two apart. Passing both through unchanged would count the cached tokens twice in every
-     * total built out of them.
-     */
     @Test
     fun `takes the cached tokens out of the input count`() {
         val turn = OpenAiProtocol.parseChatCompletions(json("""
@@ -196,7 +176,6 @@ class OpenAiProtocolTest {
         assertEquals(120, turn.usage?.input_tokens!! + turn.usage?.cache_read_input_tokens!!)
     }
 
-    /** A server that reports the two disjointly would otherwise drive the input count negative. */
     @Test
     fun `never reports a negative input count`() {
         val turn = OpenAiProtocol.parseChatCompletions(json("""
@@ -217,7 +196,6 @@ class OpenAiProtocolTest {
         assertEquals(0, turn.usage?.cache_read_input_tokens)
     }
 
-    /** A reply cut off by the token limit leaves the arguments string ending mid-object. */
     @Test
     fun `reads truncated arguments as empty rather than failing the turn`() {
         val turn = OpenAiProtocol.parseChatCompletions(json("""
@@ -251,7 +229,6 @@ class OpenAiProtocolTest {
         assertEquals("input_text", item.getAsJsonArray("content")[0].asJsonObject.get("type").asString)
     }
 
-    /** An assistant turn replayed as `input_text` is rejected, and a user turn as `output_text` too. */
     @Test
     fun `replays an assistant turn as output_text`() {
         val body = OpenAiProtocol.responsesRequest(
@@ -284,7 +261,6 @@ class OpenAiProtocolTest {
         assertEquals("contents", input[1].asJsonObject.get("output").asString)
     }
 
-    /** Same field and same reason as on Chat Completions -- both shapes route caching by it. */
     @Test
     fun `sends the cache key on the Responses shape too`() {
         val named = OpenAiProtocol.responsesRequest(
@@ -349,12 +325,6 @@ class OpenAiProtocolTest {
         assertEquals(8, turn.usage?.cache_read_input_tokens)
     }
 
-    /**
-     * A real warm-cache response off a Foundry deployment, kept as recorded. The shape is the whole
-     * reason for the subtraction: 4771 billed, of which 4608 came from the cache, leaving 163 paid
-     * for in full -- and `total_tokens` agreeing with `input_tokens + output_tokens` is what proves
-     * the cached count is inside the input rather than beside it.
-     */
     @Test
     fun `splits a recorded Foundry usage block the way the bill reads`() {
         val turn = OpenAiProtocol.parseResponses(json("""
@@ -378,10 +348,6 @@ class OpenAiProtocolTest {
 
     // --- round trip ---------------------------------------------------------------------------------
 
-    /**
-     * The agent answers a `tool_use` by its id, so an id that does not survive the trip out and back
-     * leaves every result unmatched -- which the provider rejects, permanently, for that chat.
-     */
     @Test
     fun `a call id parsed out of a response comes back on the answer`() {
         val turn = OpenAiProtocol.parseChatCompletions(json("""

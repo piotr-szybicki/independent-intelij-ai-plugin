@@ -11,14 +11,6 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import git4idea.repo.GitRepository
 
-/**
- * What is uncommitted, read from the IDE rather than from `git status`.
- *
- * [ChangeListManager] is the same source the Local Changes view draws, so the model and the user
- * are looking at one answer rather than two that can disagree -- and it costs no process at all.
- * What it does not model is the index: a staged and an unstaged change to the same file are one
- * entry here. That is the IDE's view of the world, and it is enough for reading.
- */
 class GitStatusTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
@@ -86,7 +78,6 @@ class GitStatusTool(private val project: Project) : AICodingAgentTool {
         return "On $branch$revision$state"
     }
 
-    /** One change as a line, or null when it belongs to another repository in the project. */
     private fun describe(change: Change, root: VirtualFile): String? {
         val before = change.beforeRevision?.file
         val after = change.afterRevision?.file
@@ -103,10 +94,6 @@ class GitStatusTool(private val project: Project) : AICodingAgentTool {
         }
     }
 
-    /**
-     * Compared as paths rather than through the VFS: a deleted file has no [VirtualFile] left to
-     * ask, and [FilePath] and [VirtualFile] both normalise to forward slashes.
-     */
     private fun isUnder(path: FilePath, root: VirtualFile): Boolean =
         path.path == root.path || path.path.startsWith(root.path + "/")
 

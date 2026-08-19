@@ -16,14 +16,8 @@ import javax.swing.JList
 import javax.swing.KeyStroke
 import javax.swing.ListSelectionModel
 
-/** The saved-conversations list behind the tool window's history button. */
 internal object ChatHistoryPopup {
 
-    /**
-     * @param currentId the chat on screen, marked in the list and the one [onCurrentDeleted] is for
-     * @param onOpen given the id of the chat to switch to
-     * @param onCurrentDeleted the open chat was deleted, so the window has nothing left to show
-     */
     fun show(
         service: ChatHistoryService,
         chats: List<ChatSummary>,

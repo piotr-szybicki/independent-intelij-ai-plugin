@@ -9,15 +9,6 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 
-/**
- * Tools | Remove Javadoc Comments: strips the documentation comments out of the project.
- *
- * A user-driven action rather than one of the model tools -- it is here to be run by hand and its
- * effect looked at, which is why it reports what it did, does the whole thing as one undoable
- * change, and offers to count without touching anything.
- *
- * The one that throws the comments away. [MoveCommentsToDatabaseAction] is the one that keeps them.
- */
 class RemoveJavadocAction : AnAction() {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -86,7 +77,6 @@ class RemoveJavadocAction : AnAction() {
     }
 }
 
-/** Where a sweep runs: the selection when the dialog offered it and the user took it, else the project. */
 internal object SweepScope {
 
     fun roots(project: Project, selection: List<VirtualFile>, useSelection: Boolean): List<VirtualFile> =

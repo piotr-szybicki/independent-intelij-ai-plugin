@@ -5,16 +5,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * The shape of a directory listing the model reads.
- *
- * What is worth pinning is not that the tree is pretty but that it still says everything the flat
- * listing said: which names are directories, what each directory holds, and that a walk stopped
- * early. A format that saves tokens by quietly dropping one of those is worse than the long one.
- */
 class DirectoryListingTest {
 
-    /** Walk order: a directory, then its subtree, then the parent's own files. */
     private val sourceTree = listOf(
         Entry("com", true),
         Entry("com/example", true),
@@ -37,7 +29,6 @@ class DirectoryListingTest {
         )
     }
 
-    /** The package prefix is four lines of nothing when each level gets its own. */
     @Test
     fun `collapses a chain of single-subdirectory directories onto one line`() {
         val listing = DirectoryListing.format(
@@ -54,7 +45,6 @@ class DirectoryListingTest {
         assertTrue(listing, listing.contains("com/github/vendor/\n  Tool.kt"))
     }
 
-    /** A directory holding files as well as a subdirectory has nothing to collapse into. */
     @Test
     fun `keeps a directory that has files of its own`() {
         val listing = DirectoryListing.format(
@@ -81,7 +71,6 @@ class DirectoryListingTest {
         )
     }
 
-    /** An empty directory is a leaf with no line under it -- it must not vanish from the tree. */
     @Test
     fun `keeps a directory with nothing in it`() {
         val listing = DirectoryListing.format(

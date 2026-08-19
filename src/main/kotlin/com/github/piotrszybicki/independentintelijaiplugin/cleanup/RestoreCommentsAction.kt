@@ -7,14 +7,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.Project
 
-/**
- * Tools | Restore Comments From Database: every `// comment_id: N` marker becomes the comment stored
- * under that id again.
- *
- * The way back from [MoveCommentsToDatabaseAction], and the reason storing is safe to try: the
- * markers in the code are a complete index of what was taken, so a project can be put back as it was
- * as long as the rows are still there.
- */
 class RestoreCommentsAction : AnAction() {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

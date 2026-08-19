@@ -25,6 +25,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDat
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpConfigException
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpServerConfig
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
+import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpTool
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
@@ -37,47 +38,21 @@ import javax.swing.JComponent
 
 class AICodingAgentSettingsConfigurable : Configurable {
 
-    /**
-     * The dropdown the whole provider section reduces to.
-     *
-     * Holds names rather than the configurations themselves, so it needs no cell renderer: the two
-     * that would draw one are both deprecated, and a combo of the strings it was going to display
-     * anyway is less code than either. Names are unique within a file -- the parser refuses a
-     * duplicate -- so [selectedConfiguration] can look the entry back up exactly.
-     */
     private val configurationCombo = ComboBox(DefaultComboBoxModel<String>())
 
-    /**
-     * Which of the selected configuration's `models` to ask for.
-     *
-     * The same choice the chat window's own dropdown makes, and the same setting behind it -- this
-     * is here so that the page showing what a configuration sends is not missing the one part of it
-     * that can be changed without editing the file.
-     */
     private val modelCombo = ComboBox(DefaultComboBoxModel<String>())
 
-    /** What the selected configuration says, so picking one does not mean opening the file to check. */
     private val configurationSummaryLabel = JBLabel().apply {
         setComponentStyle(UIUtil.ComponentStyle.SMALL)
         setFontColor(UIUtil.FontColor.BRIGHTER)
     }
 
-    /**
-     * Why the selection cannot be used, when it cannot -- an unreadable file, a missing token, a URL
-     * whose path disagrees with the protocol. Here rather than left to the first message, because
-     * all of it is knowable now and none of it is legible in the provider's answer to it.
-     */
     private val configurationProblemLabel = JBLabel().apply {
         foreground = JBColor.namedColor("Label.errorForeground", JBColor.RED)
     }
 
-    /** Where the selected configuration's token comes from, and whether it resolves to anything. */
     private val tokenStatusLabel = JBLabel()
 
-    /**
-     * The file as it was last read, held so [isModified] and [apply] work against the same list the
-     * dropdown was filled from rather than re-reading the file between them.
-     */
     private var loaded: AgentConfigurations.Loaded = AgentConfigurations.Loaded(emptyList(), null)
 
     private val maxIterationsField = JBTextField()
@@ -91,36 +66,28 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     private val confirmMcpCheckBox = JBCheckBox("Ask before each MCP tool call")
 
-    /**
-     * The tools picked in [ToolSelectionDialog] but not yet applied.
-     *
-     * Held here rather than read back off a component, because the component the user chose them
-     * with is gone by the time [apply] runs -- the dialog closes with its checkboxes.
-     */
     private var pendingTools: Set<String> = emptySet()
 
+    private var pendingMcpTools: Set<String> = emptySet()
+
     private val toolsSummaryLabel = JBLabel()
+
+    private val mcpToolsSummaryLabel = JBLabel()
+
+    private var pendingSkills: Set<String> = emptySet()
+
+    private val skillsSummaryLabel = JBLabel()
 
     private val skillPathsArea = JBTextArea(5, 40).apply {
         lineWrap = false
         font = JBUI.Fonts.create("Monospaced", font.size)
     }
 
-    /**
-     * What the file's `usage-database` section says, as it was last read.
-     *
-     * Displayed rather than edited, like the provider section above it and for the same reason: the
-     * URL lives in [AgentConfiguration.FILE_NAME], and a field here would be a second place to
-     * change it that the file would then disagree with. **Edit File** is how it is changed and
-     * **Reload File** is what re-reads it.
-     */
     private var loadedDatabase: AgentConfigurations.LoadedDatabase =
         AgentConfigurations.LoadedDatabase(UsageDatabaseConfig.OFF, null)
 
-    /** What the section said last time this page read it, or null before it ever has. */
     private var lastSeenDatabase: UsageDatabaseConfig? = null
 
-    /** The URL as the file writes it -- never expanded, so a `${env:...}` password stays a name. */
     private val usageDatabaseLabel = JBLabel().apply {
         font = JBUI.Fonts.create("Monospaced", font.size)
     }
@@ -256,7 +223,11 @@ class AICodingAgentSettingsConfigurable : Configurable {
                     "off removes the only check on either.",
             )
             row {
+                cell(mcpToolsSummaryLabel).align(AlignX.FILL)
+            }
+            row {
                 button("Test Servers") { testServers() }
+                button("Select MCP Tools…") { chooseMcpTools() }
             }
         }
         group("Skills") {
@@ -274,7 +245,11 @@ class AICodingAgentSettingsConfigurable : Configurable {
                     "when two skills share a name. Takes effect on the next message.",
             )
             row {
+                cell(skillsSummaryLabel).align(AlignX.FILL)
+            }
+            row {
                 button("Scan for Skills") { scanSkills() }
+                button("Select Skills…") { chooseSkills() }
             }
         }
         group("Logging") {
@@ -338,7 +313,9 @@ class AICodingAgentSettingsConfigurable : Configurable {
             skillPathsArea.text != settings.skillPaths ||
             // Nothing about the usage database is here: it is read out of the configuration file and
             // displayed, and the file is not this page's to save.
-            pendingTools != ToolCatalog.parse(settings.enabledTools)
+            pendingTools != ToolCatalog.parse(settings.enabledTools) ||
+            pendingMcpTools != parseMcpTools(settings.enabledMcpTools) ||
+            pendingSkills != parseMcpTools(settings.enabledSkills)
     }
 
     override fun apply() {
@@ -359,6 +336,8 @@ class AICodingAgentSettingsConfigurable : Configurable {
         // Same again: the chat panel holds every built-in tool and asks the catalog which of them to
         // send each turn, so this lands on the next message without rebuilding anything.
         settings.enabledTools = ToolCatalog.format(pendingTools)
+        settings.enabledMcpTools = if (pendingMcpTools.isEmpty()) "" else pendingMcpTools.joinToString(",")
+        settings.enabledSkills = if (pendingSkills.isEmpty()) "" else pendingSkills.joinToString(",")
 
         val serversChanged = settings.mcpServers != mcpServersArea.text
         settings.mcpServers = mcpServersArea.text
@@ -382,18 +361,14 @@ class AICodingAgentSettingsConfigurable : Configurable {
         confirmMcpCheckBox.isSelected = settings.confirmMcpToolCalls
         skillPathsArea.text = settings.skillPaths
         pendingTools = ToolCatalog.parse(settings.enabledTools)
+        pendingMcpTools = parseMcpTools(settings.enabledMcpTools)
+        pendingSkills = parseMcpTools(settings.enabledSkills)
         updateToolsSummary()
+        updateMcpToolsSummary()
+        updateSkillsSummary()
         reloadConfigurations()
     }
 
-    /**
-     * Re-reads the file and refills the dropdown, keeping the selection where it points at something
-     * that is still there.
-     *
-     * The file is edited in the editor behind this dialog, so this is both the reset path and the
-     * button next to the dropdown: an entry added while the page is open should be one click away
-     * rather than a reason to close the dialog and open it again.
-     */
     private fun reloadConfigurations() {
         val settings = AICodingAgentSettingsState.getInstance().state
         // Off the combo directly rather than through selectedConfiguration(), which resolves against
@@ -409,14 +384,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         reloadUsageDatabase()
     }
 
-    /**
-     * Re-reads the file's `usage-database` section and says what it now means.
-     *
-     * Also where the open connection is dropped when the section has changed under it. The writer
-     * would reconnect on its own -- it compares the URL it is connected to against the one it is
-     * asked for -- but a server the file has just stopped naming would otherwise keep a session open
-     * until the IDE exits, which is what the old checkbox used to close.
-     */
     private fun reloadUsageDatabase() {
         val previous = lastSeenDatabase
         loadedDatabase = project()?.let { AgentConfigurations.getInstance(it).usageDatabase() }
@@ -446,12 +413,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
     private fun selectedConfiguration(): AgentConfiguration? =
         loaded.configurations.firstOrNull { it.name == configurationCombo.selectedItem }
 
-    /**
-     * Says what the selection will actually send, and what stops it if anything does.
-     *
-     * The same check the agent runs before a turn, so a configuration that cannot work says so here
-     * instead of a provider saying it in a 400 that names a parameter rather than a setting.
-     */
     private fun updateConfigurationSummary() {
         val selected = selectedConfiguration()
         // Refilled from the selection rather than left alone, because the model list belongs to the
@@ -498,12 +459,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     private fun escape(value: String): String = StringUtil.escapeXmlEntities(value)
 
-    /**
-     * Opens the file in the editor, creating it first if this project has never had one.
-     *
-     * Behind the settings dialog rather than in it: it is JSON that is edited by hand, and the
-     * editor is better at that than any field this page could offer.
-     */
     private fun openConfigurationFile() {
         val project = project() ?: run {
             Messages.showInfoMessage("Open a project first -- the file lives in the project root.", "Configuration File")
@@ -527,13 +482,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         FileEditorManager.getInstance(project).openFile(file, true)
     }
 
-    /**
-     * Rewrites the file with the defaults every entry is already running on written out.
-     *
-     * Runs off what was last read rather than re-reading, so what gets written is what the dropdown
-     * and the summary above were showing -- a file edited behind this dialog since then is caught by
-     * the no-op check, which compares the text it would write against the text that is there.
-     */
     private fun fillInDefaults() {
         val project = project() ?: run {
             Messages.showInfoMessage("Open a project first -- the file lives in the project root.", "Configuration File")
@@ -613,10 +561,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     private fun project(): Project? = ProjectManager.getInstance().openProjects.firstOrNull()
 
-    /**
-     * Opens the picker on what is pending rather than on what is saved, so cancelling this page
-     * after choosing tools discards them along with every other unapplied edit.
-     */
     private fun chooseTools() {
         val dialog = ToolSelectionDialog(project(), pendingTools)
         if (dialog.showAndGet()) {
@@ -625,7 +569,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         }
     }
 
-    /** Per category rather than a bare total: which corners are switched off is the useful part. */
     private fun updateToolsSummary() {
         val byCategory = ToolCategory.entries.joinToString(", ") { category ->
             val inCategory = ToolCatalog.entries.filter { it.category == category }
@@ -635,29 +578,41 @@ class AICodingAgentSettingsConfigurable : Configurable {
             "${pendingTools.size} of ${ToolCatalog.entries.size} tools selected -- $byCategory"
     }
 
-    /**
-     * The number typed into the field, or [fallback] when it is not a usable one. It is a budget the
-     * code counts down, so anything but a positive integer -- empty, a word, a zero -- is treated as
-     * "leave it alone" rather than saved and acted on.
-     */
     private fun JBTextField.positiveIntOr(fallback: Int): Int =
         text.trim().toIntOrNull()?.takeIf { it > 0 } ?: fallback
 
-    /**
-     * The same, for a field where zero is an answer rather than a mistake: the tool-output limit
-     * reads it as "do not check", which is the escape hatch for a chat that really does need a whole
-     * file in one call. Anything else unusable still falls back to [fallback].
-     */
     private fun JBTextField.zeroOrPositiveIntOr(fallback: Int): Int =
         text.trim().toIntOrNull()?.takeIf { it >= 0 } ?: fallback
 
-    /**
-     * Scans the directories in the field and reports what was found in each.
-     *
-     * Like [testServers], it runs against the typed text rather than the saved settings -- a path
-     * outside the project is easy to get slightly wrong, and finding that out here beats finding it
-     * out as a skill that silently never gets used.
-     */
+    private fun chooseSkills() {
+        val project: Project? = project()
+        val roots = SkillRoot.parseAll(skillPathsArea.text, project?.basePath?.let(::File))
+        if (roots.isEmpty()) {
+            Messages.showInfoMessage("No skill directories are configured.", "Skills")
+            return
+        }
+
+        val scan = SkillCatalog.scan(roots)
+        if (scan.skills.isEmpty()) {
+            Messages.showInfoMessage("No skills were found in the configured directories.", "Skills")
+            return
+        }
+
+        val dialog = SkillSelectionDialog(project, scan.skills, pendingSkills)
+        if (dialog.showAndGet()) {
+            pendingSkills = dialog.selectedSkills
+            updateSkillsSummary()
+        }
+    }
+
+    private fun updateSkillsSummary() {
+        skillsSummaryLabel.text = if (pendingSkills.isEmpty()) {
+            "All skills enabled (no selection made)"
+        } else {
+            "${pendingSkills.size} skill(s) selected"
+        }
+    }
+
     private fun scanSkills() {
         val project: Project? = project()
         val roots = SkillRoot.parseAll(skillPathsArea.text, project?.basePath?.let(::File))
@@ -684,18 +639,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         Messages.showInfoMessage(report.trim(), "Skills")
     }
 
-    /**
-     * Connects to the usage database once and reports what is there, creating the database and table
-     * if they are not.
-     *
-     * Runs against the file as it stands, re-read rather than taken from the label: the file is
-     * edited in the editor behind this dialog, and the point of the button is to find out whether
-     * what is in it now works. Modal because a server that is not there is found out by waiting for
-     * a timeout, and the answer only makes sense next to the URL it was read from.
-     *
-     * The URL is tested whether or not `enabled` is false: switching the recording off is not a
-     * reason to stop being able to check the server it names.
-     */
     private fun testUsageDatabase() {
         reloadUsageDatabase()
         loadedDatabase.error?.let {
@@ -725,13 +668,64 @@ class AICodingAgentSettingsConfigurable : Configurable {
         ProgressManager.getInstance().run(task)
     }
 
-    /**
-     * Connects to each configured server once and reports what it offered.
-     *
-     * Runs against the text in the field rather than the saved settings: the point of the button is
-     * to find out whether an entry works before committing to it. The connections it opens are its
-     * own and are closed again, so it never disturbs a conversation in progress.
-     */
+    private fun chooseMcpTools() {
+        val configs = try {
+            McpServerConfig.parseAll(mcpServersArea.text)
+        } catch (e: McpConfigException) {
+            Messages.showErrorDialog("The MCP configuration is ${e.message}", "MCP Tools")
+            return
+        }
+        if (configs.isEmpty() || configs.none { it.enabled }) {
+            Messages.showInfoMessage("No enabled MCP servers are configured.", "MCP Tools")
+            return
+        }
+
+        val project: Project? = project()
+        var entries = emptyList<McpToolSelectionDialog.McpToolEntry>()
+
+        val task = object : Task.Modal(project, "Discovering MCP Tools", true) {
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                val results = McpService.probeTools(project, configs)
+                val usedNames = mutableSetOf<String>()
+                entries = results.flatMap { result ->
+                    if (result.error != null) return@flatMap emptyList()
+                    result.tools.map { descriptor ->
+                        val base = McpTool.qualifiedName(result.serverName, descriptor.name)
+                        var name = base
+                        var suffix = 2
+                        while (!usedNames.add(name)) name = base.take(124) + "_" + suffix++
+                        McpToolSelectionDialog.McpToolEntry(result.serverName, descriptor.name, name, descriptor.description)
+                    }
+                }
+            }
+
+            override fun onSuccess() {
+                if (entries.isEmpty()) {
+                    Messages.showInfoMessage("No tools were found on any MCP server.", "MCP Tools")
+                    return
+                }
+                val dialog = McpToolSelectionDialog(project, entries, pendingMcpTools)
+                if (dialog.showAndGet()) {
+                    pendingMcpTools = dialog.selectedTools
+                    updateMcpToolsSummary()
+                }
+            }
+        }
+        ProgressManager.getInstance().run(task)
+    }
+
+    private fun updateMcpToolsSummary() {
+        mcpToolsSummaryLabel.text = if (pendingMcpTools.isEmpty()) {
+            "All MCP tools enabled (no selection made)"
+        } else {
+            "${pendingMcpTools.size} MCP tool(s) selected"
+        }
+    }
+
+    private fun parseMcpTools(text: String): Set<String> =
+        if (text.isBlank()) emptySet() else text.split(",").mapTo(mutableSetOf()) { it.trim() }
+
     private fun testServers() {
         val configs = try {
             McpServerConfig.parseAll(mcpServersArea.text)

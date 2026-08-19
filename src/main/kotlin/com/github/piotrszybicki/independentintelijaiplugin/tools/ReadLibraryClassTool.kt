@@ -6,25 +6,11 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Reads a class the project depends on but does not contain.
- *
- * `read_project_file` refuses anything outside the project root, and deliberately so -- it exists to
- * stop a path from walking off into the user's home directory. But that also put every dependency
- * out of reach, even though the IDE has them indexed and will happily decompile them. So this is a
- * second door with a different lock: addressed by class name rather than by path, and gated on
- * `ProjectFileIndex.isInLibrary` so it can only reach what the project already depends on.
- *
- * What comes back is source when a sources jar is attached and decompiled bytecode otherwise, which
- * is exactly what Ctrl+B shows. Neither has line numbers that mean anything outside this tool, so
- * they are only useful for paging through with `start_line`/`end_line` -- nothing edits here.
- */
 class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val MAX_CANDIDATES = 20
 
-        /** Decompiled classes get long; this is a page, not a whole file. */
         private const val MAX_CHARS = 60_000
     }
 
@@ -125,14 +111,6 @@ class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
             "range to see the rest.]"
     }
 
-    /**
-     * Says whether this is real source or decompiled bytecode.
-     *
-     * Worth stating rather than leaving to be inferred: decompiled output has no comments, no
-     * parameter names beyond what the bytecode kept, and no Javadoc, so an answer drawn from it is
-     * working with less than the library actually documents. Knowing which one it is reading tells
-     * the model how much to trust it -- and tells the user there is something they could fix.
-     */
     private fun provenance(candidate: LibraryClasses.Candidate): String {
         if (candidate.fromSources) return "  (source)"
 

@@ -8,126 +8,41 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
-/** Raised when the configuration file cannot be turned into a list of configurations. */
 class AgentConfigurationException(message: String) : Exception(message)
 
-/**
- * One provider the plugin can be pointed at -- everything that has to change together when you
- * switch model or provider, named so it can be picked from a dropdown.
- *
- * Lives in [FILE_NAME] in the project root rather than in the settings XML, because these five
- * things are never independently useful: a model name belongs to a provider, which decides the URL,
- * which decides the token header and which token the request needs. Editing them one field at a time
- * meant a settings page that was briefly wrong at every step. A file also puts the set of providers
- * somewhere it can be kept with the project and copied between machines.
- *
- * The token is the one field that is allowed to name something instead of holding it: a value
- * starting with `$` is the name of an environment variable, which is where a secret should be when
- * the file is in the project root. Anything else is used literally, which is what a local server
- * wanting a placeholder needs.
- */
 data class AgentConfiguration(
-    /** What this configuration is called in the settings dropdown. Unique within the file. */
     val name: String,
 
-    /**
-     * The model this configuration is currently sending to. Always one of [models].
-     *
-     * Separate from the list because it is the answer to a different question: [models] is what this
-     * provider can be asked for, which belongs in the file, while this is what the chat window's
-     * dropdown last picked, which belongs to the moment. The file writes the default.
-     */
     val model: String,
 
-    /**
-     * Every model this provider can be asked for, most-used first, as the chat window offers them.
-     *
-     * One entry when the file says nothing, because a provider always has at least the model named
-     * above -- so the dropdown is a list of one rather than a special case, and switching model
-     * within a provider costs an entry here rather than a whole configuration.
-     */
     val models: List<String>,
 
     val url: String,
-    /** As written in the file: `$NAME` to read an environment variable, or the token itself. */
     val token: String,
     val authScheme: AuthScheme,
     val protocol: WireProtocol,
 
-    /**
-     * Whether the model thinks before answering. Per configuration rather than per IDE because it
-     * is a property of the model at the other end: the Messages API and OpenAI Responses carry it
-     * in fields of their own, and Chat Completions carries it in neither -- see [ThinkingMode].
-     */
     val thinking: ThinkingMode,
 
-    /** How hard the model is asked to work per request. See [Effort]. */
     val effort: Effort,
 
-    /**
-     * The starting cap on a single reply. A starting point rather than a fixed one: saying yes to
-     * continuing a cut-off reply doubles it for the rest of that chat, so a conversation that needs
-     * longer answers finds its own level without this being edited.
-     *
-     * Set high enough that hitting it is unusual, because a cap is not a budget: only the tokens
-     * actually written are billed, while every reply cut off by this spends a second request that
-     * re-sends the whole conversation to say the rest. Room the model does not use is free; room it
-     * needed and did not have is charged for twice. It also has to cover the thinking, which shares
-     * the cap with the answer.
-     */
     val maxTokens: Int,
 
-    /**
-     * The model's context window, which is what
-     * [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.HistoryCompaction] measures
-     * a conversation against before deciding to drop old tool output.
-     *
-     * Stated rather than read off the model name: the name is free text and the endpoint can be any
-     * gateway, so guessing 200k for a model that has 128k is a conversation that grows until the
-     * provider refuses it. Zero switches compaction off.
-     */
     val contextWindowTokens: Int,
 
-    /**
-     * How long one request may take before the client gives up on it, in seconds.
-     *
-     * Per entry rather than one number for the whole plugin, because it is a property of what is at
-     * the other end: a reasoning model behind a busy gateway can think for minutes before its first
-     * byte, while a local server that has stopped answering is better given up on quickly.
-     *
-     * The whole exchange, not just the connection -- a request answered slowly spends this the same
-     * way one that is never answered does. Running out of it ends the turn with "Could not reach
-     * <url>: request timed out", which the transcript offers Retry on.
-     */
     val requestTimeoutSeconds: Int,
-    /** Ignored unless [protocol] is the Messages API: no other provider knows the header. */
     val apiVersion: String,
-    /** Routing or tenancy headers a gateway needs. Never secrets -- the file is plain text. */
     val extraHeaders: Map<String, String>,
 ) {
 
-    /** The variable [token] names, or null when it carries the token itself. */
     val tokenEnvVar: String? get() = envVarName(token)
 
-    /**
-     * The same configuration with [wanted] selected, or unchanged when it does not offer it.
-     *
-     * Unchanged rather than an error, because the name comes from a setting that outlives the file
-     * it was chosen from: switching to a provider that has never heard of the model last picked has
-     * to land on that provider's own default, not on a request it will refuse.
-     */
     fun withModel(wanted: String): AgentConfiguration =
         if (wanted.isNotBlank() && wanted in models) copy(model = wanted) else this
 
-    /**
-     * The token to send: the named variable's value, or the literal. Blank when the variable is
-     * unset, which [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint.validate]
-     * turns into a message naming the variable rather than a 401 from the provider.
-     */
     val resolvedToken: String
         get() = tokenEnvVar?.let { System.getenv(it)?.trim().orEmpty() } ?: token.trim()
 
-    /** Where the token comes from, for the settings page -- never the token itself. */
     val tokenDescription: String
         get() = tokenEnvVar?.let { variable ->
             if (resolvedToken.isBlank()) "\$$variable -- empty or undefined in the IDE's environment"
@@ -161,35 +76,10 @@ data class AgentConfiguration(
 
     companion object {
 
-        /** Sits in the project root, next to the code it configures. */
         const val FILE_NAME = "independent-ai-plugin-settings.json"
 
-        /**
-         * The variable that moves the file somewhere else: set it to a path and that file is read
-         * instead of the one in the project root, and no starter file is ever written.
-         *
-         * For the case the project-root default is wrong for -- one set of providers shared by every
-         * project on the machine, kept outside version control because the entries name real
-         * endpoints. Nothing is created when it is set: a variable pointing at a file that is not
-         * there is a path to fix, and writing examples over the top of it would hide that. See
-         * [AgentConfigurations.path].
-         */
         const val PATH_ENV_VAR = "INTELIJ_AI_SETTINGS"
 
-        /**
-         * The file [raw] -- the value of [PATH_ENV_VAR] -- names, or null when it is unset, empty, or
-         * not a path this platform can make sense of.
-         *
-         * Unset and unusable give the same answer on purpose: the alternative is a project that
-         * cannot read its configuration at all because a variable somewhere has a stray quote in it,
-         * and falling back to the project root leaves the file the user can see being the file that
-         * is read.
-         *
-         * A directory is taken as the directory the file is in, since "a location for the
-         * configuration file" is as likely to be typed as a folder as as a filename, and [FILE_NAME]
-         * inside it is the only thing that can mean. `~` is the home directory, which is where a file
-         * shared by every project usually goes.
-         */
         fun configuredPath(raw: String?): Path? {
             val trimmed = raw?.trim().orEmpty()
             if (trimmed.isEmpty()) return null
@@ -210,10 +100,6 @@ data class AgentConfiguration(
         const val DEFAULT_MAX_TOKENS = 8000
         const val DEFAULT_CONTEXT_WINDOW = 200_000
 
-        /**
-         * A minute, which is long enough for a thinking model to answer a full conversation and
-         * short enough that a gateway which has quietly stopped talking is noticed in one.
-         */
         const val DEFAULT_REQUEST_TIMEOUT_SECONDS = 60
 
         private const val CONFIGURATIONS = "configurations"
@@ -233,7 +119,6 @@ data class AgentConfiguration(
         private const val API_VERSION = "anthropic-version"
         private const val EXTRA_HEADERS = "extra-headers"
 
-        /** What a missing, empty or unreadable file falls back to, so the chat still has an endpoint. */
         val DEFAULT = AgentConfiguration(
             name = "Anthropic Claude",
             model = DEFAULT_MODEL,
@@ -251,14 +136,6 @@ data class AgentConfiguration(
             extraHeaders = emptyMap(),
         )
 
-        /**
-         * What to run on when the file has nothing to offer -- missing, empty or unreadable.
-         *
-         * The one place [EndpointUrl.ENV_VAR] still has a say, because it is the one place there is
-         * no entry for it to contradict. Everything the URL decides is re-read from it rather than
-         * kept from [DEFAULT]: a variable pointing at a Responses endpoint would otherwise be sent
-         * a Messages request, which is the mismatch this fallback exists to avoid.
-         */
         fun fallback(): AgentConfiguration {
             val url = EndpointUrl.resolve(DEFAULT_ENDPOINT_URL)
             if (url == DEFAULT_ENDPOINT_URL) return DEFAULT
@@ -274,10 +151,6 @@ data class AgentConfiguration(
             )
         }
 
-        /**
-         * What gets written the first time a project is opened: one entry per wire protocol, so
-         * switching provider is editing a line rather than working out the shape of an entry.
-         */
         val STARTER = listOf(
             DEFAULT,
             AgentConfiguration(
@@ -321,12 +194,6 @@ data class AgentConfiguration(
             ),
         )
 
-        /**
-         * The variable a token field names, or null when it holds the token itself.
-         *
-         * `$NAME` and `${NAME}` both work; the braced form is what you need when the name is
-         * followed by anything else in the same string.
-         */
         fun envVarName(token: String): String? {
             val trimmed = token.trim()
             if (!trimmed.startsWith("$")) return null
@@ -334,14 +201,6 @@ data class AgentConfiguration(
             return body.trim().takeIf { it.isNotBlank() }
         }
 
-        /**
-         * Reads the file's `configurations` array. A bare array at the top level is read the same
-         * way, since that is what is left after copying the array out of a larger file.
-         *
-         * Throws rather than dropping a bad entry: unlike an MCP server, where one broken entry
-         * costs a few tools, a configuration that silently parsed as something else is a chat
-         * quietly running against the wrong provider.
-         */
         fun parseAll(text: String): List<AgentConfiguration> {
             if (text.isBlank()) return emptyList()
 
@@ -477,14 +336,6 @@ data class AgentConfiguration(
             )
         }
 
-        /**
-         * The file's whole contents, pretty-printed, as it is written on creation.
-         *
-         * [database] and [findInFiles] are written out along with the configurations rather than
-         * left to be preserved, because this rewrites the whole file: a section that was not passed
-         * in is a section that would be dropped, and the one thing worse than a usage database that
-         * is not recording is one whose URL disappeared when an unrelated button was pressed.
-         */
         fun render(
             configurations: List<AgentConfiguration>,
             database: UsageDatabaseConfig = UsageDatabaseConfig.OFF,
@@ -503,11 +354,6 @@ data class AgentConfiguration(
         private fun JsonObject.string(field: String): String? =
             get(field)?.takeIf { it.isJsonPrimitive }?.asString
 
-        /**
-         * A whole number from the file, [fallback] when the field is absent, and an error when it is
-         * there but unusable. Absent is a real answer; "0" where a positive number is needed is a
-         * mistake worth reporting rather than quietly replacing with something that works.
-         */
         private fun JsonObject.int(configuration: String, field: String, fallback: Int, minimum: Int): Int {
             val element = get(field) ?: return fallback
             val value = element.takeIf { it.isJsonPrimitive }?.asString?.trim()?.toIntOrNull()
@@ -518,7 +364,6 @@ data class AgentConfiguration(
             return value
         }
 
-        /** An array of strings, blanks and duplicates dropped, or empty when the field is absent. */
         private fun JsonObject.strings(configuration: String, field: String): List<String> {
             val element = get(field) ?: return emptyList()
             if (!element.isJsonArray) {

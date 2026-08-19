@@ -5,24 +5,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 
-/**
- * Walking the project's files, shared by the tools that need to enumerate rather than search.
- *
- * Deliberately goes through the VFS instead of `java.io.File`: the VFS is what the rest of the
- * plugin edits through, so a file created earlier in the same conversation is visible here even
- * though nothing has been written to disk yet. It also lets [isSkipped] ask the project model what
- * is build output rather than guessing from directory names.
- */
 object ProjectFiles {
 
-    /** Names worth skipping even when the project model has no opinion -- VCS metadata, dependency dumps. */
     private val ALWAYS_SKIP = setOf(".git", ".hg", ".svn", ".idea", "node_modules", "__pycache__")
 
-    /**
-     * Whether the walk should not descend into [vf]. Excluded roots (build output, generated
-     * sources) are the ones that matter: they are usually far larger than the source tree and
-     * never what the caller meant.
-     */
     fun isSkipped(project: Project, vf: VirtualFile): Boolean {
         if (vf.name in ALWAYS_SKIP) return true
         return ReadAction.computeBlocking<Boolean, RuntimeException> {
@@ -31,13 +17,6 @@ object ProjectFiles {
         }
     }
 
-    /**
-     * Depth-first walk from [root], visiting entries in a stable order (directories first, then
-     * files, each alphabetical) so repeated calls read the same way.
-     *
-     * [maxDepth] is relative to [root]: 1 lists its immediate children. [visit] returns false to
-     * stop the walk, which is how callers enforce a result cap without walking the whole tree.
-     */
     fun walk(
         project: Project,
         root: VirtualFile,

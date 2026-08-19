@@ -12,23 +12,6 @@ import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Runs a shell command in the IDE's Terminal tool window and returns what it printed.
- *
- * Going through the terminal rather than spawning the process headlessly is what makes a long or
- * wedged command survivable: it is a real interactive session, so the user watches it scroll and
- * stops it with Ctrl+C. The cost is that the output has to be read back off the terminal's own
- * text, which is why the command is wrapped in an end marker -- there is no exit code to read
- * otherwise, and no other way to tell "still running" from "finished quietly".
- *
- * Unlike every other tool here, this one cannot be bounded by the project: the path checks that
- * keep `read_project_file` and `delete_file` inside the project root mean nothing to a shell. So
- * the gate is the user, not a validator -- each command is shown for approval before it is typed,
- * with an opt-out that lasts until the chat is reset.
- *
- * Files a command writes are also outside the change session: it edits on disk rather than through
- * documents, so Approve/Revert has no baseline for them.
- */
 class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
@@ -36,17 +19,10 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         private const val MAX_TIMEOUT_SECONDS = 600
         private const val POLL_INTERVAL_MILLIS = 150L
 
-        /** Command output is frequently enormous and the tail is the part that matters. */
         private const val MAX_OUTPUT_CHARS = 20_000
 
         private const val TAB_NAME = "AI"
 
-        /**
-         * Names the terminal's shell for the system prompt, so commands are written in the dialect
-         * that will actually interpret them rather than whatever the model assumes.
-         *
-         * Reads a settings value, so this must not run on the EDT.
-         */
         fun shellDialect(project: Project): String = when (Shell.of(project)) {
             Shell.POWERSHELL -> "PowerShell"
             Shell.CMD -> "cmd.exe"
@@ -54,16 +30,10 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         }
     }
 
-    /**
-     * The command belongs to the terminal, not to this thread: interrupting the wait would leave it
-     * running with nobody reading its output. Ctrl+C in the terminal is the way to stop it.
-     */
     override val interruptible = false
 
-    /** Survives individual calls, not the chat: [forgetApprovals] resets it on a new conversation. */
     private val approveAll = AtomicBoolean(false)
 
-    /** The tab from the previous call, reused while it is alive and rooted at the same directory. */
     private var openTab: Tab? = null
 
     private class Tab(val workDir: File, val widget: TerminalWidget) {
@@ -110,7 +80,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         add("required", JsonArray().apply { add("command") })
     }
 
-    /** Called when a new chat starts, so a previous conversation's blanket approval does not carry over. */
     fun forgetApprovals() {
         approveAll.set(false)
     }
@@ -221,14 +190,9 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
     private fun textOf(widget: TerminalWidget): String =
         runCatching { widget.getText().toString() }.getOrDefault("")
 
-    /** The text the terminal gained since [before], falling back to everything if it has scrolled. */
     private fun delta(before: String, now: String): String =
         if (before.isNotEmpty() && now.startsWith(before)) now.substring(before.length) else now
 
-    /**
-     * Strips the terminal's own echo of the command off the front and the end marker off the back,
-     * leaving what the command actually printed.
-     */
     private fun trimToOutput(delta: String, marker: String, match: MatchResult?): String {
         val echoed = delta.indexOf(marker)
         val start = if (echoed < 0) 0 else (delta.indexOf('\n', echoed) + 1).coerceAtLeast(0)
@@ -244,7 +208,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
     // --- approval -------------------------------------------------------------------------------
 
-    /** Blocks the agent thread on the EDT dialog: nothing may run until the user has decided. */
     private fun confirm(command: String, workDir: File, timeoutSeconds: Int): Boolean {
         if (approveAll.get()) return true
 
@@ -269,10 +232,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
     // --- shell dialects -------------------------------------------------------------------------
 
-    /**
-     * The end marker has to be appended in the syntax of whichever shell the terminal is configured
-     * to start, since that is the process doing the interpreting -- not the one this plugin picks.
-     */
     private enum class Shell {
         POSIX, POWERSHELL, CMD;
 

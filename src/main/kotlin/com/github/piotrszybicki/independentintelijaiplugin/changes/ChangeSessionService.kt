@@ -21,23 +21,6 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.PsiTargets
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Holds the "what has the AI changed this session" state: one baseline text per file, captured the
- * first time a tool touches it.
- *
- * The baseline is grabbed in [DocumentListener.beforeDocumentChange], while the document still holds
- * its pre-change content. That is what makes this work for `rename_symbol` as well as the
- * single-file tools -- a refactoring fans out across files nobody knew about in advance, and this
- * still records every one of them without any per-tool knowledge.
- *
- * A session runs from the first captured file until [approveAll] or [revertAll]. Baselines live in
- * memory only, so closing the project behaves like an approve: the edits stay, the markers go.
- *
- * Edits reach disk as they are made -- see [flushToDisk]. Reverting is a matter of the baselines
- * held here, not of the file being left unwritten, so nothing is lost by saving: anything that reads
- * the project from outside the IDE (a compiler, a test runner, git) sees what the model actually
- * wrote rather than the last state the user happened to save.
- */
 @Service(Service.Level.PROJECT)
 class ChangeSessionService(private val project: Project) : Disposable {
 
@@ -84,7 +67,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
 
     // --- capture ------------------------------------------------------------------------------
 
-    /** Opens a capture window. Every [beginCapture] must be matched by an [endCapture]. */
     fun beginCapture() {
         captureDepth.incrementAndGet()
     }
@@ -132,25 +114,10 @@ class ChangeSessionService(private val project: Project) : Disposable {
 
     // --- writing through to disk ----------------------------------------------------------------
 
-    /**
-     * Saves every file changed this session that is still sitting unsaved in a document.
-     *
-     * Called once a tool call has finished rather than per document change: a refactoring touches
-     * many files inside one command, and saving each one as it is edited would mean writing some
-     * files several times for a single tool call.
-     *
-     * The session's markers and baselines are unaffected -- saving is not approving. Accept, reject
-     * and revert all keep working afterwards, because they replay the baseline into the document and
-     * that write is itself saved.
-     */
     fun flushToDisk() {
         saveNow(synchronized(lock) { baselines.keys.toList() })
     }
 
-    /**
-     * Writes [files] out now. Safe to call from either thread: saving is an EDT operation, and the
-     * tools reach here from a pooled thread while the UI reaches it from the EDT already.
-     */
     private fun saveNow(files: Collection<VirtualFile>) {
         if (files.isEmpty()) return
         val documentManager = FileDocumentManager.getInstance()
@@ -180,10 +147,8 @@ class ChangeSessionService(private val project: Project) : Disposable {
     val changedFileCount: Int
         get() = synchronized(lock) { baselines.size }
 
-    /** The files changed this session, in the order they were touched. */
     fun changedFiles(): List<VirtualFile> = synchronized(lock) { baselines.keys.toList() }
 
-    /** Project-relative paths of the files changed this session, in the order they were touched. */
     fun changedPaths(): List<String> = changedFiles().map { PsiTargets.relativePath(project, it) }
 
     fun addListener(listener: Listener) {
@@ -203,10 +168,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
 
     // --- approve / revert ---------------------------------------------------------------------
 
-    /**
-     * Accepts one hunk: the document is untouched, and the baseline moves forward to match it so
-     * that region stops being reported as changed. Call on the EDT.
-     */
     fun acceptHunk(file: VirtualFile, hunk: Hunk) {
         val document = FileDocumentManager.getInstance().getDocument(file) ?: return
         val baseline = synchronized(lock) { baselines[file] } ?: return
@@ -227,10 +188,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
         settle(file, merged, document)
     }
 
-    /**
-     * Rejects one hunk: the document goes back to what the baseline says for that region, leaving
-     * the rest of the session's changes in place. Call on the EDT.
-     */
     fun rejectHunk(file: VirtualFile, hunk: Hunk) {
         val document = FileDocumentManager.getInstance().getDocument(file) ?: return
         val baseline = synchronized(lock) { baselines[file] } ?: return
@@ -261,10 +218,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
         oldStart in 0..oldEnd && oldEnd <= baselineLineCount &&
             newStart in 0..newEnd && newEnd <= currentLineCount
 
-    /**
-     * Records [newBaseline] for [file] and redraws, dropping the file from the session entirely once
-     * the document and the baseline agree.
-     */
     private fun settle(file: VirtualFile, newBaseline: String, document: Document) {
         // Rejecting a hunk rewrote the document, so disk is now behind. Accepting one did not touch
         // it, in which case this finds nothing unsaved and does nothing.
@@ -278,26 +231,12 @@ class ChangeSessionService(private val project: Project) : Disposable {
         notifyListeners()
     }
 
-    /**
-     * Accepts everything: the markers go away and the documents are left exactly as they are.
-     * Call on the EDT.
-     */
     fun approveAll() {
         synchronized(lock) { baselines.clear() }
         display.clearAll()
         notifyListeners()
     }
 
-    /**
-     * Restores every file to its baseline, as one undoable command.
-     *
-     * Deliberately not built on [com.intellij.openapi.command.undo.UndoManager]: the undo stack is
-     * ordered and interleaved with the user's own edits, so replaying the agent's commands out of
-     * order is fragile and fails outright once the user has typed in between. Writing back the
-     * stored text is deterministic.
-     *
-     * Call on the EDT. Returns the project-relative paths that could not be restored.
-     */
     fun revertAll(): List<String> {
         val snapshot = synchronized(lock) { LinkedHashMap(baselines) }
         if (snapshot.isEmpty()) return emptyList()

@@ -2,45 +2,18 @@ package com.github.piotrszybicki.independentintelijaiplugin.skills
 
 import java.io.File
 
-/**
- * One skill: a directory holding a `SKILL.md` whose frontmatter says what it is for.
- *
- * Only [name] and [description] travel to the model on every turn -- the body stays on disk until
- * something decides to read it. That split is the whole point of the format: a skill's instructions
- * and its bundled reference files can be as long as they like, because a listing entry costs a line
- * and the rest costs nothing until it is needed.
- */
 data class SkillDefinition(
     val name: String,
     val description: String,
-    /** The `SKILL.md` itself, absolute -- a root may sit outside the project, so nothing here is relative. */
     val file: File,
 ) {
 
     companion object {
 
-        /**
-         * Cap on the listing text for one skill, following the format's own limit on `description`
-         * plus `when_to_use`. Descriptions are written to be matched against, not read, and a
-         * verbose one would otherwise charge every turn of every conversation for itself.
-         */
         private const val MAX_DESCRIPTION_CHARS = 1_536
 
-        /**
-         * Frontmatter lives at the top of the file, and the fallback description only needs the
-         * first paragraph after it, so there is never a reason to pull a long reference document
-         * into memory to find out what it is called.
-         */
         private const val MAX_READ_CHARS = 64 * 1024
 
-        /**
-         * Reads [file] into a definition, or returns null when it holds nothing usable.
-         *
-         * Deliberately forgiving: `name` falls back to the directory name and `description` to the
-         * first paragraph of the body, both of which the format allows, and neither field being
-         * present is the only thing that disqualifies a file. A skill that will not parse should
-         * cost the user that one skill, not the whole listing.
-         */
         fun read(file: File): SkillDefinition? {
             val text = runCatching { head(file) }.getOrNull() ?: return null
             val frontmatter = SkillFrontmatter.parse(text)
@@ -70,7 +43,6 @@ data class SkillDefinition(
             return if (read <= 0) "" else String(buffer, 0, read)
         }
 
-        /** The body's opening paragraph, used when the frontmatter never says what the skill is for. */
         private fun firstParagraph(text: String): String? {
             val body = SkillFrontmatter.stripFrontmatter(text)
             return body.split(Regex("\\r?\\n\\s*\\r?\\n"))
@@ -87,15 +59,6 @@ data class SkillDefinition(
     }
 }
 
-/**
- * Reads the `key: value` pairs out of a `SKILL.md`'s YAML frontmatter.
- *
- * Hand-written rather than pulled from a YAML library, because the plugin has no YAML dependency and
- * this needs two string fields out of a block that is a flat map by convention. It understands plain
- * and quoted scalars and the `|` and `>` block forms that long descriptions are written in, and it
- * ignores everything nested -- a key must start at column zero, so the inside of a `metadata:` map or
- * an `allowed-tools:` list can never be mistaken for a top-level field.
- */
 object SkillFrontmatter {
 
     private const val FENCE = "---"
@@ -147,7 +110,6 @@ object SkillFrontmatter {
         return fields
     }
 
-    /** The markdown below the frontmatter, or the whole text when there is none. */
     fun stripFrontmatter(text: String): String {
         val lines = text.lines().map { it.trimEnd('\r') }
         val open = openingFence(lines) ?: return text
@@ -155,7 +117,6 @@ object SkillFrontmatter {
         return lines.drop(close + 1).joinToString("\n")
     }
 
-    /** The frontmatter has to be the first thing in the file; a `---` further down is a horizontal rule. */
     private fun openingFence(lines: List<String>): Int? {
         val first = lines.indexOfFirst { it.isNotBlank() }
         if (first < 0 || lines[first].trim() != FENCE) return null

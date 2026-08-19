@@ -17,13 +17,6 @@ import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-/**
- * Writes one reply out to a `.md` file.
- *
- * Markdown rather than the HTML the transcript draws, because markdown is what the model wrote in
- * the first place: exporting the rendering would mean converting a rendering back, and every code
- * fence and table in the answer is a chance for that to lose something.
- */
 internal object TranscriptExport {
 
     private const val NOTIFICATION_GROUP = "AICodingAgent.Export"
@@ -32,13 +25,6 @@ internal object TranscriptExport {
     private val FILE_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmm")
     private val HEADER_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
-    /**
-     * Asks where to put [markdown] and writes it there. EDT only -- it opens a dialog.
-     *
-     * Cancelling the dialog is a no-op. A reply with nothing in it still writes a file: the header
-     * line makes it a record that there was a turn and it said nothing, which is more use than a
-     * button that silently does nothing when pressed.
-     */
     fun save(project: Project, markdown: String) {
         val now = LocalDateTime.now()
         val descriptor = FileSaverDescriptor(
@@ -73,16 +59,9 @@ internal object TranscriptExport {
         notify("Reply exported", file.path, NotificationType.INFORMATION, project, file)
     }
 
-    /**
-     * The reply, under a line saying where it came from and when.
-     *
-     * A stamped line rather than nothing at all, because the point of the file is being read later,
-     * and by then which chat produced it is not something the reader still has.
-     */
     private fun document(markdown: String, now: LocalDateTime): String =
         "*Exported from AICodingAgent on ${HEADER_STAMP.format(now)}*\n\n${markdown.trim()}\n"
 
-    /** @param exported the file to offer to open, or null when the export did not get that far */
     private fun notify(title: String, content: String, type: NotificationType, project: Project, exported: File?) {
         val notification = NotificationGroupManager.getInstance()
             .getNotificationGroup(NOTIFICATION_GROUP)

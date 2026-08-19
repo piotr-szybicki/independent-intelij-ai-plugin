@@ -11,13 +11,6 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Creates a new file, since [EditFileLinesTool] can only address lines that already exist.
- *
- * Refuses to touch an existing file rather than overwriting it: the model has no whole-file write
- * anywhere in the tool set, so a `create_file` that silently clobbered would be the one way to lose
- * a file's contents in a single call.
- */
 class CreateFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "create_file"

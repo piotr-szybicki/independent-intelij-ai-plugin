@@ -7,13 +7,6 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.project.Project
 
-/**
- * Stores a documentation comment and hands back the id that stands for it in the code.
- *
- * It deliberately does not touch any file. Writing the marker is an edit like any other and belongs
- * to the editing tools, which know about line numbers, undo and the change session; a tool that both
- * wrote a row and edited a file could half-succeed, leaving the model unsure which half happened.
- */
 class InsertCommentTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "insert_comment"

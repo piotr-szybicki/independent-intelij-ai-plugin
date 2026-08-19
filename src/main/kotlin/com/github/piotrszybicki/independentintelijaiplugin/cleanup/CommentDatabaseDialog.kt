@@ -10,14 +10,6 @@ import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.dsl.builder.panel
 import javax.swing.JComponent
 
-/**
- * Scope and confirmation for the two sweeps that talk to the database.
- *
- * One dialog for both directions because the questions are the same -- everything or just this
- * selection, and do it or only count it. What differs is the warning, and each direction has one
- * worth reading: storing takes documentation out of the files, restoring writes over the markers
- * that point at it.
- */
 class CommentDatabaseDialog(
     project: Project,
     private val selection: List<VirtualFile>,
@@ -34,7 +26,6 @@ class CommentDatabaseDialog(
 
     private val reportOnly = JBCheckBox("Report only -- count them, change nothing")
 
-    /** Read after [showAndGet] returns true. */
     val useSelection: Boolean get() = selectedFiles.isSelected
     val dryRun: Boolean get() = reportOnly.isSelected
 

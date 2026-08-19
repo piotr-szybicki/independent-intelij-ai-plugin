@@ -17,24 +17,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Asks the user to let an IDE action run, then runs it -- reformat, optimise imports, run
- * configurations, VCS operations, anything bound to a menu item or shortcut.
- *
- * The gate is the user rather than a validator, for the same reason run_shell_command's is: an
- * action id can name almost anything the IDE can do, including things that touch files outside the
- * project or cannot be undone, so there is no useful set of "safe" ids to allow automatically.
- *
- * What the action does is also outside the change session -- it edits through the IDE's own
- * machinery rather than this plugin's, so Approve/Revert has no baseline for it. The IDE's own
- * Undo does.
- */
 class RunActionTool(private val project: Project) : AICodingAgentTool {
 
-    /**
-     * An action that opens a dialog owns the UI thread until the user answers it, and interrupting
-     * this thread would not close the dialog -- it would only stop us waiting for it.
-     */
     override val interruptible = false
 
     override val name = "run_action"
@@ -123,7 +107,6 @@ class RunActionTool(private val project: Project) : AICodingAgentTool {
         return "Ran \"${event.presentation.text ?: actionId}\" ($actionId)."
     }
 
-    /** Blocks the agent thread on the EDT dialog: nothing may run until the user has decided. */
     private fun confirm(actionId: String, label: String, reason: String?): Boolean {
         var choice = -1
         ApplicationManager.getApplication().invokeAndWait {

@@ -7,35 +7,14 @@ import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.openapi.project.Project
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Runs one of the project's existing run configurations and returns its exit code and output.
- *
- * This is the Run counterpart to [StartDebugConfigurationTool], and the same reasoning applies to
- * why it only launches what already exists: a configuration encodes a module, a classpath, VM
- * options and environment that are the user's to set up, not something inferable from the chat.
- * When there is no configuration for what needs running, [RunAtLocationTool] has the platform
- * produce one from a source location instead.
- *
- * The launch itself is [ConfigurationRunner]'s job.
- *
- * Unlike `run_shell_command` this needs no approval prompt: a run configuration is something the
- * user already created and can already launch with one click, so there is nothing here they have
- * not already sanctioned.
- */
 class RunConfigurationTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
-        /** Enough names to recognise a typo without turning an error into a wall of text. */
         private const val MAX_LISTED = 40
     }
 
     private val runner = ConfigurationRunner(project)
 
-    /**
-     * The process belongs to the IDE's Run window, not to this thread: interrupting the wait would
-     * leave it running with nobody reading its output. The Stop button in the Run window is the way
-     * to stop it.
-     */
     override val interruptible = false
 
     override val name = "run_configuration"

@@ -9,23 +9,9 @@ import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.XDebuggerUtil
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * The buttons on the debugger toolbar: resume, the four kinds of step, run to a line, pause and
- * stop.
- *
- * Each action that expects the program to come back reports where it landed, using the same
- * [DebuggerPause] the waiting tool uses. That is the whole point of the tool -- a step whose result
- * you have to fetch separately doubles the round trips of a debugging loop, and leaves a gap where
- * the program can stop again before anyone is listening.
- */
 class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
-        /**
-         * Steps land in milliseconds; a resume is open-ended. Short enough that an action which
-         * runs long hands control back rather than tying up the turn -- await_breakpoint is the
-         * tool for waiting properly, and it says so in the result.
-         */
         private const val DEFAULT_WAIT_SECONDS = 15
         private const val MAX_WAIT_SECONDS = 300
     }

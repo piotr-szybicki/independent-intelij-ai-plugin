@@ -10,7 +10,6 @@ data class ReasoningOptions(
     val thinking: ThinkingMode,
 ) {
 
-    /** Builds Anthropic's thinking field, using the legacy form for Haiku models. */
     fun thinkingJson(model: String = "", maxTokens: Int = DEFAULT_MAX_TOKENS): JsonObject? = when (thinking) {
         ThinkingMode.PROVIDER_DEFAULT -> null
         ThinkingMode.OFF -> JsonObject().apply { addProperty("type", "disabled") }
@@ -27,7 +26,6 @@ data class ReasoningOptions(
         }
     }
 
-    /** Builds Anthropic's output_config. Haiku uses budget_tokens instead of effort. */
     fun outputConfigJson(model: String = ""): JsonObject? = effort.wireValue
         ?.takeUnless { isLegacyAnthropicThinkingModel(model) }
         ?.let { value -> JsonObject().apply { addProperty("effort", value) } }
@@ -38,7 +36,6 @@ data class ReasoningOptions(
     private fun isLegacyAnthropicThinkingModel(model: String): Boolean =
         model.lowercase().contains("haiku")
 
-    /** The Responses API's reasoning field. */
     fun reasoningJson(): JsonObject? = when (thinking) {
         ThinkingMode.PROVIDER_DEFAULT -> null
         ThinkingMode.OFF -> reasoningEffort("none")

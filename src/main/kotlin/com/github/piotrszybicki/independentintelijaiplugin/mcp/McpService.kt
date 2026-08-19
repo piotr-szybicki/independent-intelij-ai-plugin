@@ -8,18 +8,6 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodin
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import java.io.File
 
-/**
- * Owns the connections to the configured MCP servers and the tools they expose.
- *
- * Connecting is lazy and cached: it spawns processes and does network I/O, which must not happen
- * while the tool window is being built, and which would be wasteful to repeat every turn. The cache
- * is keyed on the configuration text, so editing the settings takes effect on the next turn without
- * anything having to notify anything.
- *
- * Nothing here throws. A server that will not start is a server whose tools are missing, not a
- * broken chat -- so failures are recorded against the server that caused them and the rest carry
- * on. [statuses] is where those failures become visible.
- */
 @Service(Service.Level.PROJECT)
 class McpService(private val project: Project) : Disposable {
 
@@ -29,24 +17,21 @@ class McpService(private val project: Project) : Disposable {
 
     private class Connection(val client: McpClient?, val tools: List<AICodingAgentTool>, val status: ServerStatus)
 
-    /** Null until the first connect; keyed on the settings text it was built from. */
     private var connections: List<Connection>? = null
     private var builtFrom: String? = null
 
-    /**
-     * The tools to offer this turn. Called from the agent's pooled thread, never the EDT.
-     *
-     * The list is rebuilt only when the configuration has changed, so the cost of a turn is the
-     * same whether or not any servers are configured.
-     */
     @Synchronized
-    fun tools(): List<AICodingAgentTool> = current().flatMap { it.tools }
+    fun tools(): List<AICodingAgentTool> {
+        val all = current().flatMap { it.tools }
+        val enabled = AICodingAgentSettingsState.getInstance().state.enabledMcpTools
+        if (enabled.isBlank()) return all
+        val enabledSet = enabled.split(",").mapTo(mutableSetOf()) { it.trim() }
+        return all.filter { it.name in enabledSet }
+    }
 
-    /** One line per configured server, for the settings panel and for diagnosing a missing tool. */
     @Synchronized
     fun statuses(): List<ServerStatus> = current().map { it.status }
 
-    /** Drops every connection so the next turn builds them again. */
     @Synchronized
     fun reload() {
         connections?.forEach { runCatching { it.client?.close() } }
@@ -54,7 +39,6 @@ class McpService(private val project: Project) : Disposable {
         builtFrom = null
     }
 
-    /** Called when a new chat starts: a blanket approval is given for a conversation, not forever. */
     fun forgetApprovals() = approvals.forget()
 
     @Synchronized
@@ -101,11 +85,6 @@ class McpService(private val project: Project) : Disposable {
         }
     }
 
-    /**
-     * Two servers whose names differ only in characters the API forbids would qualify down to the
-     * same tool name, and the agent looks tools up by name -- so one would silently answer for the
-     * other. Rare, but the fix is one line.
-     */
     private fun uniqueName(used: MutableSet<String>, config: McpServerConfig, tool: McpToolDescriptor): String {
         val base = McpTool.qualifiedName(config.name, tool.name)
         var name = base
@@ -121,11 +100,23 @@ class McpService(private val project: Project) : Disposable {
 
         fun getInstance(project: Project): McpService = project.getService(McpService::class.java)
 
-        /**
-         * Connects to [configs] once and reports what happened, without touching the live
-         * connections. This is what the settings panel's Test button runs, so it has to work on
-         * text the user has typed but not yet applied.
-         */
+        data class ProbeToolsResult(val serverName: String, val tools: List<McpToolDescriptor>, val error: String?)
+
+        fun probeTools(project: Project?, configs: List<McpServerConfig>): List<ProbeToolsResult> {
+            val workingDir = project?.basePath?.let(::File)
+            return configs.filter { it.enabled }.map { config ->
+                val client = McpClient(config, workingDir)
+                try {
+                    val tools = client.connect()
+                    ProbeToolsResult(config.name, tools, null)
+                } catch (e: Exception) {
+                    ProbeToolsResult(config.name, emptyList(), e.message ?: e.toString())
+                } finally {
+                    runCatching { client.close() }
+                }
+            }
+        }
+
         fun probe(project: Project?, configs: List<McpServerConfig>): List<ServerStatus> {
             val workingDir = project?.basePath?.let(::File)
             return configs.map { config ->

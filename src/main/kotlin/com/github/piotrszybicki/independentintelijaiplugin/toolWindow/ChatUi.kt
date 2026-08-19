@@ -26,10 +26,6 @@ import javax.swing.text.Style
 import javax.swing.text.StyleConstants
 import javax.swing.text.html.StyleSheet
 
-/**
- * Palette for the chat tool window. Every value is derived from the active theme on read, so the
- * chat keeps looking native in light themes, dark themes and custom ones alike.
- */
 internal object ChatColors {
 
     val background: Color get() = UIUtil.getPanelBackground()
@@ -38,42 +34,19 @@ internal object ChatColors {
     val accent: Color get() = JBUI.CurrentTheme.Link.Foreground.ENABLED
     val separator: Color get() = JBColor.namedColor("Group.separatorColor", 0xEBECF0, 0x393B40)
 
-    /**
-     * The frame around a request the model never answered.
-     *
-     * The platform's own validation colour rather than a red of our own: a field that failed
-     * validation in a settings dialog is outlined in exactly this, so a bubble outlined in it reads
-     * as "this went wrong" in every theme, including the ones that pick their own red.
-     */
     val error: Color get() = JBColor.namedColor("Component.errorFocusColor", 0xE53E4D, 0x8B3C3C)
 
-    /** For a figure worth noticing but not yet worth acting on -- see the context meter. */
     val warning: Color get() = JBColor.namedColor("Component.warningFocusColor", 0xE0A200, 0xA07800)
 
-    /** Bubble behind the user's own messages: the theme background nudged towards the accent hue. */
     val userBubble: Color get() = mix(background, accent, if (JBColor.isBright()) 0.10 else 0.22)
     val userBubbleBorder: Color get() = mix(background, accent, if (JBColor.isBright()) 0.28 else 0.38)
 
-    /**
-     * Bubble behind an AI turn. Deliberately neutral -- the accent is what marks a message as the
-     * user's, and tinting both sides with it would take that away -- and fainter than [card], so the
-     * tool cards sitting inside a turn still read as raised off it.
-     */
     val aiBubble: Color get() = mix(background, foreground, 0.03)
     val aiBubbleBorder: Color get() = mix(background, foreground, 0.16)
 
-    /**
-     * The box drawn around the tool calls one model response asked for, inside the turn's bubble.
-     *
-     * Between [aiBubble] and [card] on purpose: the three are nested -- bubble, group, card -- and
-     * the palette already reads deeper nesting as a step further from the background, so a group
-     * that sat outside that order would look like a different kind of thing rather than a box
-     * inside a box.
-     */
     val toolGroup: Color get() = mix(background, foreground, 0.04)
     val toolGroupBorder: Color get() = mix(background, foreground, 0.12)
 
-    /** Neutral card, used for tool calls and the pending-changes bar. */
     val card: Color get() = mix(background, foreground, 0.05)
     val cardHover: Color get() = mix(background, foreground, 0.10)
     val cardBorder: Color get() = mix(background, foreground, 0.14)
@@ -88,26 +61,19 @@ internal object ChatColors {
     fun hex(color: Color): String = String.format("#%02x%02x%02x", color.red, color.green, color.blue)
 }
 
-/** Scaled spacing used across the chat, kept in one place so the layout stays visually consistent. */
 internal object ChatMetrics {
     val rowGap: Int get() = JBUI.scale(10)
     val bubblePadding: Int get() = JBUI.scale(9)
-    /** How far a bubble is held off the far edge, so the two speakers read as opposite sides. */
     val bubbleIndent: Int get() = JBUI.scale(28)
     val arc: Int get() = JBUI.scale(12)
     val smallArc: Int get() = JBUI.scale(8)
 }
 
-/**
- * Panel with an antialiased rounded background. Colors are passed as lambdas rather than values so a
- * panel repaints itself correctly after a theme switch or a hover change.
- */
 internal open class RoundedPanel(
     layout: LayoutManager? = null,
     private val arc: () -> Int = { ChatMetrics.arc },
     private val fill: () -> Color? = { null },
     private val stroke: () -> Color? = { null },
-    /** How thick that outline is drawn, in pixels -- the caller scales it. */
     private val strokeWidth: () -> Float = { 1f },
 ) : JPanel(layout) {
 
@@ -143,31 +109,12 @@ internal open class RoundedPanel(
     }
 }
 
-/**
- * Monospace family for code, taken from the editor scheme so it matches the rest of the IDE.
- *
- * Guarded, because reading it is the first thing that instantiates `EditorColorsManager`, and that
- * service reads the registry in its constructor: when a restored tool window builds its panes during
- * frame init, the registry is not loaded yet and the platform logs an error. The AWT logical family
- * is a fine stand-in for the rare pane built that early.
- *
- * `getServiceIfCreated` is the guard rather than a startup-phase check, because it says exactly what
- * the rule is -- use the scheme when something else has already brought the service up, never be the
- * caller that brings it up. `LoadingState`, which this used to ask, is @ApiStatus.Internal and fails
- * the plugin verifier.
- */
 internal fun chatCodeFontName(): String {
     val colors = ApplicationManager.getApplication()?.getServiceIfCreated(EditorColorsManager::class.java)
         ?: return Font.MONOSPACED
     return colors.globalScheme.editorFontName
 }
 
-/**
- * Read-only HTML pane sized for a vertical stack: [applyWidth] pins it to the width the transcript
- * can give it, and the preferred height then follows from how the text wraps at that width. Without
- * this, a `JEditorPane` inside a vertically stacked container reports the height of a single long
- * line and the message gets clipped.
- */
 internal class HtmlTextPane : JEditorPane("text/html", "") {
 
     private var fixedWidth = -1
@@ -209,7 +156,6 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
         reflow()
     }
 
-    /** Pins the pane to [width] px so wrapped text reports the right height to the layout. */
     fun applyWidth(width: Int) {
         if (width <= 0 || width == fixedWidth) return
         fixedWidth = width
@@ -229,10 +175,6 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
     override fun getMinimumSize(): Dimension = if (fixedWidth > 0) Dimension(0, preferredSize.height) else super.getMinimumSize()
 }
 
-/**
- * The composer's text field. A styled pane rather than a text area, so fenced blocks can be
- * rendered in a markdown-like code style while keeping the raw markdown text intact.
- */
 internal class ChatInputPane(
     private val placeholder: String,
     private val visibleRows: Int = 3,
@@ -261,7 +203,6 @@ internal class ChatInputPane(
         StyleConstants.setFontSize(this, maxOf(10, JBFont.small().size - 1))
     }
 
-    /** Set while [restyle] runs, because the attribute changes it makes come back as edits. */
     private var restyling = false
 
     init {
@@ -276,11 +217,6 @@ internal class ChatInputPane(
         })
     }
 
-    /**
-     * Swing forbids touching a document from inside its own change notification, so the restyle waits
-     * for the next EDT pass; [restyling] then swallows the notifications that restyle itself fires,
-     * which would otherwise schedule another pass forever.
-     */
     private fun scheduleRestyle() {
         if (restyling) return
         SwingUtilities.invokeLater {
@@ -293,7 +229,6 @@ internal class ChatInputPane(
         }
     }
 
-    /** Fenced blocks in monospace with code background, fences de-emphasized. */
     private fun restyle() {
         val styled = styledDocument
         val text = styled.getText(0, styled.length)
@@ -326,7 +261,6 @@ internal class ChatInputPane(
         }
     }
 
-    /** Kept at least [visibleRows] tall, so an empty composer is the box it used to be. */
     override fun getPreferredSize(): Dimension {
         val preferred = super.getPreferredSize()
         // The look and feel installs both, and the layout can ask for a size before it has.
@@ -358,7 +292,6 @@ internal class ChatInputPane(
     }
 
     private companion object {
-        /** Closed fenced blocks only: an unterminated one is still being typed. */
         val FENCED_BLOCK = Regex("```[^\\r\\n]*\\R([\\s\\S]*?)\\R```")
     }
 }

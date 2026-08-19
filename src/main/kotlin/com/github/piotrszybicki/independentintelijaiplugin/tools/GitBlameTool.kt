@@ -6,13 +6,6 @@ import com.intellij.openapi.project.Project
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import git4idea.commands.GitCommand
 
-/**
- * Which commit last touched each line -- the tool for "why is this here", where find_usages answers
- * "what uses this".
- *
- * Blames the committed file, not the editor's copy: lines this session changed are attributed to
- * whoever last committed them, and lines it added are not in the output at all.
- */
 class GitBlameTool(private val project: Project) : AICodingAgentTool {
 
     companion object {

@@ -4,13 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/**
- * The one thing standing between a stored comment and its code.
- *
- * What matters is that it is recognised exactly: a marker read as an ordinary comment leaves
- * documentation stranded in the table, and an ordinary comment read as a marker gets overwritten by
- * whatever row happens to have that id.
- */
 class CommentMarkerTest {
 
     @Test

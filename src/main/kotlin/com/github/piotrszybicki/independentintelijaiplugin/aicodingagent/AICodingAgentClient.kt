@@ -28,13 +28,6 @@ data class ChatMessage(val role: String, val content: JsonArray) {
 
 data class ToolDefinition(val name: String, val description: String, val input_schema: JsonObject)
 
-/**
- * What the request cost, as the API reported it.
- *
- * The two cache fields are the only way to find out whether prompt caching is actually working:
- * a prefix that fails to match reports a write every turn and never a read, and nothing else about
- * the response looks any different.
- */
 data class AICodingAgentUsage(
     val input_tokens: Int = 0,
     val output_tokens: Int = 0,
@@ -42,46 +35,20 @@ data class AICodingAgentUsage(
     val cache_read_input_tokens: Int = 0,
 ) {
 
-    /**
-     * Everything the model read on this request: the system prompt, the tool schemas and the whole
-     * history, however it was billed.
-     *
-     * All three fields have to be summed. Caching splits the prompt across them rather than adding
-     * to it -- with the breakpoints this client sets, [input_tokens] on a warm request is the
-     * newest turn alone, and the conversation it continues is in [cache_read_input_tokens]. Reading
-     * [input_tokens] on its own would report a long conversation as a short one, and would jump
-     * about as the breakpoints move.
-     */
     val promptTokens: Int
         get() = input_tokens + cache_creation_input_tokens + cache_read_input_tokens
 }
 
-/**
- * What a conversation has spent, summed over every request made in it.
- *
- * Counted per request rather than per message the user sends: a single turn is as many requests as
- * it takes tool calls, and the whole history goes out with each one, so the totals climb a good deal
- * faster than the transcript suggests. That is most of the reason for showing them at all.
- */
 data class SessionUsage(
     val inputTokens: Int = 0,
     val outputTokens: Int = 0,
     val cacheWriteTokens: Int = 0,
     val cacheReadTokens: Int = 0,
-    /** How many requests went into the totals. */
     val requests: Int = 0,
 ) {
 
-    /**
-     * Everything the requests read, cached or not.
-     *
-     * The three add rather than overlap: `input_tokens` is what was billed at full price, and what
-     * came from the cache is reported separately and left out of it. Summing them is the only way to
-     * get the figure that would have been charged without caching.
-     */
     val totalInputTokens: Int get() = inputTokens + cacheWriteTokens + cacheReadTokens
 
-    /** The share of input served from the cache, or null before anything has been read. */
     val cacheHitRate: Double?
         get() = totalInputTokens.takeIf { it > 0 }?.let { cacheReadTokens.toDouble() / it }
 
@@ -100,16 +67,6 @@ data class AICodingAgentTurn(
     val content: JsonArray,
     val stopReason: String?,
     val usage: AICodingAgentUsage? = null,
-    /**
-     * The id of the request this came back from -- [ModelExchangeLog.newRequestId]'s, the same one
-     * naming the exchange's files and keying its [ModelUsageDatabase] row.
-     *
-     * Carried on the turn because what the model asked for in it is answered outside the client:
-     * the agent loop runs the tool calls, and both recording them against the request that asked
-     * for them and drawing them as one group depend on knowing which request that was. Blank on a
-     * turn built by a parser rather than returned by [AICodingAgentClient.sendMessage], which is
-     * what the protocol tests do.
-     */
     val requestId: String = "",
 )
 
@@ -118,14 +75,9 @@ class AICodingAgentApiException(message: String) : Exception(message)
 private data class AICodingAgentRequest(
     val model: String,
     val max_tokens: Int,
-    /**
-     * Sent as a list of content blocks rather than a bare string, because a cache breakpoint is a
-     * field on a block and a string has nowhere to put one.
-     */
     val system: JsonArray?,
     val messages: List<ChatMessage>,
     val tools: List<ToolDefinition>?,
-    /** Null when left to the provider; Gson drops the field rather than sending a null. */
     val thinking: JsonObject?,
     val output_config: JsonObject?,
 )
@@ -138,7 +90,6 @@ private data class AICodingAgentResponse(
 
 object AICodingAgentClient {
 
-    /** The wire traffic goes to a file of its own rather than into idea.log -- see [ModelTrafficLog]. */
     private val LOG = ModelTrafficLog
 
     private val gson = Gson()
@@ -154,16 +105,6 @@ object AICodingAgentClient {
         tools: List<ToolDefinition> = emptyList(),
         system: String? = null,
         reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
-        /**
-         * Which conversation this request belongs to, which is what files it under a directory of
-         * its own in [ModelExchangeLog] and what its [ModelUsageDatabase] row is grouped by. Blank for a
-         * caller with no conversation to name, which lands under `unassigned` rather than nowhere.
-         *
-         * It leaves the machine as well as being logged: on the OpenAI protocols it is sent as the
-         * prompt cache key, which is what keeps a chat reading back its own cached prefix rather
-         * than competing with every other chat for one. That is the reason it has to stay opaque --
-         * see [OpenAiProtocol.addCacheKey].
-         */
         conversationId: String = "",
     ): AICodingAgentTurn {
         endpoint.validate()?.let { throw AICodingAgentApiException("Cannot send the request: $it") }
@@ -299,26 +240,9 @@ object AICodingAgentClient {
         return turn.copy(requestId = requestId)
     }
 
-    /**
-     * The provider's own id for the message, or blank when the body carried none.
-     *
-     * One field covers all three protocols: Anthropic's `msg_...`, chat completions' `chatcmpl_...`
-     * and the responses API's `resp_...` are all at the top level under `id`. It is worth recording
-     * because it is the only identifier the provider also has -- a request that came back wrong is
-     * asked about by quoting this, and nothing else in the row means anything on their side.
-     *
-     * Blank rather than absent for an error body, which generally has no id at all.
-     */
     private fun providerResponseId(root: JsonObject?): String =
         root?.get("id")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
 
-    /**
-     * The human-readable half of an error body, whichever of the two shapes it arrived in.
-     *
-     * `error` is an object with a `message` on both providers, but some compatible servers put a
-     * bare string there instead, and reporting `{"error":"model not found"}` as nothing at all is
-     * the worst of the options.
-     */
     private fun errorMessage(root: JsonObject?): String? {
         val error = root?.get("error") ?: return null
         if (error.isJsonPrimitive) return error.asString.takeIf { it.isNotBlank() }
@@ -331,28 +255,10 @@ object AICodingAgentClient {
 
     // --- repair -----------------------------------------------------------------------------------
 
-    /**
-     * Stands in for a tool call the conversation never recorded an answer for. Says what happened
-     * rather than inventing a result, so the model retries the call instead of assuming it worked.
-     */
     private const val ORPHANED_RESULT =
         "This tool call was interrupted and never ran. Nothing it would have done has happened. " +
             "Call it again if you still need it."
 
-    /**
-     * Answers any `tool_use` block the next message does not, so a history that lost a tool result
-     * can still be sent.
-     *
-     * The API requires a `tool_result` for every `tool_use` in the message immediately after, and
-     * rejects the whole request otherwise -- which makes a single missing result terminal rather
-     * than awkward. It is in every message from then on, so every retry fails the same way and the
-     * conversation cannot be continued at all, only abandoned.
-     *
-     * The agent loop is careful never to produce that, and a conversation only reaching the API is
-     * not where the gap opens: it is a history saved to disk part-way through an iteration and read
-     * back later, at which point the damage is permanent and in a file. Repairing here rather than
-     * at the point of the loss covers whatever caused it, including the chats already saved.
-     */
     internal fun withOrphanedToolUsesAnswered(messages: List<ChatMessage>): List<ChatMessage> {
         val repaired = mutableListOf<ChatMessage>()
         var i = 0
@@ -394,7 +300,6 @@ object AICodingAgentClient {
         return repaired
     }
 
-    /** The ids of every `tool_use` block in [message], in the order they appear. */
     private fun toolUseIds(message: ChatMessage): Set<String> {
         if (message.role != "assistant") return emptySet()
         val ids = linkedSetOf<String>()
@@ -420,76 +325,10 @@ object AICodingAgentClient {
 
     // --- prompt caching ---------------------------------------------------------------------------
 
-    /**
-     * How far back the second message breakpoint is placed, in content blocks.
-     *
-     * A breakpoint only looks back a bounded number of blocks for an existing cache entry, so in a
-     * turn that adds many of them -- an agentic loop answering several tool calls at once -- a single
-     * breakpoint at the very end can end up out of range of the previous request's and silently miss.
-     * Marking a second, older point keeps one within reach.
-     */
     private const val LOOKBACK_BLOCKS = 15
 
-    /**
-     * The block types that accept a breakpoint.
-     *
-     * A `thinking` block does not: its schema has no `cache_control` field, and marking one is
-     * rejected outright with "Extra inputs are not permitted" -- taking the whole conversation down
-     * with it, since the offending block stays in the history and every retry sends it again. The
-     * model returns thinking blocks whenever thinking is on, which on the current models it is by
-     * default, so an assistant turn ending in one is ordinary rather than a corner case.
-     *
-     * An allow list rather than a deny list on purpose. A type nobody anticipated then goes
-     * unmarked, which costs a breakpoint; guessing the other way costs the request.
-     */
     private val CACHEABLE_BLOCK_TYPES = setOf("text", "tool_use", "tool_result", "image", "document")
 
-    /**
-     * How long each breakpoint keeps what it caches.
-     *
-     * The hour costs twice the base price to write instead of the 1.25x a five-minute mark costs,
-     * so it takes three requests to pay for itself rather than two. It earns that back only where
-     * the entry has to survive the gap between one turn and the next -- the user reading an answer
-     * and editing code, routinely longer than five minutes -- since an entry that lapses means the
-     * prefix it covered is read at full price and written again.
-     *
-     * ### The ordering rule these have to satisfy
-     *
-     * The API reads a request as `tools`, then `system`, then `messages`, and rejects the whole
-     * request if a longer TTL turns up after a shorter one:
-     *
-     * > a ttl='1h' cache_control block must not come after a ttl='5m' cache_control block
-     *
-     * So the TTLs have to be non-increasing along that path, and the only question left is where
-     * the hour stops. It stops at the tail:
-     *
-     * - [SYSTEM_TTL] is an hour. It covers the tool schemas and the system prompt -- the bulk of
-     *   every early request, unchanged for the life of the conversation -- and it is processed
-     *   ahead of every message mark, so it is free to be the longest.
-     * - [LOOKBACK_TTL] is an hour. It is the *earlier* of the two message marks, which makes it the
-     *   only one allowed to outlast the one after it, and it is also where the hour buys the most:
-     *   it covers the conversation up to roughly [LOOKBACK_BLOCKS] back, which in a grown chat is
-     *   nearly all of it and the part that no longer changes. A user who takes ten minutes to
-     *   answer still reads that back at the cache rate and pays full price only for the tail.
-     * - [TAIL_TTL] is five minutes. That mark moves forward on every request and is read back by
-     *   the next request of the same agentic loop, seconds away; five minutes is ample for that,
-     *   and the entry is superseded before an hour would ever be collected on. Across the gap
-     *   between turns it is the lookback entry behind it that carries the conversation.
-     *
-     * The cost of the arrangement is the short window early on, before the conversation is deep
-     * enough for a lookback mark to be placed at all: until then the only message mark is the
-     * five-minute one, so a slow reply re-reads the conversation. That is the point where the
-     * conversation is smallest and `tools` and `system` are the bulk of the request -- and those
-     * keep their hour throughout.
-     *
-     * Which values are right is a question about this plugin's traffic rather than about the API,
-     * and it is measurable:
-     * [com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase] records
-     * written and read tokens per request. Raising [TAIL_TTL] to [ONE_HOUR] is legal -- it is then
-     * equal to the mark before it, not longer. Lowering [LOOKBACK_TTL] to [FIVE_MINUTES] is not:
-     * that is the arrangement this used to have, and it failed every turn deep enough to place both
-     * marks.
-     */
     private const val ONE_HOUR = "1h"
     private const val FIVE_MINUTES = "5m"
 
@@ -502,19 +341,6 @@ object AICodingAgentClient {
         addProperty("ttl", ttl)
     }
 
-    /**
-     * Wraps the system prompt in a single text block carrying a cache breakpoint.
-     *
-     * One breakpoint here covers the whole stable prefix: the request renders as tools, then system,
-     * then messages, so marking the end of system caches the tool definitions along with it. That is
-     * the bulk of every request -- some thirty tool schemas and a system prompt that does not change
-     * for the life of the conversation -- and without this it is re-read at full price on every
-     * iteration of every turn.
-     *
-     * Nothing is cached until the prefix passes the model's minimum, which differs per model and
-     * is not ordered by how new it is -- between 512 and 4096 tokens across the current ones. Below
-     * it the marker is simply ignored: no error, no cache, which is what the usage counters are for.
-     */
     private fun systemBlocks(system: String?): JsonArray? {
         if (system.isNullOrEmpty()) return null
         val block = JsonObject().apply {
@@ -525,26 +351,6 @@ object AICodingAgentClient {
         return JsonArray().apply { add(block) }
     }
 
-    /**
-     * Returns [messages] with cache breakpoints on the last block of at most two of them.
-     *
-     * The conversation is resent in full on every request, so marking its tail means each request
-     * reads back everything the previous one already paid for. The marker moves forward as the
-     * history grows, which is what the API expects -- it is metadata rather than content, so moving
-     * it does not invalidate what was cached under it.
-     *
-     * Marked messages are copied rather than annotated in place: [messages] is the live history and
-     * an accumulating marker on every turn would run past the four-breakpoint limit within a few
-     * exchanges. Unmarked entries are passed through by reference, since they are only serialised.
-     *
-     * Marks at most two, which with the one on the system prompt leaves the request inside the limit.
-     * Internal rather than private so that bound can be asserted in a test -- exceeding it is a
-     * request the API rejects outright, and nothing before the round trip would catch it.
-     *
-     * The two are not marked alike: they are read back over different spans of time, so they are
-     * kept for different lengths of it -- and only in that direction, since the API rejects a
-     * request whose TTLs climb as it reads through it. See [LOOKBACK_TTL] and [TAIL_TTL].
-     */
     internal fun withCacheBreakpoints(messages: List<ChatMessage>): List<ChatMessage> {
         if (messages.isEmpty()) return messages
 
@@ -571,12 +377,6 @@ object AICodingAgentClient {
         }
     }
 
-    /**
-     * The index of the last block in [message] that can carry a breakpoint, or -1 when it has none.
-     *
-     * The last one rather than the first, so that the cached span covers as much of the message as
-     * the API allows.
-     */
     private fun markableBlock(message: ChatMessage): Int {
         val content = message.content
         for (i in content.size() - 1 downTo 0) {
@@ -587,7 +387,6 @@ object AICodingAgentClient {
         return -1
     }
 
-    /** A copy of [message] whose last markable content block carries a breakpoint kept for [ttl]. */
     private fun withBreakpoint(message: ChatMessage, ttl: String): ChatMessage {
         val at = markableBlock(message)
         if (at < 0) return message

@@ -7,23 +7,9 @@ import com.intellij.execution.RunnerAndConfigurationSettings
 import com.intellij.openapi.project.Project
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Starts an existing run configuration under the debugger, by name.
- *
- * Deliberately only launches what is already there. A remote debug configuration encodes a host, a
- * port and a source mapping that have to line up with however the user started their JVM -- none of
- * which is inferable from the chat, so the configuration is the user's to prepare and this tool's
- * job is only to press Debug on it. When nothing suitable exists, [RunAtLocationTool] with
- * `debug` has the platform produce a configuration from a source location instead.
- *
- * The launch itself is [ConfigurationRunner]'s job.
- *
- * Pairs with `await_breakpoint`: set the breakpoint, start the configuration here, then wait.
- */
 class StartDebugConfigurationTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
-        /** Enough names to recognise a typo without turning an error into a wall of text. */
         private const val MAX_LISTED = 40
     }
 

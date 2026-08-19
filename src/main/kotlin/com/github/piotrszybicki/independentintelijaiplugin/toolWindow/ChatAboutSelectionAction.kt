@@ -8,16 +8,6 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.IconLoader
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 
-/**
- * The "Open a Side Chat" button in the editor's floating code toolbar.
- *
- * When the user selects code and this icon appears in the floating toolbar, clicking it saves the
- * current conversation, starts a fresh chat in the AICodingAgent tool window, and attaches the
- * selection as context. The user can then immediately type a question — "explain this", "refactor
- * this", "is there a bug here" — in a dedicated chat that is about just this code.
- *
- * The previous conversation is preserved in history and can be reopened from there.
- */
 class ChatAboutSelectionAction : AnAction(
     "Open a Side Chat",
     "Start a new AI chat about the selected code",

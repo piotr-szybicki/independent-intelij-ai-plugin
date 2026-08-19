@@ -6,11 +6,6 @@ import com.intellij.openapi.project.Project
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import git4idea.commands.GitCommand
 
-/**
- * The patch itself, which is the one thing the IDE's change model will not hand over cheaply:
- * reading it out of [com.intellij.openapi.vcs.changes.Change] means fetching both revisions'
- * contents and diffing them ourselves, where git already has the answer.
- */
 class GitDiffTool(private val project: Project) : AICodingAgentTool {
 
     companion object {

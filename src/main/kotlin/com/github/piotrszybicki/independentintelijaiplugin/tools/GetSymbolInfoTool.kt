@@ -10,18 +10,9 @@ import com.intellij.usageView.UsageViewLongNameLocation
 import com.intellij.usageView.UsageViewTypeLocation
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Go to Declaration, as a tool. Answers "what is this?" about a symbol the model is looking at,
- * without it having to guess which file holds the definition and read the whole thing to find one
- * signature.
- *
- * The declaration's *source* comes back, not just its location: returning `File.kt:47` would only
- * force a `read_project_file` call afterwards, which is the round trip this exists to remove.
- */
 class GetSymbolInfoTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
-        /** Enough for a whole method, or a class header with its first few members. */
         private const val MAX_LINES = 40
         private const val MAX_CHARS = 8_000
     }
@@ -131,7 +122,6 @@ class GetSymbolInfoTool(private val project: Project) : AICodingAgentTool {
         }
     }
 
-    /** 1-based line containing [offset], counted the same way [LineRange] splits the file. */
     private fun lineOf(text: String, offset: Int): Int {
         var line = 1
         for (i in 0 until offset.coerceIn(0, text.length)) {

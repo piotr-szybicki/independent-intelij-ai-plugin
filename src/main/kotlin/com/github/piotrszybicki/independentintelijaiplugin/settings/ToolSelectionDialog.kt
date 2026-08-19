@@ -13,30 +13,16 @@ import java.awt.BorderLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-/**
- * Picks which built-in tools a request carries.
- *
- * Its own dialog rather than a list on the settings page: thirty-odd checkboxes crowd out
- * everything else there, and the choice is one made occasionally and then left alone. Nothing is
- * saved here -- [selectedTools] is read by the caller, which decides what to do with it.
- */
 class ToolSelectionDialog(project: Project?, selected: Set<String>) : DialogWrapper(project) {
 
     private val boxes: Map<String, JBCheckBox> =
         ToolCatalog.entries.associate { it.name to JBCheckBox(it.name, it.name in selected) }
 
-    /**
-     * The per-category box in each group header, which ticks and unticks the group.
-     *
-     * Plain rather than tri-state: a half-filled group reads as unticked, and clicking it fills the
-     * group, which is the only thing anyone wants from it.
-     */
     private val masters: Map<ToolCategory, JBCheckBox> =
         ToolCategory.entries.associateWith { JBCheckBox(it.displayName) }
 
     private val summary = JBLabel()
 
-    /** What is ticked right now. Read after [showAndGet] returns true. */
     val selectedTools: Set<String>
         get() = boxes.filterValues { it.isSelected }.keys
 
@@ -86,12 +72,6 @@ class ToolSelectionDialog(project: Project?, selected: Set<String>) : DialogWrap
         }
     }
 
-    /**
-     * Listens for clicks rather than for state.
-     *
-     * `setSelected` fires no ActionEvent, so a group box filling its children -- and children
-     * refreshing their group box -- cannot set the other off again in a loop.
-     */
     private fun wireListeners() {
         masters.forEach { (category, master) ->
             master.addActionListener {

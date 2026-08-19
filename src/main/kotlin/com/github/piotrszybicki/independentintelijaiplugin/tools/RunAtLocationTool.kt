@@ -13,35 +13,14 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * The editor gutter's Run button, as a tool.
- *
- * That green arrow is not "run this test" -- it asks every registered `RunConfigurationProducer`
- * what it can build from the element under the caret, takes the best answer, and runs it as a
- * *temporary* configuration. This does the same thing from a file and line, which is what makes it
- * possible to run a test that has no saved configuration: [RunConfigurationTool] can only launch
- * what already exists, and most test classes never get an entry until someone clicks the gutter.
- *
- * The producers themselves come from whatever plugins the IDE has -- JUnit, Gradle, pytest. None of
- * them are referenced here, so this needs no extra plugin dependency and degrades to "nothing
- * runnable here" in an IDE that has no producer for the language in question.
- *
- * `debug` picks the gutter's *other* button. The configuration a producer makes is executor-neutral,
- * so debugging it is the same launch with [com.intellij.execution.executors.DefaultDebugExecutor]
- * instead -- which is what lets a test that has no saved configuration be stopped in at all.
- * [StartDebugConfigurationTool] can only debug what already exists, and a test class just written
- * has nothing.
- */
 class RunAtLocationTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
-        /** Enough to show what else the producers offered without burying the result. */
         private const val MAX_ALTERNATIVES = 4
     }
 
     private val runner = ConfigurationRunner(project)
 
-    /** Same as [RunConfigurationTool]: the process outlives this thread, in the IDE's Run window. */
     override val interruptible = false
 
     override val name = "run_at_location"
@@ -160,17 +139,10 @@ class RunAtLocationTool(private val project: Project) : AICodingAgentTool {
     private class Produced(
         val settings: RunnerAndConfigurationSettings,
         val typeName: String,
-        /** True when a saved configuration already covered this location and was used as-is. */
         val reused: Boolean,
         val alternatives: List<String>,
     )
 
-    /**
-     * Asks the platform what it can run at [element].
-     *
-     * On the EDT because that is where the gutter action does it and some producers assume it, and
-     * inside a read action because they all walk PSI.
-     */
     private fun produce(element: PsiElement): Produced? {
         var result: Produced? = null
         ApplicationManager.getApplication().invokeAndWait {
@@ -179,7 +151,6 @@ class RunAtLocationTool(private val project: Project) : AICodingAgentTool {
         return result
     }
 
-    /** The body of [produce]; separate only so it runs inside a read action without nesting. */
     private fun ask(element: PsiElement): Produced? {
         val location = PsiLocation.fromPsiElement(project, element) ?: return null
         val context = ConfigurationContext.createEmptyContextForLocation(location)

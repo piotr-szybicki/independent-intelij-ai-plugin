@@ -16,23 +16,12 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Reports what the IDE's own analysis thinks is wrong with a file -- unresolved references, type
- * errors, failed inspections.
- *
- * This is the edit-verify loop, and the reason it is worth having an agent inside the IDE rather
- * than driving one from a terminal: the answer comes from the same analysis that draws the squiggles,
- * in milliseconds, against the in-memory document. Building through run_shell_command would take
- * seconds, need an approval, and read the file off disk -- where the edits made this session have
- * not been saved yet.
- */
 class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_MAX_PROBLEMS = 100
         private const val MAX_MAX_PROBLEMS = 500
 
-        /** Inspection messages can carry a whole HTML explanation; the first line is the useful part. */
         private const val MAX_DESCRIPTION_CHARS = 300
 
         private val SEVERITIES = mapOf(
@@ -122,7 +111,6 @@ class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
         }
     }
 
-    /** A problem from either analysis path, with the 1-based coordinates the other tools speak. */
     private class Problem(
         val severity: HighlightSeverity,
         val line: Int,
@@ -130,16 +118,6 @@ class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
         val description: String,
     )
 
-    /**
-     * Gets the file's problems, preferring the highlights the editor's own daemon has already
-     * computed.
-     *
-     * The fallback, CodeSmellDetector, is the platform's on-demand "analyse this file now" entry
-     * point, but it asserts it was called from the UI thread -- it opens a modal progress dialog --
-     * so it has to be hopped onto the EDT, and the user sees that dialog every time. Reading the
-     * daemon's results costs neither, which matters because this tool is meant to be called after
-     * every edit. The daemon only has results for files open in an editor, hence the fallback.
-     */
     private fun collect(vf: VirtualFile, minSeverity: HighlightSeverity): List<Problem> {
         cachedHighlights(vf, minSeverity)?.let { return it }
 
@@ -158,10 +136,6 @@ class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
         return result.map { Problem(it.severity, it.startLine + 1, it.startColumn + 1, describe(it.description)) }
     }
 
-    /**
-     * The daemon's highlights for [vf], or null when it has not finished analysing the file -- which
-     * is not the same as the file having no problems, and must not be reported as such.
-     */
     private fun cachedHighlights(vf: VirtualFile, minSeverity: HighlightSeverity): List<Problem>? =
         ReadAction.computeBlocking<List<Problem>?, RuntimeException> {
             val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking null

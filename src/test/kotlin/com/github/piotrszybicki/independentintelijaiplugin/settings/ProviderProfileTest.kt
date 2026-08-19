@@ -4,13 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-/**
- * What the settings page reads out of an endpoint URL.
- *
- * Worth pinning down in both directions: getting a detection wrong silently reconfigures a working
- * endpoint the moment its URL is touched, and failing to detect one leaves the user assembling the
- * same three settings by hand that the URL already spelled out.
- */
 class ProviderProfileTest {
 
     @Test
@@ -39,10 +32,6 @@ class ProviderProfileTest {
         assertEquals(AuthScheme.BEARER, profile.authScheme)
     }
 
-    /**
-     * The setting would otherwise read as applied and do nothing: no thinking field is sent on this
-     * protocol at all, because too many of the servers that speak it reject one.
-     */
     @Test
     fun `leaves thinking to the provider on Chat Completions`() {
         val profile = ProviderProfile.detect("https://api.openai.com/v1/chat/completions")!!
@@ -50,7 +39,6 @@ class ProviderProfileTest {
         assertEquals(ThinkingMode.PROVIDER_DEFAULT, profile.thinking)
     }
 
-    /** A host with no path to go on still resolves, so a half-typed URL settles somewhere sensible. */
     @Test
     fun `falls back to a known host's usual API when the path says nothing`() {
         val profile = ProviderProfile.detect("https://api.anthropic.com/")!!
@@ -59,10 +47,6 @@ class ProviderProfileTest {
         assertEquals(AuthScheme.X_API_KEY, profile.authScheme)
     }
 
-    /**
-     * The one thing discovery must not guess at. A gateway is free to want either header, and
-     * overwriting the user's answer would break a setup that works.
-     */
     @Test
     fun `says nothing about the token header of an unrecognised host`() {
         val profile = ProviderProfile.detect("https://gateway.internal.example/v1/responses")!!
@@ -78,7 +62,6 @@ class ProviderProfileTest {
         assertNull(ProviderProfile.detect(""))
     }
 
-    /** Hosts arrive from a text field, so nothing may depend on how they were typed. */
     @Test
     fun `matches hosts regardless of case or surrounding space`() {
         val profile = ProviderProfile.detect("  https://API.ANTHROPIC.COM/v1/messages  ")!!

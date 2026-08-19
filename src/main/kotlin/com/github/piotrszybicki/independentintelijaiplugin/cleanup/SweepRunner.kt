@@ -8,13 +8,6 @@ import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 
-/**
- * Runs a [CommentSweep] in the background and says what happened.
- *
- * Shared by the three comment actions, which differ only in what they tell the user afterwards. A
- * sweep that throws -- a database that cannot be reached, most likely -- reports the message rather
- * than leaving it in `idea.log`: the user pressed a menu item and is owed an answer either way.
- */
 internal object SweepRunner {
 
     private const val NOTIFICATION_GROUP = "AICodingAgent.Cleanup"
@@ -59,12 +52,6 @@ internal object SweepRunner {
             .notify(project)
     }
 
-    /**
-     * The tail every summary ends with: which files were left alone, and that Undo takes it back.
-     *
-     * Read-only, or changed between the scan and the write -- either way the file still holds what
-     * it held, and naming it is the difference between a warning and a mystery.
-     */
     fun footer(report: CommentSweep.Report): List<String> {
         val lines = mutableListOf<String>()
         if (report.skipped.isNotEmpty()) {

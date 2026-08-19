@@ -5,11 +5,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.xdebugger.XDebuggerManager
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Blocks until the debugger stops -- at a breakpoint, or on a step -- and reports where it stopped
- * along with the variables in scope there. The waiting and reading themselves live in
- * [DebuggerPause], shared with [DebuggerActionTool].
- */
 class AwaitBreakpointTool(private val project: Project) : AICodingAgentTool {
 
     companion object {

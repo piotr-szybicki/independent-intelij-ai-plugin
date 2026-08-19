@@ -5,16 +5,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Which comments the sweep takes, and what the file looks like once they are gone.
- *
- * The two things worth pinning are the boundary -- a line comment or a plain block comment is not
- * documentation and must survive -- and that a removed comment leaves no scar: no blank indented
- * line where it stood, no doubled space where it sat inline.
- */
 class JavadocCommentsTest {
 
-    /** Applies the removals the sweep would make, as it does: back to front. */
     private fun strip(source: String, onlyBlank: Boolean = false): String {
         val comments = Regex("""/\*\*.*?\*/""", RegexOption.DOT_MATCHES_ALL).findAll(source)
         var result = source

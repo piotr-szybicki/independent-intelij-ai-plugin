@@ -7,17 +7,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Covers where the cache breakpoints land.
- *
- * Both invariants here fail in ways nothing local would catch: too many breakpoints is a request the
- * API rejects, and a marker left on the live history is a leak that only shows up several turns
- * later, once the count has crept past the limit.
- */
 class AICodingAgentClientCacheTest {
 
     companion object {
-        /** The API's ceiling of four, minus the one the system prompt always carries. */
         private const val MAX_MESSAGE_BREAKPOINTS = 2
     }
 
@@ -59,7 +51,6 @@ class AICodingAgentClientCacheTest {
         assertEquals(MAX_MESSAGE_BREAKPOINTS, marked.sumOf { it.breakpoints() })
     }
 
-    /** One message cannot be two breakpoints, however many blocks it holds. */
     @Test
     fun `marks once when a single message covers the lookback`() {
         val messages = listOf(message("user", 50))
@@ -69,11 +60,6 @@ class AICodingAgentClientCacheTest {
         assertEquals(1, marked.single().breakpoints())
     }
 
-    /**
-     * A wide last message is the reason the second breakpoint exists, not a reason to skip it: the
-     * turn that answers several tool calls at once is what puts the tail out of the previous
-     * request's reach.
-     */
     @Test
     fun `still marks an older message when the last one covers the lookback alone`() {
         val messages = listOf(message("user", 2), message("assistant", 2), message("user", 20))
@@ -95,12 +81,6 @@ class AICodingAgentClientCacheTest {
         assertTrue(content[2].asJsonObject.has("cache_control"))
     }
 
-    /**
-     * The tail mark is read back by the next request of the same agentic loop, seconds away, and is
-     * superseded by the mark the next request places. Five minutes covers that; an hour would be
-     * paid for at twice the write price and collected on by nobody. What carries the conversation
-     * across the gap between turns is the lookback mark behind it, which keeps the hour.
-     */
     @Test
     fun `keeps the tail for the default five minutes`() {
         val marked = AICodingAgentClient.withCacheBreakpoints(listOf(message("user", 1)))
@@ -110,18 +90,6 @@ class AICodingAgentClientCacheTest {
         assertEquals("5m", control.get("ttl").asString)
     }
 
-    /**
-     * The API reads a request as `tools`, then `system`, then `messages`, and rejects it outright if
-     * a longer TTL turns up after a shorter one:
-     *
-     * > a ttl='1h' cache_control block must not come after a ttl='5m' cache_control block
-     *
-     * The marks used to be the other way round -- five minutes on the lookback against an hour on
-     * the tail, on the reasoning that the lookback is superseded within the same turn and an hour's
-     * write price is wasted on it -- which is that arrangement exactly. Every conversation deep
-     * enough to place both marks failed, the failure was the whole turn rather than the caching, and
-     * nothing before the round trip said so. Hence the invariant as well as the two values.
-     */
     @Test
     fun `never lets a ttl grow from one breakpoint to the next`() {
         val messages = (1..10).map { message("user", 4) }
@@ -144,7 +112,6 @@ class AICodingAgentClientCacheTest {
         }
     }
 
-    /** Longer keeps rank higher. A mark may only be followed by one of the same rank or lower. */
     private fun rank(ttl: String): Int = when (ttl) {
         "1h" -> 2
         "5m" -> 1
@@ -156,10 +123,6 @@ class AICodingAgentClientCacheTest {
         assertTrue(AICodingAgentClient.withCacheBreakpoints(emptyList()).isEmpty())
     }
 
-    /**
-     * A thinking block has no `cache_control` field, and marking one is rejected with "Extra inputs
-     * are not permitted" -- which fails the whole request, not just the caching.
-     */
     @Test
     fun `never marks a thinking block`() {
         val messages = listOf(
@@ -175,7 +138,6 @@ class AICodingAgentClientCacheTest {
         assertFalse(content[2].asJsonObject.has("cache_control"))
     }
 
-    /** An interrupted turn can leave an assistant message that is nothing but thinking. */
     @Test
     fun `falls back to an older message when the last one cannot be marked`() {
         val messages = listOf(
@@ -214,7 +176,6 @@ class AICodingAgentClientCacheTest {
         assertEquals(setOf("toolu_1"), resultIds(repaired.last()))
     }
 
-    /** The results must be in the message straight after, so a partial answer is merged into it. */
     @Test
     fun `merges into the existing results rather than inserting a message`() {
         val messages = listOf(
@@ -241,7 +202,6 @@ class AICodingAgentClientCacheTest {
         assertEquals(messages, repaired)
     }
 
-    /** A user turn typed after an interrupted tool call is not an answer to it. */
     @Test
     fun `does not count an unrelated user message as an answer`() {
         val messages = listOf(
@@ -311,7 +271,6 @@ class AICodingAgentClientCacheTest {
     private fun ChatMessage.breakpoints(): Int =
         content.count { it.isJsonObject && it.asJsonObject.has("cache_control") }
 
-    /** The TTL of this message's single breakpoint. */
     private fun ChatMessage.ttl(): String =
         content.first { it.isJsonObject && it.asJsonObject.has("cache_control") }
             .asJsonObject.getAsJsonObject("cache_control").get("ttl").asString

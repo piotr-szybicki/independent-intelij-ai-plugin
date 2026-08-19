@@ -13,14 +13,6 @@ import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.time.Duration
 
-/**
- * Speaks to a remote server over the Streamable HTTP transport: every message is a POST, and the
- * reply comes back either as one JSON object or as an SSE stream the response is picked out of.
- *
- * Only the current transport is implemented, not the deprecated HTTP+SSE one that opened a separate
- * `/sse` channel for replies -- servers still on that will fail at the handshake rather than
- * misbehave later.
- */
 class McpHttpTransport(private val config: McpServerConfig) : McpTransport {
 
     companion object {
@@ -35,14 +27,9 @@ class McpHttpTransport(private val config: McpServerConfig) : McpTransport {
     private val gson = Gson()
     private val url = config.url.orEmpty()
 
-    /**
-     * Handed out by the server at initialize and required on every request after it. Servers that
-     * keep no per-client state never send one, so its absence is not an error.
-     */
     @Volatile
     private var sessionId: String? = null
 
-    /** Echoed back on later requests once the handshake has agreed on it, as the spec requires. */
     @Volatile
     var protocolVersion: String? = null
 
@@ -110,13 +97,6 @@ class McpHttpTransport(private val config: McpServerConfig) : McpTransport {
         }
     }
 
-    /**
-     * Pulls the response with the matching id out of an SSE stream.
-     *
-     * The stream can carry progress notifications and, on servers that use it as a general channel,
-     * messages for other requests, so events are skipped until the id lines up. Returning closes the
-     * stream, which matters: the server may otherwise hold it open indefinitely.
-     */
     private fun readEventStream(reader: BufferedReader, id: Int): JsonObject {
         val data = StringBuilder()
 

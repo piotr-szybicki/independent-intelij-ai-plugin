@@ -7,17 +7,6 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.project.Project
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Deletes a file outright, for when the file itself is the thing that should go -- [SafeDeleteTool]
- * removes a single declaration and leaves the file behind.
- *
- * Refuses directories. A recursive directory delete is the one call here that could wipe out work
- * the session never looked at, and the model can always delete the files it actually means to.
- *
- * Note this is the one tool whose effect the Approve/Revert bar cannot undo: the change session
- * tracks document text, and a deleted file has no document left to restore. The platform's Local
- * History does keep the contents, which is what the result points the user at.
- */
 class DeleteFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "delete_file"

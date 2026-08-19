@@ -33,18 +33,6 @@ import java.awt.Graphics
 import java.awt.Point
 import java.awt.Rectangle
 
-/**
- * Paints the session's changes the way a diff does: the current lines get a full-width green
- * background, and above each change sits a band carrying the lines it replaced in red, plus Accept
- * and Reject buttons for that one change.
- *
- * The removed text no longer exists in the document, so it cannot be highlighted -- it is rendered
- * as a block inlay instead, which is also what gives the buttons somewhere to live. Every hunk gets
- * a band, including pure insertions, so there is always something to click.
- *
- * Colors come from [DiffColors] via the active editor scheme, so this follows the user's theme
- * instead of hardcoding green and red.
- */
 class InlineDiffDisplay(
     private val project: Project,
     private val onAccept: (VirtualFile, Hunk) -> Unit,
@@ -60,7 +48,6 @@ class InlineDiffDisplay(
         val inlays: List<Inlay<*>>,
     )
 
-    /** The editor whose cursor we last overrode, so it can be handed back on the way out. */
     private var cursorOwner: EditorEx? = null
 
     init {
@@ -83,7 +70,6 @@ class InlineDiffDisplay(
         )
     }
 
-    /** The button under [point], if the pointer is over one at all. */
     private fun actionAt(editor: Editor, point: Point): Pair<HunkBandRenderer, HunkBandRenderer.Action>? {
         val inlay = editor.inlayModel.getElementAt(point) ?: return null
         val renderer = inlay.renderer as? HunkBandRenderer ?: return null
@@ -216,14 +202,6 @@ class InlineDiffDisplay(
         clearAll()
     }
 
-    /**
-     * Draws one hunk's band: a row of Accept/Reject buttons, then the lines this hunk replaced on
-     * the deleted-diff background, in the editor's own font so they line up with the real code.
-     *
-     * The button rectangles are recorded during painting, in coordinates relative to the band, and
-     * [hitTest] reads them back. Painting is the only place the metrics are known, so a band that
-     * has never been shown on screen simply has nothing to hit.
-     */
     private class HunkBandRenderer(
         val file: VirtualFile,
         val hunk: Hunk,

@@ -41,7 +41,6 @@ class SafeDeleteTool(private val project: Project) : AICodingAgentTool {
     }
 
     private data class DeleteInfo(
-        /** The file holding the *declaration*, which is not necessarily the one the caller named. */
         val file: VirtualFile,
         val oldText: String,
         val newText: String,

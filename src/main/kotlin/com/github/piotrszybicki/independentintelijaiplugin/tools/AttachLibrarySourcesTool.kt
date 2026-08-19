@@ -12,20 +12,6 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.ActionCallback
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * The "Download Sources" button from the decompiled-file banner, as a tool.
- *
- * Reached reflectively on purpose. `AttachSourcesProvider` lives in the Java plugin, so naming its
- * type would mean depending on `com.intellij.modules.java` and refusing to load in PyCharm,
- * WebStorm, GoLand and Rider -- the same trade this plugin declines everywhere else. Only the
- * provider interface needs reflection: the extension point lookup, the library entries and the
- * returned [ActionCallback] are all platform types, and an unregistered point simply yields no
- * providers, which is the correct answer in an IDE without Java support.
- *
- * Never automatic. The action goes to the network -- a Gradle re-resolve, or in the case of the
- * bundled internet provider a hash lookup against a third-party service -- and it rewrites the
- * project's library roots. Both are the user's call, so this asks first.
- */
 class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
@@ -36,7 +22,6 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         private const val MAX_TIMEOUT_SECONDS = 600
     }
 
-    /** The download continues in the IDE whatever this thread does; stopping only stops the waiting. */
     override val interruptible = false
 
     override val name = "attach_library_sources"
@@ -154,12 +139,6 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
 
     private class AttachAction(val label: String, val target: Any)
 
-    /**
-     * The providers, if the extension point exists at all.
-     *
-     * `extensionsIfPointIsRegistered` is what makes this safe in an IDE with no Java plugin: the
-     * point is simply absent and the list is empty, rather than an exception.
-     */
     private fun findActions(
         entries: List<LibraryOrderEntry>,
         candidate: LibraryClasses.Candidate,
@@ -234,7 +213,6 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         }
     }
 
-    /** Blocks the agent thread on the EDT dialog: nothing downloads until the user has decided. */
     private fun confirm(actionLabel: String, library: String, timeoutSeconds: Int): Boolean {
         var choice = -1
         ApplicationManager.getApplication().invokeAndWait {
@@ -254,13 +232,6 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         return choice == 0
     }
 
-    /**
-     * Calls [name] on [target] by name and arity.
-     *
-     * Matched on arity rather than parameter types because the provider interface is one this plugin
-     * cannot name, and its action implementations are frequently package-private inner classes --
-     * whose public interface methods are still unreachable without forcing accessibility.
-     */
     private fun call(target: Any, name: String, arity: Int, vararg args: Any?): Any? {
         val method = target.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == arity }
             ?: throw NoSuchMethodException("$name/$arity on ${target.javaClass.name}")

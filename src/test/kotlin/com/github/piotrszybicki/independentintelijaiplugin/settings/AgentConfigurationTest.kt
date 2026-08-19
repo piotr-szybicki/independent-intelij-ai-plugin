@@ -6,11 +6,6 @@ import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * The file is hand-edited and decides where every request goes, so what it accepts and what it
- * refuses are both worth pinning down: a field silently read as something else is a chat running
- * against the wrong provider, which nothing downstream would report as a mistake.
- */
 class AgentConfigurationTest {
 
     private val minimal = """
@@ -36,7 +31,6 @@ class AgentConfigurationTest {
         assertEquals("MY_TOKEN", configuration.tokenEnvVar)
     }
 
-    /** The URL says the rest, so an entry that leaves them out is still a complete one. */
     @Test
     fun `fills the header and protocol in from the URL when they are not given`() {
         val configuration = AgentConfiguration.parseAll(minimal).single()
@@ -46,7 +40,6 @@ class AgentConfigurationTest {
         assertEquals(AgentConfiguration.DEFAULT_API_VERSION, configuration.apiVersion)
     }
 
-    /** The list is what the chat window's model dropdown offers, so it is never empty. */
     @Test
     fun `a configuration with one model offers a list of one`() {
         assertEquals(listOf("claude-sonnet-5"), AgentConfiguration.parseAll(minimal).single().models)
@@ -67,7 +60,6 @@ class AgentConfigurationTest {
         assertEquals(listOf("claude-sonnet-5", "claude-opus-5"), configuration.models)
     }
 
-    /** Writing both and forgetting to repeat the default in the list is the obvious way to get it wrong. */
     @Test
     fun `keeps a default that is not in the list, at the front of it`() {
         val configuration = AgentConfiguration.parseAll(
@@ -90,10 +82,6 @@ class AgentConfigurationTest {
         }
     }
 
-    /**
-     * The two dropdowns are chosen independently and the model is remembered application-wide, so a
-     * name the newly picked provider has never heard of has to fall back rather than be sent.
-     */
     @Test
     fun `selects a model only when the configuration offers it`() {
         val configuration = AgentConfiguration.parseAll(
@@ -121,10 +109,6 @@ class AgentConfigurationTest {
         assertEquals(AgentConfiguration.DEFAULT_REQUEST_TIMEOUT_SECONDS, configuration.requestTimeoutSeconds)
     }
 
-    /**
-     * Nothing is sent on Chat Completions whatever the field says, so defaulting it to on there
-     * would be a value that reads as applied and does nothing.
-     */
     @Test
     fun `defaults thinking to the provider on a protocol that cannot carry it`() {
         val configuration = AgentConfiguration.parseAll(
@@ -168,7 +152,6 @@ class AgentConfigurationTest {
         assertEquals(300, configuration.requestTimeoutSeconds)
     }
 
-    /** Zero would be a request that times out before it is sent, so it is reported like a bad cap. */
     @Test
     fun `refuses a request timeout below one second`() {
         val zero = """
@@ -181,7 +164,6 @@ class AgentConfigurationTest {
         assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll(zero) }
     }
 
-    /** A reply cap of zero is a chat that cannot answer, so it is reported rather than replaced. */
     @Test
     fun `refuses a reply limit below one`() {
         val zero = """
@@ -200,7 +182,6 @@ class AgentConfigurationTest {
         assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll(unknown) }
     }
 
-    /** Written as a JSON boolean it reads the way it looks, which is how someone will write it. */
     @Test
     fun `reads thinking written as a boolean`() {
         val configuration = AgentConfiguration.parseAll(
@@ -239,7 +220,6 @@ class AgentConfigurationTest {
         assertEquals(mapOf("X-Tenant" to "acme"), configuration.extraHeaders)
     }
 
-    /** Present and empty is how the file says "leave the header off", which some gateways need. */
     @Test
     fun `an empty anthropic-version means the header is not sent`() {
         val configuration = AgentConfiguration.parseAll(
@@ -274,7 +254,6 @@ class AgentConfigurationTest {
         assertNull(AgentConfiguration.envVarName("$"))
     }
 
-    /** A variable that is not set reads as blank, which is what turns into a message naming it. */
     @Test
     fun `an unset variable leaves the token blank`() {
         val configuration = AgentConfiguration.parseAll(minimal).single()
@@ -290,7 +269,6 @@ class AgentConfigurationTest {
         assertEquals("sk-ant-0123", configuration.resolvedToken)
     }
 
-    /** What is left after copying the array out of a larger file, so it is read the same way. */
     @Test
     fun `reads a bare array as well as the wrapper`() {
         val bare = """
@@ -335,7 +313,6 @@ class AgentConfigurationTest {
         assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll("model: gpt-5") }
     }
 
-    /** What the starter file is written from, so the file created on first open has to read back. */
     @Test
     fun `the starter file parses back into the configurations it was written from`() {
         val rendered = AgentConfiguration.render(AgentConfiguration.STARTER)
@@ -362,7 +339,6 @@ class AgentConfigurationTest {
         assertNull(AuthScheme.parse("x-token"))
     }
 
-    /** "openai" alone is two of the three, and guessing between them is a 400 every time. */
     @Test
     fun `protocols are read by wire name or short form, but never ambiguously`() {
         assertEquals(WireProtocol.OPENAI_RESPONSES, WireProtocol.parse("openai-responses"))
@@ -372,7 +348,6 @@ class AgentConfigurationTest {
         assertNull(WireProtocol.parse("openai"))
     }
 
-    /** Every name the file writes has to read back, or the starter file would not survive itself. */
     @Test
     fun `every thinking and effort value round-trips through its file name`() {
         ThinkingMode.entries.forEach { assertEquals(it, ThinkingMode.parse(it.fileName)) }

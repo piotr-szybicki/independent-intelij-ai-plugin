@@ -3,14 +3,6 @@ package com.github.piotrszybicki.independentintelijaiplugin.settings
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-/**
- * The precedence behind [AgentConfiguration.fallback] -- what a project with no usable configuration
- * file runs on. Worth pinning down, because getting it wrong is invisible: requests keep working,
- * they just go somewhere other than where the user thinks they told them to.
- *
- * Note that this decides nothing for a configuration the user picked: an entry's URL is its own, and
- * the environment does not replace it. See [com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint.from].
- */
 class EndpointUrlTest {
 
     private val configured = "https://saved.example/v1/messages"
@@ -26,14 +18,12 @@ class EndpointUrlTest {
         assertEquals(environment, EndpointUrl.resolve(environment, configured))
     }
 
-    /** Blank is not an answer from either: an empty variable means unset, not "no endpoint". */
     @Test
     fun `treats blank as unset at every level`() {
         assertEquals(configured, EndpointUrl.resolve("", configured))
         assertEquals(configured, EndpointUrl.resolve("  ", configured))
     }
 
-    /** The same fallback the configuration file's default carries, so nothing is ever unusable. */
     @Test
     fun `falls back to Anthropic when nothing is configured at all`() {
         assertEquals(

@@ -2,15 +2,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.skills
 
 import java.io.File
 
-/**
- * One configured directory to look for skills in.
- *
- * [directory] is null when the line could not be turned into a path at all, in which case [error]
- * says why. A root that simply does not exist is not an error here -- the defaults name locations
- * most projects will not have, and a listing that complained about every one of them would be noise.
- */
 data class SkillRoot(
-    /** Exactly what the user typed, so a message about this root names the line they wrote. */
     val configured: String,
     val directory: File?,
     val error: String? = null,
@@ -18,30 +10,14 @@ data class SkillRoot(
 
     companion object {
 
-        /** Same convention as the MCP server field, so a path can name a variable instead of a home directory. */
         private val ENV_REFERENCE = Regex("""\$\{env:([A-Za-z_][A-Za-z0-9_]*)}""")
 
-        /**
-         * What a fresh install looks for: the standard project location, a short one for projects
-         * that prefer it, and the per-user directory shared across every project.
-         *
-         * The last is outside any workspace on purpose -- skills a developer carries between
-         * projects are the ones worth having by default.
-         */
         val DEFAULT_PATHS = """
             .claude/skills
             .skills
             ~/.claude/skills
         """.trimIndent()
 
-        /**
-         * Reads the configured paths, one per line.
-         *
-         * Relative paths are resolved against [projectBase] and absolute ones are taken as they are,
-         * which is what lets a root sit anywhere on disk. Duplicates are dropped by canonical path
-         * rather than by text, so naming the same directory twice -- directly and through a symlink,
-         * or as `.skills` and as an absolute path -- lists its skills once.
-         */
         fun parseAll(text: String, projectBase: File?): List<SkillRoot> {
             val seen = mutableSetOf<String>()
             return text.lines()

@@ -7,44 +7,22 @@ import com.intellij.openapi.diagnostic.Logger
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
-/** One tool as the server describes it, before it is adapted to the Messages API's tool shape. */
 data class McpToolDescriptor(
     val name: String,
     val description: String,
     val inputSchema: JsonObject,
 )
 
-/**
- * A connection to one MCP server: the handshake, the tool list, and tool calls.
- *
- * Deliberately blocking. Every caller is either the agent's pooled thread, which has nothing else
- * to do until the tool answers, or a background task in settings -- so the asynchrony the protocol
- * allows for would buy nothing here and cost a threading model to reason about.
- */
 class McpClient(private val config: McpServerConfig, private val workingDir: File?) : AutoCloseable {
 
     companion object {
         private val LOG = Logger.getInstance(McpClient::class.java)
         private val GSON = Gson()
 
-        /**
-         * The revision this client implements. A server that speaks an older one answers with its
-         * own version and the exchange continues -- the parts used here have not changed across
-         * revisions -- so the value is a preference rather than a requirement.
-         */
         private const val PROTOCOL_VERSION = "2025-06-18"
 
-        /** Tool results go straight into the conversation, where an unbounded one is expensive. */
         private const val MAX_RESULT_CHARS = 30_000
 
-        /**
-         * Flattens a `tools/call` result into the text the Messages API wants back.
-         *
-         * Only text survives as text; the other content types are named and measured instead. That
-         * is a real limitation -- an MCP server returning an image has it described rather than
-         * seen -- but the alternative is threading image blocks through a tool_result, which the
-         * transcript and the history format are not built for.
-         */
         fun renderResult(result: JsonObject): String {
             val rendered = result.getAsJsonArray("content").orEmpty()
                 .mapNotNull { block -> (block as? JsonObject)?.let(::renderBlock) }
@@ -87,16 +65,9 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
     private val nextId = AtomicInteger(1)
     private var transport: McpTransport? = null
 
-    /** What the server called itself at the handshake; used in status messages, not for routing. */
     var serverInfo: String = config.name
         private set
 
-    /**
-     * Runs the handshake and returns everything the server offers.
-     *
-     * Every failure from here is an [McpException] naming the server, because the caller's job is
-     * to carry on with the servers that did work rather than to distinguish the causes.
-     */
     fun connect(): List<McpToolDescriptor> {
         val resolved = config.resolved()
         val timeout = resolved.timeoutSeconds * 1000L
@@ -152,7 +123,6 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
         transport = null
     }
 
-    /** Follows `nextCursor` to the end: a server with many tools returns them a page at a time. */
     private fun listTools(open: McpTransport, timeout: Long): List<McpToolDescriptor> {
         val tools = mutableListOf<McpToolDescriptor>()
         var cursor: String? = null

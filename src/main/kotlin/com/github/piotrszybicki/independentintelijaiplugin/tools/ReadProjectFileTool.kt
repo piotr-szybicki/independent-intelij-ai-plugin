@@ -10,7 +10,6 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodin
 class ReadProjectFileTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
-        /** Cap on a single slice. Hitting it means the requested range was too wide, not that the file is unreadable. */
         private const val MAX_CHARS = 100_000
     }
 

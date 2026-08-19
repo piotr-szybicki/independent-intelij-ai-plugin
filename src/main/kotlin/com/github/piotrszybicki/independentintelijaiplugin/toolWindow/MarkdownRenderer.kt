@@ -13,12 +13,6 @@ object MarkdownRenderer {
 
     fun toHtml(markdown: String): String = renderer.render(parser.parse(markdown)).trim()
 
-    /**
-     * Rewrites a line of `'''` into a ``` code fence. Markdown only knows backtick and tilde
-     * fences, but triple quotes are the easier thing to type, so questions written that way should
-     * still come out as code. Lines inside a backtick fence are left alone, so triple quotes that
-     * are part of the code itself (a Python docstring, say) survive untouched.
-     */
     fun normalizeQuoteFences(markdown: String): String {
         if (!markdown.contains("'''")) return markdown
         var inBacktickFence = false

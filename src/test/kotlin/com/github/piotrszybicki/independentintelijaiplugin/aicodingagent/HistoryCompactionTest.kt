@@ -7,27 +7,11 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Covers when compaction fires and what it leaves behind.
- *
- * Two of these guard things nothing local would otherwise catch. Eliding a `tool_result` into
- * something the next request cannot pair with its `tool_use` is a conversation the API refuses from
- * then on -- permanently, since the damage is written to the saved chat. And firing on a history
- * that is nowhere near the window would quietly throw away the model's working set on every turn,
- * which does not fail, it just makes the assistant worse.
- */
 class HistoryCompactionTest {
 
     companion object {
-        /** One tool result. Comfortably past the minimum below which a block is left alone. */
         private const val RESULT_CHARS = 20_000
 
-        /**
-         * Small enough that these fixtures cross the trigger without needing megabytes of them, and
-         * large enough that the protected tail still fits under the target -- otherwise a pass
-         * could not reach its target however much it dropped, and `stops once the estimate is back
-         * under target` would be asserting something impossible rather than something true.
-         */
         private const val WINDOW = 100_000
     }
 
@@ -329,7 +313,6 @@ class HistoryCompactionTest {
 
     // --- fixtures ---------------------------------------------------------------------------------
 
-    /** [turns] rounds of "the assistant asks for a tool, the user answers it". */
     private fun historyOf(turns: Int): MutableList<ChatMessage> {
         val history = mutableListOf(ChatMessage.text("user", "go"))
         for (i in 0 until turns) {
@@ -338,10 +321,6 @@ class HistoryCompactionTest {
         }
         return history
     }
-    /**
-     * [turns] rounds of "the user writes at length, the assistant answers at length", with no tool
-     * call anywhere in it -- a conversation tier 1 can do nothing with.
-     */
     private fun proseHistoryOf(turns: Int): MutableList<ChatMessage> {
         val history = mutableListOf<ChatMessage>()
         for (i in 0 until turns) {
@@ -351,7 +330,6 @@ class HistoryCompactionTest {
         return history
     }
 
-    /** The text of a message built by [ChatMessage.text], whose block carries `text` and not `content`. */
     private fun textOf(message: ChatMessage): String = message.content[0].asJsonObject.get("text").asString
 
 
@@ -371,7 +349,6 @@ class HistoryCompactionTest {
         })
     }
 
-    /** The text of the first `tool_result` in [history] -- the one a pass reaches first. */
     private fun oldestResult(history: List<ChatMessage>): String = contentOf(
         history.first { message ->
             message.content.any { it.asJsonObject.get("type")?.asString == "tool_result" }

@@ -6,12 +6,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Lists what is in a project directory -- the tool for orienting in an unfamiliar codebase.
- *
- * find_in_files can only answer questions phrased as text searches, so without this the only way to
- * see the project's shape was a shell `ls`, which costs an approval dialog and differs per platform.
- */
 class ListDirectoryTool(private val project: Project) : AICodingAgentTool {
 
     companion object {

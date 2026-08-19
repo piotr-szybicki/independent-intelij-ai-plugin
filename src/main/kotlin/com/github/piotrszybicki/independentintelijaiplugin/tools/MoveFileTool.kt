@@ -16,14 +16,6 @@ import com.intellij.refactoring.rename.RenameProcessor
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import java.io.File
 
-/**
- * Moves or renames a file, going through the refactoring engine rather than the file system so
- * imports and references across the project follow it -- the same reason [RenameSymbolTool] exists
- * instead of the model hand-editing every call site.
- *
- * A move and a rename are two separate refactorings, so a call that does both has to pick an order.
- * Whichever runs first leaves the file in an intermediate location, and that location must be free.
- */
 class MoveFileTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "move_file"

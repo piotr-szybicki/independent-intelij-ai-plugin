@@ -6,12 +6,6 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.project.Project
 
-/**
- * Reads back a comment a `// comment_id: N` marker stands for.
- *
- * Without it a swept file is unreadable in the way that matters: the code is all there, and every
- * word anyone wrote about why it is like that has become a number.
- */
 class GetCommentTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "get_comment"

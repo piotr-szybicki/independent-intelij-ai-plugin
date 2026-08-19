@@ -11,21 +11,12 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Search by name rather than by content -- the IDE's Go to Class / Go to File / Find Action, for
- * when the thing being looked for is known by what it is called.
- *
- * find_in_files answers "where does this text appear"; this answers "where does this thing live".
- * Classes go through the same contributors that back Go to Class, so whichever languages the IDE
- * has support for are covered without this plugin knowing about any of them.
- */
 class FindByNameTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private const val DEFAULT_MAX_RESULTS = 50
         private const val MAX_MAX_RESULTS = 200
 
-        /** Bounds the name scan on very large projects; the query filter runs over this many candidates. */
         private const val MAX_CANDIDATE_NAMES = 50_000
     }
 

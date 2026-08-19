@@ -12,19 +12,6 @@ import com.intellij.usageView.UsageViewLongNameLocation
 import com.intellij.usageView.UsageViewTypeLocation
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Go to Implementation, as a tool: who implements this interface, and what overrides this method.
- *
- * `find_usages` answers "where is this mentioned", which is a different question -- a call to
- * `execute()` on the interface is a usage, and the twenty classes that actually implement it are
- * not. Nothing else in the toolset could reach them.
- *
- * Built on [DefinitionsScopedSearch] rather than `ClassInheritorsSearch` and
- * `OverridingMethodsSearch` deliberately. Those two live in the Java plugin, so using them would
- * mean depending on `com.intellij.modules.java` and refusing to load in PyCharm, WebStorm, GoLand
- * and Rider. This one is platform, is what Ctrl+Alt+B uses, and covers both directions of the
- * question through whatever language support the IDE happens to have.
- */
 class FindImplementationsTool(private val project: Project) : AICodingAgentTool {
 
     companion object {

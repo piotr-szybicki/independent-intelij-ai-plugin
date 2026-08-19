@@ -16,13 +16,6 @@ import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Adds or removes a line breakpoint, so a debugging session can be set up from the chat instead of
- * the user being told which gutters to click.
- *
- * Breakpoints are the debugger's own state, not file content: they survive edits, are not part of
- * the change session, and Approve/Revert does not touch them.
- */
 class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
 
     override val name = "toggle_breakpoint"
@@ -132,10 +125,6 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
         return "Removed ${existing.size} breakpoint(s) at $path:$line ($what)."
     }
 
-    /**
-     * Matching on the file URL and line rather than asking per type: a line can hold breakpoints of
-     * kinds this call has no reason to know about, and removal should take all of them.
-     */
     private fun existingAt(manager: XBreakpointManager, vf: VirtualFile, line0: Int): List<XLineBreakpoint<*>> =
         ReadAction.computeBlocking<List<XLineBreakpoint<*>>, RuntimeException> {
             manager.allBreakpoints
@@ -143,10 +132,6 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
                 .filter { it.fileUrl == vf.url && it.line == line0 }
         }
 
-    /**
-     * The properties object is per breakpoint type, so the type argument has to be reunited with its
-     * own property type before the manager will take it.
-     */
     @Suppress("UNCHECKED_CAST")
     private fun addLineBreakpoint(
         manager: XBreakpointManager,

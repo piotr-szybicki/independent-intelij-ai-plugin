@@ -3,14 +3,6 @@ package com.github.piotrszybicki.independentintelijaiplugin.changes
 import com.google.gson.JsonObject
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Opens a [ChangeSessionService] capture window around a tool call, so any document the tool touches
- * gets its pre-change text recorded.
- *
- * The decorator is pure scoping -- it does not need to know which files the tool will edit, because
- * the service picks those up from the document events themselves. That is what lets it cover
- * `rename_symbol`, whose file set is only known once the refactoring runs.
- */
 class ChangeTrackingTool(
     private val delegate: AICodingAgentTool,
     private val session: ChangeSessionService,
@@ -33,7 +25,6 @@ class ChangeTrackingTool(
     }
 
     companion object {
-        /** Wraps every tool; the read-only ones simply never trigger a capture. */
         fun wrapAll(tools: List<AICodingAgentTool>, session: ChangeSessionService): List<AICodingAgentTool> =
             tools.map { ChangeTrackingTool(it, session) }
     }

@@ -15,35 +15,13 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-/**
- * Speaks to a server running as a local child process, over its stdin and stdout.
- *
- * The framing is one JSON message per line, so the wire handling is trivial; what needs care is
- * that stdout is a single stream carrying replies to every outstanding request interleaved with
- * the server's own notifications. So a reader thread owns the stream and hands each response to
- * whichever caller is waiting on that id, rather than callers reading the pipe themselves.
- *
- * The process's stderr is not part of the protocol -- it is where a server that failed to start
- * explains itself -- so it is drained on its own thread and the tail kept for the error message.
- */
 class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTransport {
 
     companion object {
         private val LOG = Logger.getInstance(McpStdioTransport::class.java)
 
-        /** Enough to carry a stack trace or a "command not found", not enough to grow unbounded. */
         private const val STDERR_TAIL_LINES = 40
 
-        /**
-         * Resolves what to actually exec.
-         *
-         * On Windows the launchers these configs are written around -- `npx`, `uvx`, `npm` -- are
-         * `.cmd` shims, and [ProcessBuilder] does not apply PATHEXT the way a shell does: handed
-         * `npx` it looks for a file with exactly that name, finds none, and reports the command as
-         * missing. Doing the PATHEXT walk here is what makes a config copied from a server's README
-         * work unchanged, and is preferable to wrapping everything in `cmd /c`, which would put the
-         * arguments through a second round of quoting.
-         */
         fun resolveExecutable(command: String): String {
             if (!SystemInfo.isWindows) return command
             if (command.contains('/') || command.contains('\\')) return command
@@ -190,7 +168,6 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
         pending.values.forEach { it.offer(failure) }
     }
 
-    /** What to say when the process is the problem, including whatever it printed on the way out. */
     private fun deathNote(): String? {
         if (process.isAlive) return null
         val tail = synchronized(stderrTail) { stderrTail.joinToString("\n") }.trim()

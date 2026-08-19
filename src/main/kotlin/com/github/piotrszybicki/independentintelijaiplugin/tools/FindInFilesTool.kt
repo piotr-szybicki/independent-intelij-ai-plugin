@@ -18,53 +18,17 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodin
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import com.github.piotrszybicki.independentintelijaiplugin.settings.FindInFilesConfig
 
-/**
- * Text search across the project -- the IDE's Find in Files, driven from the chat.
- *
- * Uses the platform's own engine rather than walking the file system: it honours the project's
- * excluded folders and, more importantly, searches documents rather than disk, so text the edit
- * tools have written but the user has not saved yet is found too. A hand-rolled grep would miss
- * exactly the edits made earlier in the same conversation.
- *
- * Complements find_usages, which resolves a symbol through the PSI. This one has no idea what the
- * text means -- use it for strings, comments, config keys, and anything that is not a declaration.
- *
- * Answers with locations and nothing else. It used to echo each matching line, which meant the query
- * came back once per hit alongside up to two hundred characters of the line around it -- a search
- * that found the same word in eighty places paid for eighty copies of it, and paid again on every
- * later turn, because a tool result stays in the conversation. A line number is what the model
- * actually acts on: it reads the file it decides to read, at the place this pointed it to.
- *
- * Three things bound the answer, in the order they bite:
- *  - phrases the project has blocked outright, per [FindInFilesConfig];
- *  - the number of files, which is what the caller sets and what usually stops a broad search;
- *  - [MAX_TOTAL_MATCHES], which nothing sets, for the query that finds a thousand hits inside the
- *    file limit.
- */
 class FindInFilesTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
         private val LOG = Logger.getInstance(FindInFilesTool::class.java)
 
-        /**
-         * Files, not matches. The old cap counted hits, which made "one match in each of five
-         * hundred files" and "five hundred matches in one file" the same size of answer when only
-         * the first is a search that has gone wrong. A hundred files is already more than a useful
-         * answer contains; past that the model needs a narrower query, not more of this one.
-         */
         private const val DEFAULT_MAX_FILES = 100
         private const val MAX_MAX_FILES = 100
 
-        /**
-         * The ceiling the file cap cannot enforce: a hundred files can hold any number of hits, and
-         * collecting them all is a search that never comes back. Generous enough that an ordinary
-         * search never reaches it, so hitting it reads as a fault in the query rather than as a
-         * limit worth tuning.
-         */
         private const val MAX_TOTAL_MATCHES = 2_000
     }
 
-    /** Whether the search ran out, and on which cap -- the summary says which one it was. */
     private enum class Limit { NONE, FILES, MATCHES }
 
     override val name = "find_in_files"
@@ -206,13 +170,6 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         return render(query, found, limit)
     }
 
-    /**
-     * The configured phrase that refuses [query], or null when the search may run.
-     *
-     * A section that will not parse blocks nothing rather than failing the search: the settings page
-     * is where a broken file gets reported, and a search that stopped working because of a stray
-     * comma somewhere else in the file would be a puzzle from inside the chat.
-     */
     private fun blockedBy(query: String): String? {
         val loaded = AgentConfigurations.getInstance(project).findInFiles()
         loaded.error?.let { LOG.warn("blocking no find_in_files query: $it") }

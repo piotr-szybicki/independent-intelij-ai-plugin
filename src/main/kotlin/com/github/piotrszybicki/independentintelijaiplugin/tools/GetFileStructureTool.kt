@@ -13,20 +13,6 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * The Structure tool window, as a tool: what is in a file and on which line, without reading it.
- *
- * Built on the platform's own structure view model rather than a PSI walk, for two reasons. It
- * already knows what counts as a member in each language -- a raw walk over named elements returns
- * imports, parameters and local variables, which is noise. And its presentable text is the rendered
- * signature, so a method comes back as `doThing(x: Int): String` rather than just a name.
- *
- * The line numbers are the point as much as the names are: they are what `read_project_file` takes
- * as a range and what `edit_file_lines` takes as a target, so an outline turns "read the whole file
- * to find one method" into "read fifteen lines". The same applies to `class_name`, where the file is
- * a dependency read through `read_library_class` -- a decompiled class is often thousands of lines,
- * and outlining it first is the difference between an API you can survey and a wall of text.
- */
 class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
@@ -198,28 +184,12 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         val entries: List<Entry>,
         val lineCount: Int,
         val truncated: Boolean,
-        /** False when the language contributes no structure view -- not the same as an empty file. */
         val supported: Boolean,
     )
 
-    /**
-     * A read action on the calling background thread, and deliberately *not* a hop onto the EDT.
-     *
-     * Kotlin's structure view renders each declaration's signature through the K2 Analysis API, and
-     * that API refuses to run on the UI thread -- it throws `Analysis is not allowed: Called in the
-     * EDT thread.` So building the model inside `invokeAndWait` made this tool fail for every single
-     * `.kt` file, which is most of the files it is pointed at. Nothing in [build] wants the EDT: the
-     * model is built from PSI and disposed without touching Swing.
-     */
     private fun compute(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? =
         ReadAction.computeBlocking<Outline?, RuntimeException> { build(psiFile, maxDepth, maxItems) }
 
-    /**
-     * Names the exception as well as quoting it: a bare `e.message` is empty for plenty of platform
-     * failures, which leaves the model with "could not outline Foo.kt" and nothing to act on. Capped
-     * because the Kotlin plugin's exceptions carry attachments -- whole file contents, module layout
-     * -- and dumping those into the transcript costs more than the outline was ever going to save.
-     */
     private fun describe(e: Exception): String {
         val message = e.message?.replace('\n', ' ')?.trim()?.takeIf { it.isNotEmpty() }
             ?: return e::class.java.simpleName
@@ -249,7 +219,6 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         }
     }
 
-    /** Returns true if [maxItems] cut the walk short. */
     private fun walk(
         elements: Array<TreeElement>,
         depth: Int,
@@ -294,10 +263,6 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         return start to end
     }
 
-    /**
-     * Line starts, indexed once so that resolving three hundred element offsets does not mean three
-     * hundred scans of a file that may be tens of thousands of lines after decompilation.
-     */
     private class Lines(text: String) {
         private val starts: IntArray
 
@@ -314,7 +279,6 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             }
         }
 
-        /** 1-based line containing [offset]. */
         fun lineAt(offset: Int): Int? {
             if (count == 0) return null
             val found = java.util.Arrays.binarySearch(starts, offset)

@@ -25,45 +25,19 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.Icon
 
-/**
- * Waiting for the debugger to stop, and reading what is in scope once it has. Shared by the tools
- * that wait for a breakpoint and the ones that step, so both report a pause identically.
- *
- * The debugger's APIs are all callback-driven and answered on its own threads, while a tool has to
- * hand back one finished string. So each stage here is a latch: wait for the pause, ask the frame
- * for its children, then ask every child to present itself. That is also why the timeouts are per
- * stage -- a debuggee that never arrives and a value whose getter hangs look identical otherwise.
- *
- * Every method blocks and must run off the EDT: these calls are explicitly not for the UI thread,
- * and blocking it would freeze the IDE the user is debugging in.
- */
 internal class DebuggerPause(private val project: Project) {
 
     companion object {
-        /** Budget for the frame to list its children once we are paused. */
         private const val CHILDREN_TIMEOUT_MILLIS = 10_000L
 
-        /** Budget for all the values to render themselves, in parallel. */
         private const val PRESENTATION_TIMEOUT_MILLIS = 10_000L
 
         private const val MAX_VARIABLES = 100
         private const val MAX_VALUE_CHARS = 300
 
-        /**
-         * Evaluated results get a longer leash than variables in scope: there are a hundred of the
-         * latter and one of the former, and a big value is often exactly what was being asked for.
-         */
         private const val MAX_EVALUATED_CHARS = 2_000
     }
 
-    /**
-     * Waits for a debug session to stop and returns it, or null on timeout.
-     *
-     * [trigger] runs once the listeners are in place -- stepping has to be issued from inside that
-     * window, because a step can complete before the call that started it has returned.
-     * [acceptAlreadyPaused] is for waiting on a breakpoint, where a session that is stopped right
-     * now is the answer; stepping wants the *next* stop, not the current one.
-     */
     fun awaitPause(
         timeoutMillis: Long,
         acceptAlreadyPaused: Boolean,
@@ -111,7 +85,6 @@ internal class DebuggerPause(private val project: Project) {
         }
     }
 
-    /** Where the session stopped, plus everything in scope there. */
     fun describe(session: XDebugSession): String {
         val position = session.currentPosition
         val where = if (position == null) {
@@ -148,13 +121,6 @@ internal class DebuggerPause(private val project: Project) {
 
     // --- evaluation -----------------------------------------------------------------------------
 
-    /**
-     * Evaluates [expression] against the frame [session] is stopped in, and renders the result the
-     * same way a variable in scope is rendered.
-     *
-     * The evaluator is the debugger's own, so the expression is whatever the debuggee's language
-     * accepts -- and, as in the Evaluate Expression dialog, calling a method really calls it.
-     */
     fun evaluate(session: XDebugSession, expression: String, timeoutMillis: Long): String {
         val frame = session.currentStackFrame
             ?: return "No stack frame is available at this stop, so there is nothing to evaluate against."
@@ -176,7 +142,6 @@ internal class DebuggerPause(private val project: Project) {
                 done.countDown()
             }
 
-            /** Malformed rather than failed -- a syntax error, before anything ran. */
             override fun invalidExpression(error: String) {
                 failure.set(error)
                 done.countDown()
@@ -270,7 +235,6 @@ internal class DebuggerPause(private val project: Project) {
         return Variables(present(snapshot), truncated = truncated.get())
     }
 
-    /** Every value renders itself asynchronously, so they are all asked at once and awaited together. */
     private fun present(
         values: List<Pair<String, XValue>>,
         maxValueChars: Int = MAX_VALUE_CHARS,
@@ -330,7 +294,6 @@ internal class DebuggerPause(private val project: Project) {
         }
     }
 
-    /** Flattens a rich presentation to plain text; the styling is for a tree this tool does not have. */
     private fun render(presentation: XValuePresentation): String {
         val text = StringBuilder()
         presentation.renderValue(object : XValuePresentation.XValueTextRenderer {

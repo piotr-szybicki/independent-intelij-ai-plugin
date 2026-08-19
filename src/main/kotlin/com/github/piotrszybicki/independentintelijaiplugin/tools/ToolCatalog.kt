@@ -5,39 +5,19 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgen
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
-/**
- * What a tool lets the model do. The settings list is grouped by this, and it is roughly the line
- * the defaults are drawn along: everything past [NAVIGATE] is off until asked for, because it either
- * changes something or is dead weight in the project that does not want it.
- */
 enum class ToolCategory(val displayName: String) {
     READ("Reading code"),
     NAVIGATE("Navigating code"),
 
-    /** Read-only, but off by default: four tool definitions that say nothing outside a Git repository. */
     VCS("Version control"),
 
-    /** get_file_problems is read-only, but it belongs to the edit/verify loop and is dead weight without it. */
     EDIT("Editing and fixing"),
     RUN("Running code"),
     DEBUG("Debugging"),
 }
 
-/**
- * The built-in tools, and which of them a request carries.
- *
- * The single place a built-in tool is declared. Every tool definition is re-sent on every request,
- * so the whole set is a standing cost on each turn whether or not the model uses any of it -- hence
- * the choice, and hence a default of only what it takes to read a project rather than everything.
- */
 object ToolCatalog {
 
-    /**
-     * One built-in tool.
-     *
-     * [name] duplicates the tool's own `name` so the settings UI can list the tools without a
-     * [Project] to build them with. [buildAll] checks the two agree.
-     */
     class Entry(
         val name: String,
         val category: ToolCategory,
@@ -95,15 +75,8 @@ object ToolCatalog {
         Entry("evaluate_expression", ToolCategory.DEBUG, false, ::EvaluateExpressionTool),
     )
 
-    /** What a fresh install sends: enough to read a project and find your way round it, and no more. */
     val DEFAULT_ENABLED: String = format(entries.filter { it.onByDefault }.map { it.name })
 
-    /**
-     * Builds every built-in tool, enabled or not.
-     *
-     * All of them, because enabling one mid-conversation should not mean rebuilding the panel --
-     * [enabledIn] does the choosing, per turn, over the list this returns.
-     */
     fun buildAll(project: Project): List<AICodingAgentTool> = entries.map { entry ->
         entry.create(project).also {
             if (it.name != entry.name) {
@@ -115,24 +88,16 @@ object ToolCatalog {
         }
     }
 
-    /** The subset of [tools] the user has switched on. Read per turn, so a change lands on the next message. */
     fun enabledIn(tools: List<AICodingAgentTool>): List<AICodingAgentTool> {
         val enabled = parse(AICodingAgentSettingsState.getInstance().state.enabledTools)
         return tools.filter { it.name in enabled }
     }
 
-    /**
-     * The names in a saved setting that this version still has tools for.
-     *
-     * Unknown names are dropped rather than kept: the setting outlives the catalog, and a name left
-     * over from a renamed tool would otherwise read as "modified" in the settings dialog forever.
-     */
     fun parse(value: String): Set<String> {
         val known = entries.mapTo(mutableSetOf()) { it.name }
         return value.split(',').map { it.trim() }.filterTo(mutableSetOf()) { it in known }
     }
 
-    /** Catalog order rather than selection order, so the saved string does not churn between edits. */
     fun format(names: Collection<String>): String =
         entries.filter { it.name in names }.joinToString(",") { it.name }
 

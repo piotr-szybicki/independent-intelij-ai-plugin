@@ -7,17 +7,6 @@ import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerManager
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Evaluate Expression, as a tool -- the thing you actually reach for at a breakpoint.
- *
- * `await_breakpoint` and `debugger_action` report the variables in scope, which answers "what is
- * `user`" but not "what does `user.orders.filter { it.isOpen }.size` come to", and not "is
- * `repository.findById(id)` returning null here". Those are the questions a breakpoint exists to
- * answer, and until now the only way to ask them was to edit in a print statement and run again.
- *
- * The evaluation itself lives in [DebuggerPause] alongside the variable reading, because rendering
- * the answer is the same asynchronous dance either way.
- */
 class EvaluateExpressionTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
@@ -67,10 +56,6 @@ class EvaluateExpressionTool(private val project: Project) : AICodingAgentTool {
         return pause.evaluate(session, expression, timeoutSeconds * 1000L)
     }
 
-    /**
-     * The session to evaluate against, preferring the one the UI considers current -- the user may
-     * have several, and that is the one whose frame they are looking at.
-     */
     private fun pausedSession(): XDebugSession? {
         val manager = XDebuggerManager.getInstance(project)
         manager.currentSession?.takeIf { it.isPaused && !it.isStopped }?.let { return it }

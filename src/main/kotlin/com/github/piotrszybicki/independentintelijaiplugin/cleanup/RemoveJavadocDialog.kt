@@ -9,13 +9,6 @@ import com.intellij.ui.components.JBRadioButton
 import com.intellij.ui.dsl.builder.panel
 import javax.swing.JComponent
 
-/**
- * What the Javadoc sweep should take out, and from where.
- *
- * A dialog rather than a menu item that just runs: this deletes documentation across a whole project
- * in one press, so the least it can do is say so first and let the run be narrowed. The report-only
- * box is the way to find out how much would go without finding out the hard way.
- */
 class RemoveJavadocDialog(project: Project, private val selection: List<VirtualFile>) : DialogWrapper(project) {
 
     private val everyComment = JBRadioButton("Every Javadoc comment", true)
@@ -26,7 +19,6 @@ class RemoveJavadocDialog(project: Project, private val selection: List<VirtualF
 
     private val reportOnly = JBCheckBox("Report only -- count them, change nothing")
 
-    /** Read after [showAndGet] returns true. */
     val onlyBlank: Boolean get() = blankOnly.isSelected
     val useSelection: Boolean get() = selectedFiles.isSelected
     val dryRun: Boolean get() = reportOnly.isSelected

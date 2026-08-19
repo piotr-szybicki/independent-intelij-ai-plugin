@@ -28,49 +28,22 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
-/**
- * Launches a [RunnerAndConfigurationSettings], either under Run -- reporting back exit code,
- * per-test results and console output -- or under the debugger, where the point is to stop rather
- * than to finish.
- *
- * Shared by every tool that starts something: [RunConfigurationTool] and [RunAtLocationTool] differ
- * only in how they come by their settings -- one looks a configuration up by name, the other has the
- * platform produce one from a source location -- and [StartDebugConfigurationTool] differs only in
- * which executor it asks for. Everything after that point is identical, and it is the part with the
- * timing hazards, so it lives in one place.
- *
- * The output is read by attaching a [ProcessListener] to the launched process rather than by
- * scraping the Run window, so the exit code is the real one. That matters most for tests, where the
- * exit code is the pass/fail signal and the console text carries the failure detail.
- */
 class ConfigurationRunner(private val project: Project) {
 
     companion object {
         const val DEFAULT_TIMEOUT_SECONDS = 180
         const val MAX_TIMEOUT_SECONDS = 900
 
-        /**
-         * A debug launch only waits for the session to appear, not for the process to end, so its
-         * budget is much smaller than a run's: this covers compiling and starting a JVM, or the
-         * handshake with an already-running one.
-         */
         const val DEFAULT_DEBUG_WAIT_SECONDS = 20
         const val MAX_DEBUG_WAIT_SECONDS = 120
 
-        /** Test output is frequently enormous and the failure summary is at the end. */
         private const val MAX_OUTPUT_CHARS = 20_000
 
-        /** How long to wait for the launch to produce a process before calling it a failed start. */
         private const val START_TIMEOUT_SECONDS = 30L
 
-        /** Test events are delivered asynchronously and can trail the process exit slightly. */
         private const val TEST_EVENT_SETTLE_MILLIS = 500L
     }
 
-    /**
-     * Runs [settings] to completion or to [timeoutSeconds], whichever comes first, and returns the
-     * text to hand back to the model. [label] names the thing being run in those messages.
-     */
     fun run(settings: RunnerAndConfigurationSettings, label: String, timeoutSeconds: Int): String {
         val executor = DefaultRunExecutor.getRunExecutorInstance()
 
@@ -137,19 +110,12 @@ class ConfigurationRunner(private val project: Project) {
             connection.subscribe(
                 ExecutionManager.EXECUTION_TOPIC,
                 object : ExecutionListener {
-                    /**
-                     * The hook that matters for output: this fires before the handler's
-                     * `startNotify`, so the listener is in place for the first byte. Attaching in
-                     * [processStarted] instead loses everything a fast process printed before the
-                     * Run window finished opening -- which for a short test run is all of it.
-                     */
                     override fun processStarting(
                         executorId: String,
                         env: ExecutionEnvironment,
                         handler: ProcessHandler,
                     ) = attach(env, handler)
 
-                    /** Fallback for runners that never fire the three-argument `processStarting`. */
                     override fun processStarted(
                         executorId: String,
                         env: ExecutionEnvironment,
@@ -212,14 +178,6 @@ class ConfigurationRunner(private val project: Project) {
         }
     }
 
-    /**
-     * Starts [settings] under the debugger and returns as soon as a debug session exists, or after
-     * [waitSeconds] if none does. [label] names the thing being started in those messages.
-     *
-     * Deliberately does not wait for the process: the caller wants it stopped at a breakpoint, and
-     * that is `await_breakpoint`'s job. Waiting for output here would block until the debuggee ran
-     * to completion -- past every breakpoint, since nothing would be reading the pause.
-     */
     fun debug(settings: RunnerAndConfigurationSettings, label: String, waitSeconds: Int): String {
         val executor = DefaultDebugExecutor.getDebugExecutorInstance()
 
@@ -277,12 +235,6 @@ class ConfigurationRunner(private val project: Project) {
             "\"${session?.sessionName ?: label}\". Call await_breakpoint to wait for it to stop."
     }
 
-    /**
-     * Test results when there were any, console text when there was any, both when both.
-     *
-     * Neither source is reliably present: a Gradle test run has results and no console text, an
-     * application run has console text and no results.
-     */
     private fun report(tests: TestResults, consoleText: String): String = buildString {
         if (tests.sawAnyTest) append("Tests: ").append(tests.summary())
         if (consoleText.isNotBlank()) {
@@ -291,19 +243,11 @@ class ConfigurationRunner(private val project: Project) {
         }
     }
 
-    /**
-     * Test outcomes gathered off the SMTRunner event stream.
-     *
-     * Counted here rather than read off the root proxy at the end because the root is only reliably
-     * populated for runners that build a full tree, and every runner emits the per-test events.
-     */
     private class TestResults {
 
         companion object {
-            /** Enough failures to work with; the rest are counted but not spelled out. */
             private const val MAX_REPORTED_FAILURES = 20
 
-            /** The top of a stack trace names the assertion; the rest is framework noise. */
             private const val STACK_TRACE_LINES = 12
         }
 
@@ -360,7 +304,6 @@ class ConfigurationRunner(private val project: Project) {
         }
     }
 
-    /** The tail rather than the head: a test run's failure summary is at the end. */
     private fun tail(output: StringBuilder): String {
         val text = synchronized(output) { output.toString() }
         if (text.length <= MAX_OUTPUT_CHARS) return text.trim()

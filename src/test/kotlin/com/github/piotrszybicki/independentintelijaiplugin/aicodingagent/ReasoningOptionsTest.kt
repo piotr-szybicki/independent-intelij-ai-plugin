@@ -9,13 +9,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Covers what each setting turns into on the wire.
- *
- * All of it fails quietly: a field spelled wrong or sent to an endpoint that does not know it comes
- * back as a 400 rather than a wrong answer, and a field left out entirely is worse -- the request
- * succeeds and is billed at whatever the provider's own default costs.
- */
 class ReasoningOptionsTest {
 
     @Test
@@ -27,7 +20,6 @@ class ReasoningOptionsTest {
         assertNull(options.reasoningJson())
     }
 
-    /** Thinking is billed the same whether or not the summary is asked for, so it is always asked for. */
     @Test
     fun `asks for the summary whenever thinking is on`() {
         val options = ReasoningOptions(Effort.MEDIUM, ThinkingMode.ADAPTIVE)
@@ -54,7 +46,6 @@ class ReasoningOptionsTest {
         assertEquals("medium", options.outputConfigJson()!!.get("effort").asString)
     }
 
-    /** The escape hatch for the older models, which reject the field rather than ignoring it. */
     @Test
     fun `omits output_config when the effort is the provider's`() {
         val options = ReasoningOptions(Effort.PROVIDER_DEFAULT, ThinkingMode.ADAPTIVE)
@@ -62,7 +53,6 @@ class ReasoningOptionsTest {
         assertNull(options.outputConfigJson())
     }
 
-    /** Every level the settings offer has to be a value the API knows; a typo here is a 400. */
     @Test
     fun `spells every effort level the way the API does`() {
         val wire = Effort.entries.mapNotNull { it.wireValue }
@@ -72,12 +62,6 @@ class ReasoningOptionsTest {
 
     // --- the Responses API's single field -----------------------------------------------------------
 
-    /**
-     * The one field whose absence is not neutral: a deployment left to its own default can run a
-     * current model at no reasoning at all, which shows up as a turn that announces a tool call
-     * instead of making one -- an ordinary finished turn as far as the response is concerned, and a
-     * chat that looks like it gave up as far as the user is concerned.
-     */
     @Test
     fun `sends the chosen effort when thinking is on`() {
         val reasoning = ReasoningOptions(Effort.MEDIUM, ThinkingMode.ADAPTIVE).reasoningJson()!!
@@ -85,7 +69,6 @@ class ReasoningOptionsTest {
         assertEquals("medium", reasoning.get("effort").asString)
     }
 
-    /** The two settings are one field here, so thinking-on has to resolve to some level. */
     @Test
     fun `falls back to medium when thinking is on and the effort is left to the provider`() {
         val reasoning = ReasoningOptions(Effort.PROVIDER_DEFAULT, ThinkingMode.ADAPTIVE).reasoningJson()!!
@@ -93,7 +76,6 @@ class ReasoningOptionsTest {
         assertEquals("medium", reasoning.get("effort").asString)
     }
 
-    /** Off is a level of its own here, not the absence of the field -- absent leaves the default. */
     @Test
     fun `asks for no reasoning rather than omitting the field when thinking is off`() {
         val reasoning = ReasoningOptions(Effort.HIGH, ThinkingMode.OFF).reasoningJson()!!
@@ -101,10 +83,6 @@ class ReasoningOptionsTest {
         assertEquals("none", reasoning.get("effort").asString)
     }
 
-    /**
-     * Anthropic's scale runs two levels past OpenAI's, and a level OpenAI does not know is a
-     * rejected request rather than a clamped one.
-     */
     @Test
     fun `clamps the levels above high to what OpenAI accepts`() {
         val xhigh = ReasoningOptions(Effort.XHIGH, ThinkingMode.ADAPTIVE).reasoningJson()!!
@@ -114,7 +92,6 @@ class ReasoningOptionsTest {
         assertEquals("high", max.get("effort").asString)
     }
 
-    /** Guards the assumption the request builder makes: an empty object is never sent. */
     @Test
     fun `never renders an empty reasoning object`() {
         ThinkingMode.entries.forEach { thinking ->

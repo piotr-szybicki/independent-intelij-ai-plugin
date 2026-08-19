@@ -5,180 +5,39 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
 
-/**
- * Drives the request/tool-call/tool-result cycle described at
- * https://docs.anthropic.com/en/docs/build-with-claude/tool-use until the model stops asking for tools.
- */
 class AICodingAgent(
-    /**
-     * The tools to offer, asked for once per [run] rather than fixed at construction.
-     *
-     * A supplier because not every tool is known when the agent is built: the MCP ones only exist
-     * once their servers have been connected to, which is network and process work that cannot
-     * happen on the EDT where the tool window is assembled. Resolving per turn also means a server
-     * added in settings is usable on the next message instead of after a restart.
-     */
     private val tools: () -> List<AICodingAgentTool>,
-    /**
-     * Machine-specific facts appended to the system prompt. A lambda rather than a string because
-     * describing the environment reads IDE settings, which must not happen on the EDT -- the agent
-     * is constructed there, but [basePrompt] is not resolved until the first request.
-     */
     private val environment: () -> String = { "" },
-    /**
-     * The skill listing to append to the system prompt, resolved once per [run] like [tools].
-     *
-     * Per turn rather than once, because a skill is a file the user edits while the conversation is
-     * open, and one added mid-chat should be usable on the next message. It stays out of the
-     * cacheable prefix's way regardless: the text only differs when the skills themselves do, so
-     * turn after turn the prefix is byte-identical.
-     */
     private val skills: () -> String = { "" },
 ) {
 
-    /**
-     * How a tool call ended, so the caller can mark it as more than "it happened".
-     *
-     * [TOO_LARGE] is the odd one: the tool ran and did its work, and what failed is the sending of
-     * the answer. The result reported with it is the real output -- the user's copy is untouched --
-     * but it is not what went into the conversation. See `maxToolOutputTokens` in [run].
-     */
     enum class ToolOutcome { OK, FAILED, CANCELLED, TOO_LARGE }
 
-    /**
-     * Which call a listener callback is about.
-     *
-     * The two travel together everywhere: [requestId] says which response asked for the call, so
-     * everything one round asked for can be drawn as one group, and [toolUseId] identifies the
-     * block itself, which is what an edit to its result has to name -- see [ToolResults.replace].
-     * A pair rather than two more positional parameters on callbacks that already have four.
-     */
     data class ToolCallId(val requestId: String, val toolUseId: String)
 
     interface Listener {
         fun onAssistantText(text: String)
 
-        /**
-         * A summary of what the model thought before answering, when thinking is on and the request
-         * asked for the summary.
-         *
-         * Worth drawing rather than dropping: thinking is billed at the output rate whether or not
-         * it is asked for, so a turn whose token count looks far larger than its answer is usually
-         * explained here and nowhere else.
-         */
         fun onThinking(summary: String) {}
 
-        /**
-         * A tool has finished, whatever [outcome] it finished with. Paired with [onToolStarted] for
-         * every tool the loop actually ran -- but not only those: a tool skipped by a cancel is
-         * reported here without ever having been started.
-         *
-         * Every call one response asked for carries the same [ToolCallId.requestId], which is how a
-         * caller tells one round from the next.
-         */
         fun onToolCall(call: ToolCallId, name: String, input: JsonObject, result: String, outcome: ToolOutcome)
 
-        /**
-         * A tool is about to run. [interruptible] is false when stopping the turn would only stop
-         * the waiting, leaving the work itself running.
-         *
-         * [onToolCall] follows for the same tool unless the turn dies on the way there, which
-         * leaves anything the callback drew for it hanging -- the caller's to settle.
-         */
         fun onToolStarted(call: ToolCallId, name: String, input: JsonObject, interruptible: Boolean) {}
 
-        /**
-         * What the request that just came back cost.
-         *
-         * Once per request, not once per turn: the loop sends a fresh one for every round of tool
-         * calls and each is billed on its own, so anything that adds these up has to see them all.
-         * A request that failed reports nothing -- the usage block comes with the response, and an
-         * error does not carry one.
-         */
         fun onUsage(usage: AICodingAgentUsage) {}
 
-        /**
-         * Called when a turn was cut off by the model's output limit. [limit] is the cap that was
-         * hit; [suggested] is what the loop proposes continuing at -- twice [limit], because a reply
-         * that needed more room once will usually need it again, and asking the same question every
-         * thousand tokens is worse than spending them. The two are equal once doubling has run into
-         * [MAX_TOKENS_CEILING], which is the signal to stop suggesting and let the user say what the
-         * cap should be.
-         *
-         * Return the cap to continue at -- [suggested], or whatever the user chose instead -- or
-         * null to end the turn and leave the partial answer. A returned cap is honoured as given,
-         * ceiling included: past that point it is an explicit choice, not a default. The caller is
-         * what makes it outlast the turn: keep the value and pass it back to the next [run].
-         */
         fun onMaxTokens(limit: Int, suggested: Int): Int?
 
-        /**
-         * Called when the loop has used its whole tool-call budget with the model still asking for
-         * tools. [used] is how many iterations have gone by. Returning true grants another budget's
-         * worth of them; returning false ends the turn where it stands.
-         */
         fun onMaxIterations(used: Int): Boolean = false
 
-        /**
-         * A tool returned more than the turn was willing to send, so the output was withheld.
-         * [tokens] is what the result actually counted, [limit] the cap it went over, both measured
-         * by [TokenCounter].
-         *
-         * Called once per oversized call, after the whole round has run and been answered -- so a
-         * response that asked for six tools reports all six, however many of them overran. The turn
-         * then stops.
-         *
-         * Reported separately from the [onToolCall] that precedes it, and reported at all, because
-         * this is the one way a turn stops with the model neither finished nor asked anything: the
-         * transcript would otherwise show a tool call and then simply nothing. The conversation
-         * itself stays sendable -- the next request carries on from a note saying the output was
-         * withheld -- so what this needs to say is which tool, how big, and what can be done about
-         * it.
-         *
-         * [output] is what the tool actually returned, and [toolUseId] identifies the block the note
-         * went into. Together they are what an offer to send the output after all needs: the text to
-         * put in front of the user, and where it goes if they approve it -- see [ToolResults.replace].
-         */
         fun onToolOutputTooLarge(name: String, toolUseId: String, output: String, tokens: Int, limit: Int) {}
 
-        /**
-         * A compaction pass dropped old tool output, or replaced the older part of the conversation
-         * with a summary of it, to keep the conversation inside the context window. Only called when
-         * something actually changed.
-         *
-         * Worth telling the user about rather than doing quietly: it is the reason the model may go
-         * back and re-read a file it already read, and the reason a chat's input token count stops
-         * climbing the way it had been. A pass that summarised is worth saying more loudly still --
-         * it spent a request of its own, and detail from the early conversation is now gone for good.
-         */
         fun onCompacted(result: HistoryCompaction.Result) {}
 
-        /**
-         * How full the context window is, reported whenever the answer changes: around every
-         * request, once the tool results of a round are in, and after a compaction has made room.
-         *
-         * Separate from [onUsage] rather than derived from it, because the two are different
-         * questions. Usage is cumulative and counts every request including the summarizer's;
-         * this is the state of one conversation, and a summarization -- which sends the old
-         * history off to one side -- must not be mistaken for the conversation growing.
-         *
-         * [windowTokens] is zero when the configuration does not declare a window.
-         */
         fun onContext(usedTokens: Int, windowTokens: Int) {}
     }
 
     companion object {
-        /**
-         * Sent as the request's `system` field on every turn. This is what tells the model it is a
-         * coding assistant working inside an IDE rather than a general chat model -- without it the
-         * only thing shaping its behaviour is the tool schemas and whatever the user typed.
-         *
-         * The second paragraph is about a turn that ends on "On it -- I'll do X now" with no tool
-         * call in it. Nothing in the response says anything is outstanding: the API reports an
-         * ordinary finished turn, so the loop draws the sentence and stops, and the chat sits there
-         * looking like it gave up. It is a habit of the model rather than a state to be read back,
-         * which is why the fix is here rather than in the loop.
-         */
         private val SYSTEM_PROMPT = """
             You are a coding assistant inside InteliJ IDE.
 
@@ -195,88 +54,36 @@ class AICodingAgent(
             shows it is small, or when what you need is code the outline does not name.
         """.trimIndent()
 
-        /**
-         * How far doubling the output cap will go on its own. The models themselves allow far more,
-         * but [AICodingAgentClient] waits 60 seconds for a response and does not stream: past roughly
-         * this many tokens the reply stops arriving in time, and a timeout is a worse answer than a
-         * truncated one. Not a hard limit -- it is where the automatic raises stop and the user is
-         * asked for a number instead, which is a judgement about their connection and patience that
-         * this constant cannot make.
-         */
         const val MAX_TOKENS_CEILING = 12_000
 
-        /**
-         * The output cap for a summary request.
-         *
-         * Generous for a summary and small next to what it buys: a few thousand tokens of prose
-         * standing in for most of a context window. Capped rather than left at the turn's own limit
-         * because the two are unrelated -- a user who raised the reply cap to finish a long answer
-         * did not ask for a longer summary, and prose that runs to the cap is prose that failed to
-         * summarise.
-         */
         private const val SUMMARY_MAX_TOKENS = 4_000
 
-        /** Stands in for a tool that was skipped or interrupted when the user pressed Stop. */
         private const val CANCELLED_RESULT = "The user cancelled this turn before the tool finished."
 
-        /** Stands in for a tool the loop never reached, because the turn failed on its way there. */
         private const val ABANDONED_RESULT = "This tool never ran: the turn ended with an error before it started."
 
-        /**
-         * What is sent in place of output that overran the limit.
-         *
-         * Sent rather than nothing at all, and worded for the model, because this is what it reads
-         * when the user says something next: a `tool_result` has to exist for every `tool_use` or the
-         * conversation is refused from here on, and a model that cannot see why its call came back
-         * empty will make the same call again. The number is in it so that "narrow it" has something
-         * to aim at.
-         */
         private fun withheldResult(tokens: Int, limit: Int): String =
             "This tool ran, but its output was not sent: it came to $tokens tokens, over the " +
                 "$limit-token limit on a single tool result. The user has seen the output in the " +
                 "IDE; you have not. Ask for less of it next time -- a narrower path, a line range, " +
                 "a stricter filter -- rather than repeating the call as it was."
 
-        /**
-         * Sent as a user turn to pick up a cut-off answer. It has to be a *user* message: the
-         * current models reject a request whose final message is an assistant one (prefilling),
-         * so the truncated turn cannot simply be left at the end of the history to be continued.
-         */
         private const val CONTINUE_PROMPT =
             "Your previous response was cut off because it hit the output token limit. " +
                 "Continue from exactly where you stopped -- do not repeat what you already wrote " +
                 "and do not start over."
 
-        /**
-         * The same job as [CONTINUE_PROMPT] for the turn that ran out mid-tool-call. It needs its
-         * own wording because [withoutTrailingToolUse] has already dropped that block: telling the
-         * model to continue where it stopped would point it at something no longer in the history,
-         * and often at nothing at all, since a turn that went straight to a tool call leaves no text
-         * behind. What it has to be told is that the call never ran.
-         */
         private const val RETRY_TOOL_CALL_PROMPT =
             "Your previous response was cut off because it hit the output token limit, part-way " +
                 "through a tool call. The call was discarded and never ran. Make it again, picking " +
                 "up from any text you had already written -- do not repeat that text."
     }
 
-    /**
-     * Resolved once, off the EDT, on the first request -- and stable for the rest of the
-     * conversation, which keeps it inside the cacheable prefix of every subsequent turn.
-     */
     private val basePrompt: String by lazy {
         val facts = runCatching { environment() }.getOrDefault("").trim()
         if (facts.isEmpty()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$facts"
     }
 
-    /**
-     * [basePrompt] with this turn's comment rule and skill listing on the end.
-     *
-     * The comment rule is conditional on the tools it names being switched on, and that is not a
-     * detail: told to store its documentation with a tool it has not been given, the model can only
-     * either disobey or stop writing documentation at all. Conditional on the *tools*, not on
-     * whether any comment has been stored yet -- the rule is about what to write from now on.
-     */
     private fun systemPrompt(available: List<AICodingAgentTool>): String {
         val names = available.mapTo(mutableSetOf()) { it.name }
         val parts = mutableListOf(basePrompt)
@@ -285,14 +92,6 @@ class AICodingAgent(
         return parts.joinToString("\n\n")
     }
 
-    /**
-     * How to write comments when the documentation lives in the database.
-     *
-     * Two halves, each following its own tool: writing the marker needs `insert_comment`, and reading
-     * one back needs `get_comment`. A project with only the reader enabled is a project whose
-     * comments were stored once and are not being added to, and telling it to keep storing would be
-     * wrong.
-     */
     private fun commentRule(enabled: Set<String>): String? {
         val writes = "insert_comment" in enabled
         val reads = "get_comment" in enabled
@@ -321,48 +120,6 @@ class AICodingAgent(
 
     private val log = Logger.getInstance(AICodingAgent::class.java)
 
-    /**
-     * Runs the loop, mutating [history] in place with every assistant/tool-result turn produced.
-     *
-     * [isCancelled] is polled at every point where the loop is about to spend something -- a request
-     * or a tool call. Cancelling never leaves [history] malformed: a turn that asked for tools is
-     * always answered with a result for each of them, so the conversation can be continued.
-     *
-     * [maxIterations] is how many request/tool-call rounds the turn gets before the loop stops and
-     * asks the user whether to go on. Not a hard ceiling: every yes to [Listener.onMaxIterations]
-     * buys that many more.
-     *
-     * [maxTokens] is where the reply-length cap starts, not where it stays: continuing a cut-off
-     * reply doubles it up to [MAX_TOKENS_CEILING], and past that [Listener.onMaxTokens] chooses the
-     * cap outright. The raise lasts as long as the turn does -- carrying it into the next one is the
-     * caller's to do, from the value it returned there.
-     *
-     * [contextWindowTokens] is the model's context window, and what [HistoryCompaction] measures
-     * [history] against before each request. Zero turns compaction off and lets the conversation
-     * grow until the provider refuses it.
-     *
-     * [maxToolOutputTokens] is the most a single tool result may be, counted with [TokenCounter]. A
-     * result over it is not sent: a note saying so goes into the conversation in its place. Zero or
-     * less turns the check off.
-     *
-     * A hard stop rather than a truncation on purpose. Truncating hands the model half a file and no
-     * way to know what it is missing, and it is silent -- the same runaway `find_in_files` goes out
-     * turn after turn, trimmed each time, at full price each time. Stopping puts the decision back
-     * with the user, who is the only one who can tell "this tool asked for too much" from "this file
-     * really is that big". The conversation survives it: the note is a valid result, so the next
-     * request continues normally.
-     *
-     * What it stops is the *turn*, and only once the round it happened in has finished. Every tool
-     * the response asked for runs, whatever any of the others returned -- an oversized result is one
-     * call's problem and says nothing about the five beside it, which the user asked for and which
-     * may be the ones that mattered. The turn then ends rather than going round again, because the
-     * decision about the withheld output is the user's; [Listener.onToolOutputTooLarge] fires once
-     * per oversized call so all of them can be offered at once.
-     *
-     * [conversationId] identifies the chat this turn belongs to, and is carried no further than the
-     * logs: it is what files the turn's request and response bodies under a directory of their own,
-     * and what the usage rows are grouped by. Nothing is sent to the provider.
-     */
     fun run(
         endpoint: AICodingAgentEndpoint,
         model: String,
@@ -625,30 +382,8 @@ class AICodingAgent(
             answerDanglingToolUse(history)
         }
     }
-    /**
-     * A tool call that went over the output limit: what it was, what it returned, and what that
-     * counted. The output is carried because the caller is offered the chance to approve it and send
-     * it after all, and [toolUseId] is where it goes back to.
-     */
     private class Overrun(val name: String, val toolUseId: String, val output: String, val tokens: Int)
 
-    /**
-     * Asks the model to describe [messages] in prose, for [HistoryCompaction] to put in their place.
-     * Null when the request failed or came back with nothing usable, which the pass reads as "leave
-     * the history alone".
-     *
-     * Sent with the same [system] prompt and [tools] as an ordinary turn, though it needs neither.
-     * That is deliberate: those two are the whole cacheable prefix, and asking with a different
-     * prefix would read every one of the tool schemas back at full price to save context. With them
-     * unchanged and the summary request appended as a final user turn, this is an ordinary
-     * cache-extending request -- the conversation in front of it is read at the cache rate, which
-     * is most of what makes a pass affordable at all.
-     *
-     * The cost of carrying the tools is that the model can call one. [HistoryCompaction.SUMMARY_REQUEST]
-     * tells it not to, and a reply that ignores that is handled by taking whatever text came with it
-     * and dropping the rest: the `tool_use` blocks are never executed and never reach the history, so
-     * the worst case is a wasted request rather than a tool call nobody asked for.
-     */
     private fun summarize(
         endpoint: AICodingAgentEndpoint,
         model: String,
@@ -683,17 +418,6 @@ class AICodingAgent(
     }
 
 
-    /**
-     * Answers any `tool_use` blocks the loop did not get to, so the conversation stays sendable.
-     *
-     * The API rejects a request whose history holds a `tool_use` with no matching `tool_result`, and
-     * it rejects it every time -- the offending turn is still there on the next message, and the one
-     * after that. So a turn that fell over between asking for a tool and answering it does not just
-     * fail once, it leaves the chat dead for good: every later message comes back with the same
-     * error, and only starting a new conversation, or restarting the IDE onto a chat saved before
-     * the break, gets out of it. Writing the missing results closes that hole wherever the loop left
-     * off -- an exception, an Error, a cancelled thread.
-     */
     private fun answerDanglingToolUse(history: MutableList<ChatMessage>) {
         val last = history.lastOrNull() ?: return
         if (last.role != "assistant") return
@@ -715,11 +439,6 @@ class AICodingAgent(
         history.add(ChatMessage("user", results))
     }
 
-    /**
-     * Drops a `tool_use` block left dangling by the token limit. Its arguments were cut off
-     * mid-JSON, so it cannot be executed, and sending it back without a matching `tool_result`
-     * would have the API reject the next request outright.
-     */
     private fun withoutTrailingToolUse(content: JsonArray): JsonArray {
         val last = content.lastOrNull()?.asJsonObject ?: return content
         if (last.get("type")?.asString != "tool_use") return content

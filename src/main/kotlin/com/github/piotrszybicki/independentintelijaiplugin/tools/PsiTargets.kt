@@ -15,10 +15,6 @@ import java.io.File
 
 object PsiTargets {
 
-    /**
-     * Resolves a project-relative path, rejecting anything that escapes the project root. The file
-     * need not exist -- this is the form `write_file` needs, since it may be creating one.
-     */
     fun resolveProjectPath(project: Project, relativePath: String): File? {
         val basePath = project.basePath ?: return null
         val baseDir = File(basePath).canonicalFile
@@ -63,19 +59,6 @@ object PsiTargets {
         }
     }
 
-    /**
-     * Resolves what the model is pointing at, whether it named a declaration or a *use* of one.
-     *
-     * [resolveElement] only ever finds declarations -- it walks up to a named element whose name
-     * matches -- so a call site resolves to nothing at all. Reading code, the model sees uses far
-     * more often than definitions, so the reference is tried first and the declaration walk is the
-     * fallback. That makes "the `execute` on this line" a usable way to name a symbol either way.
-     *
-     * [occurrence] picks between repeats of the name on one line, 1-based and left to right.
-     *
-     * The result may live outside the project -- a library or SDK class -- which is exactly what
-     * makes this useful for reading. Callers that go on to *modify* it must check [isInProject].
-     */
     fun resolveTarget(
         project: Project,
         relativePath: String,
@@ -97,13 +80,6 @@ object PsiTargets {
             PsiManager.getInstance(project).findFile(vf)
         }
 
-    /**
-     * The first element on [line] that is not whitespace.
-     *
-     * Unlike [resolveTarget] this deliberately does *not* follow references: it answers "what is
-     * written here", which is what the run-configuration producers want. They walk up the tree
-     * themselves, so landing anywhere inside the declaration is enough.
-     */
     fun elementAtLine(project: Project, relativePath: String, line: Int): PsiElement? =
         ReadAction.computeBlocking<PsiElement?, RuntimeException> {
             val vf = resolveProjectFile(project, relativePath) ?: return@computeBlocking null
@@ -125,7 +101,6 @@ object PsiTargets {
             psiFile.findElementAt(lineStart) ?: psiFile
         }
 
-    /** True when [element] is declared in a file under the project root, and so is ours to change. */
     fun isInProject(project: Project, element: PsiElement): Boolean {
         val vf = ReadAction.computeBlocking<VirtualFile?, RuntimeException> { element.containingFile?.virtualFile }
             ?: return false
@@ -133,10 +108,6 @@ object PsiTargets {
         return vf.path.startsWith(basePath)
     }
 
-    /**
-     * Offset of the [occurrence]th whole-word appearance of [symbolName] on [line]. Whole-word so
-     * that asking about `session` does not land inside `sessionService`.
-     */
     private fun occurrenceOffset(
         project: Project,
         relativePath: String,

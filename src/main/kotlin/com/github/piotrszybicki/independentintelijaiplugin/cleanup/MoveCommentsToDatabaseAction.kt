@@ -8,14 +8,6 @@ import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.Project
 
-/**
- * Tools | Move Javadoc Comments to Database: the documentation comes out of the code and goes into
- * the `code_comments` table, leaving `// comment_id: N` where each one stood.
- *
- * The counterpart of [RemoveJavadocAction] rather than a variant of it: the same comments are found
- * the same way, but the text is kept, and the code keeps a way back to it. [RestoreCommentsAction]
- * is that way back.
- */
 class MoveCommentsToDatabaseAction : AnAction() {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT

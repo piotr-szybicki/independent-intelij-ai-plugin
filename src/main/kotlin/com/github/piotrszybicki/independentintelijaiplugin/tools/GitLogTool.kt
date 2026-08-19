@@ -6,13 +6,6 @@ import com.intellij.openapi.project.Project
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import git4idea.commands.GitCommand
 
-/**
- * Commit history, one line each.
- *
- * `--pretty=format` rather than [git4idea.history.GitHistoryUtils], which parses the same output
- * into full commit objects with their changed files: everything past hash, date, author and subject
- * would be spent on tokens the model did not ask for, and git_diff is how it asks for the rest.
- */
 class GitLogTool(private val project: Project) : AICodingAgentTool {
 
     companion object {
@@ -20,7 +13,6 @@ class GitLogTool(private val project: Project) : AICodingAgentTool {
         private const val MAX_LIMIT = 200
         private const val MAX_CHARS = 20_000
 
-        /** Hash, short date, author, subject -- one line, in that order. */
         private const val FORMAT = "--pretty=format:%h %ad %an: %s"
     }
 

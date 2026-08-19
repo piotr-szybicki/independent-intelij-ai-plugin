@@ -7,21 +7,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.util.text.StringUtil
 
-/**
- * Puts [AgentConfiguration.FILE_NAME] in the project root the first time a project is opened.
- *
- * So that the file is something to edit rather than something to discover: the settings page can
- * only offer a dropdown of what is in it, and an empty dropdown next to a filename the user has
- * never seen is a worse first run than three working entries to change one line of.
- *
- * Writes only when there is nothing there, so it cannot undo an edit -- see
- * [AgentConfigurations.createIfMissing].
- *
- * Writes nothing at all when [AgentConfiguration.PATH_ENV_VAR] is set, and reports it here when that
- * variable names a file that is not there. That is the one state the plugin refuses to run in rather
- * than working around, and it is reported at startup because the alternative is finding out from a
- * tool window that will not open -- see [AgentConfigurations.unavailableReason].
- */
 class AgentConfigurationStartup : ProjectActivity {
 
     override suspend fun execute(project: Project) {

@@ -9,17 +9,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-/**
- * Line-addressed editing: the general-purpose escape hatch from the PSI-shaped tools, for changes
- * they have no vocabulary for.
- *
- * Writes a minimal range via `replaceString` rather than replacing the whole document, which keeps
- * folding, breakpoints and caret position intact and leaves the change session a tight hunk to
- * render instead of "every line changed".
- *
- * The line numbers are resolved inside the write action against the document's current text, so
- * they cannot go stale between the model's read and the write.
- */
 class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
 
     private companion object {

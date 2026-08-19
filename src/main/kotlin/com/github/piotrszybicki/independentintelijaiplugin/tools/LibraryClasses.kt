@@ -12,33 +12,14 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.usageView.UsageViewLongNameLocation
 
-/**
- * Finding a class by name anywhere the project can see it, libraries and the SDK included.
- *
- * `find_by_name` deliberately passes `includeNonProjectItems = false`, because "what classes are in
- * this project" should not return forty thousand JDK entries. This is the other question -- "show me
- * *that* class, the one from the dependency" -- where the name is already known and the library is
- * the whole point.
- *
- * Resolution goes through [ChooseByNameContributor], the same Go to Class extension point, so it
- * works for whatever languages the IDE has rather than only for Java. Crucially it asks
- * `getItemsByName` directly instead of enumerating `getNames`: with non-project items included, the
- * name list runs to hundreds of thousands of entries, and we already know what we are looking for.
- */
 internal object LibraryClasses {
 
     class Candidate(
         val qualifiedName: String,
         val file: PsiFile,
         val virtualFile: VirtualFile,
-        /** True for a class in the project's own sources, which belongs to `read_project_file`. */
         val inProject: Boolean,
-        /**
-         * True when what we resolved to is real source rather than a class file. False means the
-         * library ships no sources jar, or ships one nobody attached, and reading it will decompile.
-         */
         val fromSources: Boolean,
-        /** The library it came from, for telling the user what to attach sources for. */
         val libraryName: String?,
     )
 
@@ -48,11 +29,6 @@ internal object LibraryClasses {
         object NotFound : Resolution()
     }
 
-    /**
-     * Resolves [name], which may be a simple name (`RenameProcessor`) or a qualified one
-     * (`com.intellij.refactoring.rename.RenameProcessor`). A qualifier narrows the result; without
-     * one, several libraries may legitimately offer the same simple name.
-     */
     fun resolve(project: Project, name: String, maxCandidates: Int): Resolution {
         val trimmed = name.trim().removeSuffix(".class").removeSuffix(".java").removeSuffix(".kt")
         if (trimmed.isEmpty()) return Resolution.NotFound
@@ -124,7 +100,6 @@ internal object LibraryClasses {
             )
         }
 
-    /** The name of the library [vf] came from, e.g. `Gradle: org.commonmark:commonmark:0.29.0`. */
     private fun libraryNameOf(index: ProjectFileIndex, vf: VirtualFile): String? =
         index.getOrderEntriesForFile(vf)
             .filterIsInstance<LibraryOrderEntry>()

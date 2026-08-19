@@ -6,10 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/**
- * Covers the frontmatter reader, which is the part of the skills support with nowhere to hide: it is
- * a hand-written parser for a corner of YAML, run against files this plugin did not write.
- */
 class SkillFrontmatterTest {
 
     @Test
@@ -70,7 +66,6 @@ class SkillFrontmatterTest {
         assertEquals(null, fields["owner"])
     }
 
-    /** Files written on Windows arrive with CRLF, and the fence has to match all the same. */
     @Test
     fun `tolerates carriage returns`() {
         val fields = SkillFrontmatter.parse("---\r\nname: windows\r\ndescription: works\r\n---\r\n")
@@ -106,11 +101,6 @@ class SkillFrontmatterTest {
         assertEquals("deploy", fields["name"])
     }
 
-    /**
-     * A hash after whitespace opens a comment in YAML even when it was meant as part of the text,
-     * so a description containing one has to be quoted -- the same as it would be for any real YAML
-     * parser, which is the behaviour to match if this is ever swapped for one.
-     */
     @Test
     fun `treats an unquoted hash as a comment and a quoted one as text`() {
         assertEquals("Fixes issue", SkillFrontmatter.parse("---\ndescription: Fixes issue #42\n---\n")["description"])
@@ -159,7 +149,6 @@ class SkillDefinitionTest {
         assertEquals("Deploys the app. Use when asked to ship or release.", SkillDefinition.read(file)!!.description)
     }
 
-    /** Nothing says what it is for and nothing to fall back on -- listing it would only cost tokens. */
     @Test
     fun `skips a file with no description and no body`() {
         assertNull(SkillDefinition.read(skillFile("empty", "---\nmodel: inherit\n---\n")))

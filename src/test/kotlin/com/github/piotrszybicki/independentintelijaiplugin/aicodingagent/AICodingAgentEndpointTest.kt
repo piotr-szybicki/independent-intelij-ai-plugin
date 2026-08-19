@@ -8,11 +8,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Covers the two things about an endpoint that only show up as a failed request: the version header
- * going somewhere that does not understand it, and a URL pointed at a protocol other than the one
- * configured.
- */
 class AICodingAgentEndpointTest {
 
     @Test
@@ -47,7 +42,6 @@ class AICodingAgentEndpointTest {
         )
     }
 
-    /** The mistake this exists for: a Foundry URL left on the Messages API, which is a 400 every time. */
     @Test
     fun `rejects a responses URL configured as the Messages API`() {
         val mismatched = endpoint(url = "https://example.services.ai.azure.com/openai/v1/responses")
@@ -62,7 +56,6 @@ class AICodingAgentEndpointTest {
         assertNotNull(mismatched.validate())
     }
 
-    /** A gateway is free to serve any of these from a path of its own, and usually does. */
     @Test
     fun `says nothing about a path it does not recognise`() {
         assertNull(endpoint(url = "https://gateway.internal/ai/v3/complete").validate())

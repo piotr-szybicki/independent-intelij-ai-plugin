@@ -9,15 +9,6 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgen
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Asks before an MCP tool runs, for the same reason `run_shell_command` does: the code on the other
- * side is not this plugin's. The project-boundary checks that make `read_project_file` and
- * `delete_file` safe say nothing about a server the user pointed at, which may read anything the
- * IDE's account can and may be a remote endpoint the arguments are sent to.
- *
- * Approvals last for a conversation rather than for the project -- [forget] is called when a new
- * chat starts -- so a blanket yes given while working on one thing does not carry into the next.
- */
 class McpApprovalGate {
 
     private val gson = GsonBuilder().setPrettyPrinting().create()
@@ -29,7 +20,6 @@ class McpApprovalGate {
         approvedTools.clear()
     }
 
-    /** Blocks the agent thread on the EDT dialog: the call must not start until the user has decided. */
     fun confirm(project: Project, toolName: String, server: McpServerConfig, input: JsonObject): Boolean {
         if (!AICodingAgentSettingsState.getInstance().state.confirmMcpToolCalls) return true
         if (approveEverything.get() || approvedTools.contains(toolName)) return true
