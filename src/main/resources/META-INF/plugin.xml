@@ -54,10 +54,10 @@
             <add-to-group group-id="Floating.CodeToolbar" anchor="last"/>
         </action>
         <!-- Under Tools, and in the project view's context menu so the selection there can scope it. -->
-        <action id="AICodingAgent.RemoveJavadoc"
-                class="com.github.piotrszybicki.independentintelijaiplugin.cleanup.RemoveJavadocAction"
-                text="Remove Javadoc Comments..."
-                description="Strip Javadoc-form comments from the project, or from the selected files">
+        <action id="AICodingAgent.RemoveComments"
+                class="com.github.piotrszybicki.independentintelijaiplugin.cleanup.RemoveCommentsAction"
+                text="Remove Comments..."
+                description="Strip Javadoc-form or line comments from the project, or from the selected files">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>

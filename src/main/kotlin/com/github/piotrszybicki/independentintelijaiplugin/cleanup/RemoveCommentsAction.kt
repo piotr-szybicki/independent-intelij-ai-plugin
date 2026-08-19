@@ -9,7 +9,16 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 
-class RemoveJavadocAction : AnAction() {
+/**
+ * Tools | Remove Comments: strips comments out of the project -- Javadoc, line comments, or both.
+ *
+ * A user-driven action rather than one of the model tools -- it is here to be run by hand and its
+ * effect looked at, which is why it reports what it did, does the whole thing as one undoable
+ * change, and offers to count without touching anything.
+ *
+ * The one that throws the comments away. [MoveCommentsToDatabaseAction] is the one that keeps them.
+ */
+class RemoveCommentsAction : AnAction() {
 
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
@@ -23,7 +32,7 @@ class RemoveJavadocAction : AnAction() {
         // Empty from a keyboard shortcut with nothing focused, which is the whole-project case.
         val selection = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.toList().orEmpty()
 
-        val dialog = RemoveJavadocDialog(project, selection)
+        val dialog = RemoveCommentsDialog(project, selection)
         if (!dialog.showAndGet()) return
 
         val roots = SweepScope.roots(project, selection, dialog.useSelection)
@@ -38,17 +47,35 @@ class RemoveJavadocAction : AnAction() {
         }
 
         val dryRun = dialog.dryRun
-        val sweep = CommentSweep(project, roots, DeleteJavadoc(dialog.onlyBlank), dryRun)
-        val title = if (dryRun) "Counting Javadoc comments" else "Removing Javadoc comments"
+        val choice = dialog.choice
+        // Held rather than built inline: it counts the markers it refused to touch, which is worth
+        // saying and is not in the report.
+        val plan = DeleteComments(choice, dialog.includeMarkers)
+        val sweep = CommentSweep(project, roots, plan, dryRun)
+        val what = describe(choice)
+        val title = if (dryRun) "Counting $what" else "Removing $what"
 
-        SweepRunner.launch(project, title, sweep) { report -> notifyResult(project, report, dryRun) }
+        SweepRunner.launch(project, title, sweep) { report -> notifyResult(project, report, plan, what, dryRun) }
     }
 
-    private fun notifyResult(project: Project, report: CommentSweep.Report, dryRun: Boolean) {
+    private fun describe(choice: CommentChoice): String = when (choice) {
+        CommentChoice.JAVADOC -> "Javadoc comments"
+        CommentChoice.EMPTY_JAVADOC -> "empty Javadoc comments"
+        CommentChoice.LINE -> "line comments"
+        CommentChoice.JAVADOC_AND_LINE -> "comments"
+    }
+
+    private fun notifyResult(
+        project: Project,
+        report: CommentSweep.Report,
+        plan: DeleteComments,
+        what: String,
+        dryRun: Boolean,
+    ) {
         if (report.comments == 0) {
             SweepRunner.notify(
                 project,
-                "No Javadoc comments found",
+                "No $what found",
                 "Looked at ${report.scannedFiles} file(s).",
                 NotificationType.INFORMATION,
             )
@@ -58,7 +85,7 @@ class RemoveJavadocAction : AnAction() {
         if (dryRun) {
             SweepRunner.notify(
                 project,
-                "${report.comments} Javadoc comment(s) would be removed",
+                "${report.comments} $what would be removed",
                 "In ${report.filesWithComments} of ${report.scannedFiles} file(s). Nothing was changed.",
                 NotificationType.INFORMATION,
             )
@@ -66,17 +93,24 @@ class RemoveJavadocAction : AnAction() {
         }
 
         val lines = mutableListOf("From ${report.changedFiles} of ${report.scannedFiles} file(s) scanned.")
+        if (plan.markersKept > 0) {
+            lines.add(
+                "${plan.markersKept} <code>comment_id</code> marker(s) were left alone; the comments " +
+                    "they point at are still in the database.",
+            )
+        }
         lines.addAll(SweepRunner.footer(report))
 
         SweepRunner.notify(
             project,
-            "Removed ${report.applied} Javadoc comment(s)",
+            "Removed ${report.applied} comment(s)",
             lines.joinToString("<br/>"),
             if (report.skipped.isEmpty()) NotificationType.INFORMATION else NotificationType.WARNING,
         )
     }
 }
 
+/** Where a sweep runs: the selection when the dialog offered it and the user took it, else the project. */
 internal object SweepScope {
 
     fun roots(project: Project, selection: List<VirtualFile>, useSelection: Boolean): List<VirtualFile> =
