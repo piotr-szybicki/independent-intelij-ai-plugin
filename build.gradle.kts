@@ -34,7 +34,7 @@ dependencies {
 
     implementation("com.knuddels:jtokkit:1.1.0")
 
-    implementation("com.mysql:mysql-connector-j:9.7.0") {
+    implementation("com.mysql:mysql-connector-j:26.7.0") {
         exclude(group = "com.google.protobuf", module = "protobuf-java")
     }
 
