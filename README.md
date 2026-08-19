@@ -48,28 +48,46 @@ project root, written with three example entries the first time a project is ope
 ```json
 {
   "usage-database": {
-    "url": "",
+    "url": "jdbc:mysql://localhost:3306/ai_usage?user=root&password=secret",
     "enabled": true
   },
   "find-in-files": {
-    "blocked-phrases": []
+    "blocked-phrases": ["public", "private", "import", "TODO", "comment_id"]
   },
   "configurations": [
     {
       "name": "Anthropic Claude",
       "model": "claude-sonnet-5",
-      "models": ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001"],
+      "models": ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001", "claude-opus-4-6"],
       "url": "https://api.anthropic.com/v1/messages",
-      "token": "$AI_API_KEY",
+      "token": "",
       "header-type": "x-api-key",
       "protocol": "anthropic-messages",
       "thinking": "on",
       "effort": "medium",
       "max-tokens": 8000,
       "context-window": 200000,
-      "request-timeout-seconds": 60,
+      "request-timeout-seconds": 300,
       "additional-customizations": {
         "anthropic-version": "2023-06-01",
+        "extra-headers": {}
+      }
+    },
+    {
+      "name": "Azure Foundry",
+      "model": "gpt-5.2-codex",
+      "models": ["gpt-5.6-luna", "gpt-5.1-codex", "gpt-5.2-codex", "gpt-5.3-codex"],
+      "url": "https://###.services.ai.azure.com/openai/v1/responses",
+      "token": "",
+      "header-type": "Authorization",
+      "protocol": "openai-responses",
+      "thinking": "on",
+      "effort": "medium",
+      "max-tokens": 8000,
+      "context-window": 200000,
+      "request-timeout-seconds": 1000,
+      "additional-customizations": {
+        "anthropic-version": "",
         "extra-headers": {}
       }
     }
