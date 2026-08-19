@@ -49,8 +49,6 @@ object SkillCatalog {
                     LOG.info("Skipped ${file.path}: no description and no readable body")
                     continue
                 }
-                // A shadowed skill is not an error -- it is how a project overrides a personal one --
-                // so it is dropped quietly rather than reported against the root that lost.
                 if (!byName.add(skill.name)) continue
                 skills.add(skill)
                 found++

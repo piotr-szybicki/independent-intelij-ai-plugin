@@ -33,8 +33,6 @@ enum class WireProtocol(
 
         fun impliedBy(url: String): WireProtocol? {
             val path = url.substringBefore('?').trimEnd('/').lowercase()
-            // Responses first: "/chat/completions" cannot be confused with it, but checking the
-            // longest, most specific suffix first is what keeps that true if paths are ever added.
             return entries.firstOrNull { path.endsWith(it.pathSuffix) }
         }
     }

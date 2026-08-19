@@ -59,8 +59,6 @@ class McpHttpTransport(private val config: McpServerConfig) : McpTransport {
     }
 
     override fun notify(message: JsonObject) {
-        // The server acknowledges with 202 and no body; there is nothing to correlate or wait for,
-        // so a failure here is logged rather than raised -- it does not invalidate the session.
         val response = runCatching { post(message, config.timeoutSeconds * 1000L) }.getOrElse {
             LOG.info("MCP notification to $url failed: ${it.message}")
             return
@@ -69,17 +67,14 @@ class McpHttpTransport(private val config: McpServerConfig) : McpTransport {
     }
 
     override fun close() {
-        // Nothing to tear down: each request is its own exchange, and the shared client is static.
     }
 
-    // --- plumbing -----------------------------------------------------------------------------
 
     private fun post(message: JsonObject, timeoutMillis: Long): HttpResponse<InputStream> {
         val builder = HttpRequest.newBuilder()
             .uri(runCatching { URI.create(url) }.getOrElse { throw McpException("not a usable URL: $url") })
             .timeout(Duration.ofMillis(timeoutMillis))
             .header("Content-Type", "application/json")
-            // Both, because which one comes back is the server's choice per request.
             .header("Accept", "application/json, text/event-stream")
             .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(message)))
 
@@ -107,25 +102,20 @@ class McpHttpTransport(private val config: McpServerConfig) : McpTransport {
             val message = runCatching { JsonParser.parseString(payload) }.getOrNull()
                 ?.takeIf { it.isJsonObject }?.asJsonObject
                 ?: return null
-            // runCatching because the id is the server's to echo: a string one would otherwise
-            // throw out of here rather than simply not matching.
             val answered = runCatching { message.get("id")?.asInt }.getOrNull()
             return message.takeIf { answered == id }
         }
 
         for (line in reader.lineSequence()) {
             when {
-                // A blank line terminates the event, which is the point at which its data parses.
                 line.isEmpty() -> matched()?.let { return it }
                 line.startsWith("data:") -> {
                     if (data.isNotEmpty()) data.append('\n')
                     data.append(line.removePrefix("data:").removePrefix(" "))
                 }
-                // `event:`, `id:`, `retry:` and `:` comments carry nothing this needs.
                 else -> Unit
             }
         }
-        // A stream that ends straight after its last event never sends the terminating blank line.
         matched()?.let { return it }
 
         throw McpException("$url ended its response stream without answering request $id")

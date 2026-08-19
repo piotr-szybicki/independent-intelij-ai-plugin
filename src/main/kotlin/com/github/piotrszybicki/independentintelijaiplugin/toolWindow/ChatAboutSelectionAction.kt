@@ -19,9 +19,6 @@ class ChatAboutSelectionAction : AnAction(
     override fun update(e: AnActionEvent) {
         val editor = e.getData(CommonDataKeys.EDITOR)
         val project = e.project
-        // Hidden outright when the plugin will not run, rather than a button that opens a tool
-        // window explaining itself: this one sits in the editor's floating toolbar next to actions
-        // that all do something -- see AgentConfigurations.unavailableReason.
         val available = project != null &&
             AgentConfigurations.getInstance(project).unavailableReason == null
         e.presentation.isEnabledAndVisible = available && editor?.selectionModel?.hasSelection() == true

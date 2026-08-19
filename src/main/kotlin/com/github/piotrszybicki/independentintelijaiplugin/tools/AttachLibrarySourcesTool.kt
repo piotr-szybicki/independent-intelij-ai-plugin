@@ -149,7 +149,6 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         val found = mutableListOf<AttachAction>()
         ReadAction.runBlocking<RuntimeException> {
             for (provider in providers) {
-                // One misbehaving provider must not hide the others' actions.
                 val actions = runCatching {
                     call(provider, "getActions", 2, entries, candidate.file) as? Collection<*>
                 }.getOrNull() ?: continue
@@ -172,7 +171,6 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         qualifiedName: String,
     ): String {
         val callback = try {
-            // Must start on the EDT: the providers open progress UI and touch the project model.
             var result: Any? = null
             var failure: Exception? = null
             ApplicationManager.getApplication().invokeAndWait {
@@ -199,7 +197,6 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
                 ". The sources may simply not be published for this version."
         }
 
-        // Trust the outcome, not the callback: re-resolve and see what we actually get now.
         val now = LibraryClasses.resolve(project, qualifiedName, MAX_CANDIDATES)
         val attached = (now as? LibraryClasses.Resolution.Found)?.candidate?.fromSources == true
 

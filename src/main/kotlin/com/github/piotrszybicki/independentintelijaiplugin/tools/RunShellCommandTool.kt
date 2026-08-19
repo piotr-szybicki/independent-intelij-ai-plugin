@@ -101,8 +101,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
             .coerceIn(1, MAX_TIMEOUT_SECONDS)
 
         if (!confirm(command, workDir, timeoutSeconds)) {
-            // Reported as a result rather than an error: the user declining is a normal outcome,
-            // and the model should adapt instead of retrying the same command.
             return "The user declined to run this command. Do not run it again; ask what to do instead."
         }
 
@@ -116,8 +114,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
             return "Error: could not open a terminal: ${e.message}"
         }
 
-        // Snapshot first: the completed output is whatever the terminal grew by, which is far more
-        // reliable than trying to find the echoed command line inside a wrapped, scrolling buffer.
         val before = textOf(widget)
         ApplicationManager.getApplication().invokeAndWait { widget.sendCommandToExecute(wrapped) }
 
@@ -128,8 +124,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
         while (System.currentTimeMillis() < deadline) {
             delta = delta(before, textOf(widget))
-            // Only the echoed line carries the marker without a number after it -- the shell has
-            // not expanded `$?` yet at that point -- so requiring digits skips the false match.
             match = done.find(delta)
             if (match != null) break
             try {
@@ -156,7 +150,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         }
     }
 
-    // --- terminal -------------------------------------------------------------------------------
 
     private fun widgetFor(workDir: File): TerminalWidget {
         openTab?.let { if (it.alive && it.workDir == workDir) return it.widget }
@@ -165,9 +158,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         var failure: Exception? = null
         ApplicationManager.getApplication().invokeAndWait {
             try {
-                // Deprecated in 2026.2 with no documented replacement that preserves these
-                // arguments; createNewSession(dir, name, command, ...) takes a shell command line
-                // instead, so switching needs the terminal API pinned down first.
                 @Suppress("DEPRECATION")
                 val shellWidget = TerminalToolWindowManager.getInstance(project)
                     .createShellWidget(workDir.path, TAB_NAME, false, false)
@@ -180,8 +170,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         val widget = created ?: throw IllegalStateException("the terminal returned no widget")
 
         val tab = Tab(workDir, widget)
-        // A closed tab leaves a widget that reads as permanently empty, which would look like a
-        // command that produced nothing rather than a tab that is gone.
         widget.addTerminationCallback({ tab.alive = false }, widget)
         openTab = tab
         return widget
@@ -206,7 +194,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
             body.takeLast(MAX_OUTPUT_CHARS)
     }
 
-    // --- approval -------------------------------------------------------------------------------
 
     private fun confirm(command: String, workDir: File, timeoutSeconds: Int): Boolean {
         if (approveAll.get()) return true
@@ -230,15 +217,12 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         return choice == 0 || choice == 1
     }
 
-    // --- shell dialects -------------------------------------------------------------------------
 
     private enum class Shell {
         POSIX, POWERSHELL, CMD;
 
         fun markerSuffix(marker: String): String = when (this) {
             POSIX -> "; echo \"$marker\$?\""
-            // $LASTEXITCODE is only set by native commands, so a cmdlet would otherwise print a
-            // marker with nothing after it and never match.
             POWERSHELL -> "; \$c=\$LASTEXITCODE; if(\$null -eq \$c){\$c=if(\$?){0}else{1}}; echo \"$marker\$c\""
             CMD -> "& echo $marker%ERRORLEVEL%"
         }

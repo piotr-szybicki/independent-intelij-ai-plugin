@@ -59,13 +59,11 @@ class UsageDatabaseConfigTest {
 
         assertEquals(UsageDatabaseConfig.OFF, UsageDatabaseConfig.parse(without))
         assertEquals(UsageDatabaseConfig.OFF, UsageDatabaseConfig.parse(""))
-        // The bare-array form parseAll also accepts has nowhere to put a section.
         assertEquals(UsageDatabaseConfig.OFF, UsageDatabaseConfig.parse("""[{"name": "One"}]"""))
     }
 
     @Test
     fun `refuses a section it cannot read`() {
-        // The whole section written as the URL rather than as an object holding one.
         assertThrows(AgentConfigurationException::class.java) { UsageDatabaseConfig.parse(file("\"$url\"")) }
         assertThrows(AgentConfigurationException::class.java) {
             UsageDatabaseConfig.parse(file("""{"url": "$url", "enabled": "maybe"}"""))

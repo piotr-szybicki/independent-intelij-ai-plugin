@@ -109,14 +109,10 @@ class FindImplementationsTool(private val project: Project) : AICodingAgentTool 
     )
 
     private fun search(target: PsiElement): List<Hit> {
-        // The no-scope overload uses the element's own use scope, which is what Go to Implementation
-        // does: project sources plus the libraries that can actually see it.
         val found = DefinitionsScopedSearch.search(target).filter { it != target }
 
         return found
             .mapNotNull { describe(it) }
-            // Deduplicated on the rendered line: a light class and the declaration it stands for can
-            // both come back for the same Kotlin type.
             .distinctBy { it.location + it.label }
             .sortedBy { it.sortKey }
     }

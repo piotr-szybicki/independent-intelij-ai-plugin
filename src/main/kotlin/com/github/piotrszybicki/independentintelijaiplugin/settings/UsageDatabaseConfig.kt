@@ -33,8 +33,6 @@ data class UsageDatabaseConfig(
             } catch (e: Exception) {
                 throw AgentConfigurationException("not valid JSON: ${e.message}")
             }
-            // A bare array at the top level is the configurations and nothing else, which parseAll
-            // accepts and which has nowhere to put this section.
             if (root == null || root.isJsonNull || !root.isJsonObject) return OFF
 
             val section = root.asJsonObject.get(SECTION) ?: return OFF
@@ -49,8 +47,6 @@ data class UsageDatabaseConfig(
             }.orEmpty()
 
             val enabled = entry.get(ENABLED)?.let {
-                // Written as a JSON boolean, but read from the text as well, so `"true"` reads the
-                // way it looks rather than as a typo that silently switches recording off.
                 when (it.takeIf { element -> element.isJsonPrimitive }?.asString?.trim()?.lowercase()) {
                     "true", "yes", "on" -> true
                     "false", "no", "off" -> false

@@ -26,8 +26,6 @@ internal object SweepRunner {
                 try {
                     result = sweep.run(indicator)
                 } catch (e: ProcessCanceledException) {
-                    // The user pressed Stop. Nothing to report, and rethrowing is what tells the
-                    // platform to run onCancel rather than onSuccess.
                     throw e
                 } catch (e: Exception) {
                     failure = e.message ?: e.toString()

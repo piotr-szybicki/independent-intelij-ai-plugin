@@ -37,8 +37,6 @@ data class ProviderProfile(
             val host = uri.host?.lowercase() ?: return null
 
             val known = KNOWN_HOSTS.firstOrNull { it.matches(host) }
-            // A recognised host still falls back to its usual API when the path says nothing, which
-            // is what makes a half-typed URL settle on something sensible rather than on nothing.
             val protocol = WireProtocol.impliedBy(uri.path.orEmpty()) ?: known?.protocol ?: return null
 
             return ProviderProfile(

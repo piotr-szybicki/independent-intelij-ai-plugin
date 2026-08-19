@@ -50,7 +50,6 @@ class GitBlameTool(private val project: Project) : AICodingAgentTool {
             return "Error: end_line ($endLine) must not be less than start_line ($startLine)"
         }
 
-        // -w so that a reformatting commit does not take the blame for lines it only reindented.
         val parameters = mutableListOf("--date=short", "-w")
         if (startLine != null) {
             parameters.add("-L")

@@ -30,12 +30,8 @@ object ToolCatalog {
         Entry("read_project_file", ToolCategory.READ, true, ::ReadProjectFileTool),
         Entry("read_library_class", ToolCategory.READ, true, ::ReadLibraryClassTool),
         Entry("get_file_structure", ToolCategory.READ, true, ::GetFileStructureTool),
-        // Off despite being a reading tool: it downloads over the network and rewrites the
-        // project's library configuration, which is not something a read-only setup should do.
         Entry("attach_library_sources", ToolCategory.READ, false, ::AttachLibrarySourcesTool),
 
-        // Off with its writing half: a project that does not keep its documentation in the database
-        // has nothing to look up, and the pair is only coherent together.
         Entry("get_comment", ToolCategory.READ, false, ::GetCommentTool),
 
         Entry("find_in_files", ToolCategory.NAVIGATE, true, ::FindInFilesTool),
@@ -59,8 +55,6 @@ object ToolCatalog {
         Entry("safe_delete", ToolCategory.EDIT, false, ::SafeDeleteTool),
         Entry("add_import", ToolCategory.EDIT, false, ::AddImportTool),
         Entry("insert_member", ToolCategory.EDIT, false, ::InsertMemberTool),
-        // Enabling this changes how the model writes code: the system prompt gains the rule that
-        // documentation goes to the database and only line comments are written into files.
         Entry("insert_comment", ToolCategory.EDIT, false, ::InsertCommentTool),
 
         Entry("run_configuration", ToolCategory.RUN, false, ::RunConfigurationTool),
@@ -80,9 +74,6 @@ object ToolCatalog {
     fun buildAll(project: Project): List<AICodingAgentTool> = entries.map { entry ->
         entry.create(project).also {
             if (it.name != entry.name) {
-                // A programming error, and a quiet one: the settings entry would control nothing and
-                // the tool would never be sent. Logged rather than thrown so it does not take the
-                // tool window down with it -- Logger.error still fails the build's tests.
                 log.error("Tool catalog calls this tool '${entry.name}', but it calls itself '${it.name}'")
             }
         }

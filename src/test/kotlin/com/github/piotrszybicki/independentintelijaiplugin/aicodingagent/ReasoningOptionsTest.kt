@@ -35,7 +35,6 @@ class ReasoningOptionsTest {
 
         val thinking = options.thinkingJson()!!
         assertEquals("disabled", thinking.get("type").asString)
-        // No display: there is nothing to summarise, and the field is rejected alongside disabled.
         assertNull(thinking.get("display"))
     }
 
@@ -60,7 +59,6 @@ class ReasoningOptionsTest {
         assertEquals(listOf("low", "medium", "high", "xhigh", "max"), wire)
     }
 
-    // --- the Responses API's single field -----------------------------------------------------------
 
     @Test
     fun `sends the chosen effort when thinking is on`() {

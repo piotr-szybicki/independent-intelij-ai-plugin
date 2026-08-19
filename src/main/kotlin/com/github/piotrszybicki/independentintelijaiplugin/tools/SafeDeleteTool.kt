@@ -55,7 +55,6 @@ class SafeDeleteTool(private val project: Project) : AICodingAgentTool {
         val element = PsiTargets.resolveTarget(project, path, line, symbol)
             ?: return "Error: could not resolve symbol '$symbol' at $path:$line"
 
-        // A use site resolves to wherever the symbol actually comes from, which may be a jar.
         if (!PsiTargets.isInProject(project, element)) {
             return "Error: '$symbol' is declared outside the project -- in a library or the SDK -- so it " +
                 "cannot be deleted. Use get_symbol_info to see where it comes from."

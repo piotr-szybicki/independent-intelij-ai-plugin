@@ -71,8 +71,6 @@ class ListDirectoryTool(private val project: Project) : AICodingAgentTool {
         val maxEntries = (input.get("max_entries")?.asInt ?: DEFAULT_MAX_ENTRIES)
             .coerceIn(1, MAX_MAX_ENTRIES)
 
-        // Paths go into the listing relative to the directory that was asked for: the tree repeats
-        // the part above it on every line otherwise, which is the cost the format exists to avoid.
         val rootPath = PsiTargets.relativePath(project, root)
         val rootPrefix = if (rootPath.isEmpty()) "" else "$rootPath/"
 

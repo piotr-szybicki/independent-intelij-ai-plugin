@@ -40,8 +40,6 @@ internal object LibraryClasses {
         val byPath = LinkedHashMap<String, Candidate>()
 
         for (contributor in ChooseByNameContributor.CLASS_EP_NAME.extensionList) {
-            // One unhealthy contributor -- a language plugin mid-reload, an index still building --
-            // must not take the search down; another may hold the answer.
             val items = runCatching {
                 ReadAction.computeBlocking<Array<NavigationItem>, RuntimeException> {
                     contributor.getItemsByName(simpleName, simpleName, project, true)
@@ -60,7 +58,6 @@ internal object LibraryClasses {
         return when {
             candidates.isEmpty() -> Resolution.NotFound
             candidates.size == 1 -> Resolution.Found(candidates.single())
-            // An exact qualified hit beats the rest outright rather than being reported as ambiguous.
             else -> candidates.firstOrNull { it.qualifiedName == trimmed }
                 ?.let { Resolution.Found(it) }
                 ?: Resolution.Ambiguous(candidates)
@@ -74,15 +71,10 @@ internal object LibraryClasses {
         ReadAction.computeBlocking<Candidate?, RuntimeException> {
             val element = item as? PsiElement ?: return@computeBlocking null
 
-            // The index holds the .class file even for a library whose sources are attached, so
-            // resolving straight through `containingFile` would decompile source we already have.
-            // The navigation element is where Go to Declaration would land: the real .java or .kt.
             val target = element.navigationElement ?: element
             val file = target.containingFile ?: element.containingFile ?: return@computeBlocking null
             val vf = file.virtualFile ?: return@computeBlocking null
 
-            // The boundary that keeps this from becoming "read any file on disk": the file has to be
-            // somewhere the project model already knows about.
             val inProject = PsiTargets.isInProject(project, element)
             if (!inProject && !index.isInLibrary(vf)) return@computeBlocking null
 

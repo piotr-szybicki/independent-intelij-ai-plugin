@@ -40,8 +40,6 @@ object CommentDatabase {
                     if (keys.next()) return keys.getLong(1)
                 }
             }
-        // AUTO_INCREMENT always reports a key, so this is a server that is not the one we think it
-        // is -- worth saying rather than returning an id nothing can be looked up by.
         throw Unavailable("the insert into `$TABLE` returned no id")
     }
 
@@ -95,8 +93,6 @@ object CommentDatabase {
         if (parsed.database.isNotEmpty()) {
             open(parsed.serverUrl).use { server ->
                 server.createStatement().use {
-                    // Interpolated because a database name cannot be bound in DDL; JdbcUrl.parse
-                    // rejects anything that is not a plain identifier, which is what makes it safe.
                     it.execute(
                         "CREATE DATABASE IF NOT EXISTS `${parsed.database}` " +
                             "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",

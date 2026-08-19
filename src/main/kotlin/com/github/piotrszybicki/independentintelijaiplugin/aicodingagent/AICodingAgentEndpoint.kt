@@ -19,8 +19,6 @@ data class AICodingAgentEndpoint(
 
     fun headers(): Map<String, String> = buildMap {
         put("content-type", "application/json")
-        // Only Anthropic's own API knows this header; OpenAI's rejects nothing but ignores it, and
-        // some gateways in front of it are stricter than that. Send it where it means something.
         if (protocol == WireProtocol.ANTHROPIC_MESSAGES && apiVersion.isNotBlank()) {
             put("anthropic-version", apiVersion)
         }
@@ -49,9 +47,6 @@ data class AICodingAgentEndpoint(
         }
         if (uri.host.isNullOrBlank()) return "the endpoint URL has no host: $url"
 
-        // Caught here rather than left to the provider, because the provider's answer to it is a
-        // 400 about a parameter that "has moved", which reads like a bug in the request rather than
-        // one line of the configuration file.
         val implied = WireProtocol.impliedBy(uri.path.orEmpty())
         if (implied != null && implied != protocol) {
             return "the endpoint URL looks like a ${implied.displayName.substringBefore(" (")} " +

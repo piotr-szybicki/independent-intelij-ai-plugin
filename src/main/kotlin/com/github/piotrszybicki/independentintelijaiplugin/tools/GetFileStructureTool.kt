@@ -198,8 +198,6 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
     }
 
     private fun build(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? {
-        // Line numbers come from the PSI text rather than a Document: PSI offsets are defined
-        // against it, and a decompiled library class has no Document at all.
         val text = psiFile.text ?: return null
         val lines = Lines(text)
 
@@ -208,7 +206,6 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             return Outline(emptyList(), lines.count, truncated = false, supported = false)
         }
 
-        // No editor: the model only needs one to track the caret, which nothing here does.
         val model = builder.createStructureViewModel(null)
         try {
             val entries = mutableListOf<Entry>()
@@ -236,9 +233,6 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             val text = presentation.presentableText?.trim().orEmpty()
             val location = presentation.locationString?.trim()
 
-            // Some models wrap real members in unnamed grouping nodes. Those are not worth a line,
-            // but their children are -- and indenting under a row that was never printed would be
-            // misleading, so the children stay at this depth.
             if (text.isEmpty()) {
                 if (walk(element.children, depth, maxDepth, maxItems, entries, lines)) return true
                 continue
@@ -282,8 +276,6 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         fun lineAt(offset: Int): Int? {
             if (count == 0) return null
             val found = java.util.Arrays.binarySearch(starts, offset)
-            // binarySearch returns -(insertionPoint) - 1 when there is no exact hit; the line we
-            // want is the one starting just before the offset.
             val index = if (found >= 0) found else (-found - 2).coerceAtLeast(0)
             return index + 1
         }

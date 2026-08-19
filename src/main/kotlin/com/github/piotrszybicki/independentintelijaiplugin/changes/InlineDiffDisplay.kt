@@ -51,8 +51,6 @@ class InlineDiffDisplay(
     private var cursorOwner: EditorEx? = null
 
     init {
-        // One listener for every editor, rather than one per inlay: the renderer under the pointer
-        // carries the file and hunk it belongs to, so there is nothing to look up.
         val multicaster = EditorFactory.getInstance().eventMulticaster
         multicaster.addEditorMouseListener(
             object : EditorMouseListener {
@@ -60,8 +58,6 @@ class InlineDiffDisplay(
             },
             this,
         )
-        // EditorCustomElementRenderer has no cursor hook, so hovering has to be tracked separately
-        // and pushed onto the editor by hand.
         multicaster.addEditorMouseMotionListener(
             object : EditorMouseMotionListener {
                 override fun mouseMoved(event: EditorMouseEvent) = handleMove(event)
@@ -86,7 +82,6 @@ class InlineDiffDisplay(
             actionAt(editor, event.mouseEvent.point) != null
 
         if (overButton) {
-            // Plain arrow, so the band stops reading as editable text.
             editor.setCustomCursor(this, Cursor.getDefaultCursor())
             cursorOwner = editor
         } else if (cursorOwner === editor) {
@@ -107,8 +102,6 @@ class InlineDiffDisplay(
         val (renderer, action) = actionAt(editor, event.mouseEvent.point) ?: return
         event.consume()
 
-        // Both actions redraw, which disposes the very inlay this click came from. Deferring keeps
-        // that out of the middle of mouse-event dispatch.
         val file = renderer.file
         val hunk = renderer.hunk
         ApplicationManager.getApplication().invokeLater({
@@ -129,7 +122,6 @@ class InlineDiffDisplay(
             ComparisonManager.getInstance()
                 .compareLines(baseline, current, ComparisonPolicy.DEFAULT, DumbProgressIndicator.INSTANCE)
         } catch (e: Exception) {
-            // DiffTooBigException for very large files; the gutter stripes still work.
             log.info("Could not diff ${file.path} against its baseline: ${e.message}")
             return
         }
@@ -145,9 +137,6 @@ class InlineDiffDisplay(
         for (fragment in fragments) {
             val hunk = Hunk(fragment.startLine1, fragment.endLine1, fragment.startLine2, fragment.endLine2)
 
-            // Surviving lines: a full-width band across every line the hunk now occupies.
-            // DIFF_INSERTED (green) is used for replaced lines too, not just brand new ones, so the
-            // pairing reads as a unified diff: red band above for what went, green for what landed.
             if (hunk.newStart < hunk.newEnd && hunk.newStart < document.lineCount) {
                 val lastLine = (hunk.newEnd - 1).coerceAtMost(document.lineCount - 1)
                 highlighters.add(
@@ -188,8 +177,6 @@ class InlineDiffDisplay(
         val existing = markup.remove(file) ?: return
         existing.highlighters.forEach { runCatching { existing.markupModel.removeHighlighter(it) } }
         existing.inlays.forEach { runCatching { Disposer.dispose(it) } }
-        // The band under the pointer may have just been disposed; without this the arrow sticks
-        // until the mouse moves again.
         releaseCursor()
     }
 
@@ -227,8 +214,6 @@ class InlineDiffDisplay(
             return maxOf(textWidth, buttonsWidth)
         }
 
-        // One extra line above the removed text for the buttons, so a pure insertion -- which has no
-        // removed text at all -- still gets a band to click on.
         override fun calcHeightInPixels(inlay: Inlay<*>): Int = inlay.editor.lineHeight * (removedLines.size + 1)
 
         override fun paint(inlay: Inlay<*>, g: Graphics, targetRegion: Rectangle, textAttributes: TextAttributes) {
@@ -241,7 +226,6 @@ class InlineDiffDisplay(
             g.font = scheme.getFont(EditorFontType.PLAIN)
             val metrics = g.fontMetrics
 
-            // Span the full editor width so the band reads as a line, not as a box around the text.
             val width = maxOf(targetRegion.width, editor.contentComponent.width)
 
             if (removedLines.isNotEmpty()) {
@@ -260,7 +244,6 @@ class InlineDiffDisplay(
             val accept = drawButton(g, metrics, ACCEPT_LABEL, targetRegion.x + PADDING, targetRegion.y, lineHeight, ascent, foreground)
             val reject = drawButton(g, metrics, REJECT_LABEL, accept.x + accept.width + PADDING, targetRegion.y, lineHeight, ascent, foreground)
 
-            // Stored relative to the band, because that is what hitTest gets handed.
             acceptBounds = accept.translated(-targetRegion.x, -targetRegion.y)
             rejectBounds = reject.translated(-targetRegion.x, -targetRegion.y)
         }

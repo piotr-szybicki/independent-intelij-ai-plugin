@@ -92,8 +92,6 @@ internal open class RoundedPanel(
             }
             stroke()?.let {
                 g2.color = it
-                // Inset by half the pen, because a stroke straddles the path it follows: drawn from
-                // 0,0 anything wider than a hairline loses its outer half over the component's edge.
                 val pen = strokeWidth()
                 g2.stroke = BasicStroke(pen)
                 val inset = pen / 2f
@@ -123,8 +121,6 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
         isEditable = false
         isOpaque = false
         border = JBUI.Borders.empty()
-        // withWordWrapViewFactory keeps long unbreakable tokens (paths, minified output) from
-        // pushing a horizontal scrollbar into the transcript.
         val kit = HTMLEditorKitBuilder().withWordWrapViewFactory().build()
         editorKit = kit
         putClientProperty(JEditorPane.HONOR_DISPLAY_PROPERTIES, true)
@@ -263,7 +259,6 @@ internal class ChatInputPane(
 
     override fun getPreferredSize(): Dimension {
         val preferred = super.getPreferredSize()
-        // The look and feel installs both, and the layout can ask for a size before it has.
         val textFont = font ?: return preferred
         val textMargin = margin ?: return preferred
         val rows = visibleRows * getFontMetrics(textFont).height +

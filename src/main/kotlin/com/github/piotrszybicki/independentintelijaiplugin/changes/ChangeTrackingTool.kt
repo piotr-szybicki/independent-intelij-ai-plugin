@@ -13,13 +13,8 @@ class ChangeTrackingTool(
         return try {
             delegate.execute(input)
         } finally {
-            // Closed before the flush so that save-time work -- a reformat-on-save, a trailing
-            // newline being added -- is not itself captured as a change the model made.
             session.endCapture()
 
-            // Every tool, not just the editing ones: a tool that edits nothing has nothing unsaved
-            // to write, and this way a tool that reaches disk indirectly -- run_shell_command,
-            // run_configuration -- still sees the previous tool's edits on disk before it runs.
             session.flushToDisk()
         }
     }

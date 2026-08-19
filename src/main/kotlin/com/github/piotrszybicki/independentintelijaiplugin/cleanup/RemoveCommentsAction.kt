@@ -28,8 +28,6 @@ class RemoveCommentsAction : AnAction() {
 
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
-        // Whatever the project view (or the editor tabs) had selected when the action was invoked.
-        // Empty from a keyboard shortcut with nothing focused, which is the whole-project case.
         val selection = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)?.toList().orEmpty()
 
         val dialog = RemoveCommentsDialog(project, selection)
@@ -48,8 +46,6 @@ class RemoveCommentsAction : AnAction() {
 
         val dryRun = dialog.dryRun
         val choice = dialog.choice
-        // Held rather than built inline: it counts the markers it refused to touch, which is worth
-        // saying and is not in the report.
         val plan = DeleteComments(choice, dialog.includeMarkers)
         val sweep = CommentSweep(project, roots, plan, dryRun)
         val what = describe(choice)

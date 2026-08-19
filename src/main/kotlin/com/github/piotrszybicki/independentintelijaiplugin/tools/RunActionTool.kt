@@ -63,8 +63,6 @@ class RunActionTool(private val project: Project) : AICodingAgentTool {
         val reason = input.get("reason")?.asString?.takeIf { it.isNotBlank() }
 
         if (!confirm(actionId, label, reason)) {
-            // The user declining is an ordinary outcome, not a failure: report it as a result so the
-            // model adapts instead of retrying the same action.
             return "The user declined to run this action. Do not run it again; ask what to do instead."
         }
 
@@ -95,8 +93,6 @@ class RunActionTool(private val project: Project) : AICodingAgentTool {
             null,
         )
 
-        // Ask the action whether it applies before firing it: an action that is disabled in this
-        // context would otherwise silently do nothing and read as success.
         ActionUtil.updateAction(action, event)
         if (!event.presentation.isEnabled) {
             return "\"${event.presentation.text ?: actionId}\" is not available in the current " +

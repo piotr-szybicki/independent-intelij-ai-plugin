@@ -35,9 +35,7 @@ class ChangeSessionService(private val project: Project) : Disposable {
     private val captureDepth = AtomicInteger(0)
     private val display: ChangeDisplay = CompositeChangeDisplay(
         listOf(
-            // Gutter stripes plus the platform's own hunk popup.
             LineStatusTrackerDisplay(project),
-            // Full-width line bands, the replaced lines above them, and the per-hunk buttons.
             InlineDiffDisplay(project, ::acceptHunk, ::rejectHunk),
         )
     )
@@ -52,8 +50,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
             this,
         )
 
-        // Tools such as rename_symbol edit files that have no editor open. Their baseline is
-        // recorded all the same, but there is nothing to draw on until the file is opened.
         project.messageBus.connect(this).subscribe(
             FileEditorManagerListener.FILE_EDITOR_MANAGER,
             object : FileEditorManagerListener {
@@ -65,7 +61,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
         )
     }
 
-    // --- capture ------------------------------------------------------------------------------
 
     fun beginCapture() {
         captureDepth.incrementAndGet()
@@ -78,11 +73,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
     private fun captureBaseline(document: Document) {
         if (captureDepth.get() <= 0) return
 
-        // Every tool writes inside a named WriteCommandAction, so requiring a command in progress
-        // keeps incidental document touches (index refreshes, save-time reformatting) out of the
-        // session. It does not completely exclude the user typing in another file while a tool
-        // runs; that window is short, because the tools hold the EDT via invokeAndWait for the
-        // whole write, but it is not zero.
         if (CommandProcessor.getInstance().currentCommandName == null) return
 
         val file = FileDocumentManager.getInstance().getFile(document) ?: return
@@ -91,20 +81,11 @@ class ChangeSessionService(private val project: Project) : Disposable {
         var added = false
         synchronized(lock) {
             if (!baselines.containsKey(file)) {
-                // beforeDocumentChange: this is still the pre-change content. Only read on the
-                // first touch, so repeat edits to the same file do not re-copy the whole text.
                 baselines[file] = document.text
                 added = true
             }
         }
 
-        // Redrawn after every captured change, not just the first: the second tool call to edit a
-        // file leaves the previous render stale, because the baseline it was drawn against is no
-        // longer what the document says.
-        //
-        // Deliberately not drawing inline: we are mid-event, and a tracker installed now would miss
-        // the very change being dispatched. Drawing afterwards is correct anyway, because both
-        // displays re-diff the whole document against the baseline.
         ApplicationManager.getApplication().invokeLater({
             val baseline = synchronized(lock) { baselines[file] }
             if (baseline != null) display.show(file, baseline)
@@ -112,7 +93,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
         }, project.disposed)
     }
 
-    // --- writing through to disk ----------------------------------------------------------------
 
     fun flushToDisk() {
         saveNow(synchronized(lock) { baselines.keys.toList() })
@@ -130,8 +110,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
                     try {
                         documentManager.saveDocument(document)
                     } catch (e: Exception) {
-                        // A read-only or externally-deleted file. The edit is still in the document
-                        // and still revertible; only the write-through failed.
                         log.warn("Could not save ${file.path}: ${e.message}")
                     }
                 }
@@ -142,7 +120,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
         if (application.isDispatchThread) save.run() else application.invokeAndWait(save)
     }
 
-    // --- session state ------------------------------------------------------------------------
 
     val changedFileCount: Int
         get() = synchronized(lock) { baselines.size }
@@ -166,7 +143,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
         }, project.disposed)
     }
 
-    // --- approve / revert ---------------------------------------------------------------------
 
     fun acceptHunk(file: VirtualFile, hunk: Hunk) {
         val document = FileDocumentManager.getInstance().getDocument(file) ?: return
@@ -210,7 +186,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
             document.setText(restored)
         })
 
-        // The baseline is unchanged -- rejecting is the document moving back towards it.
         settle(file, baseline, document)
     }
 
@@ -219,8 +194,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
             newStart in 0..newEnd && newEnd <= currentLineCount
 
     private fun settle(file: VirtualFile, newBaseline: String, document: Document) {
-        // Rejecting a hunk rewrote the document, so disk is now behind. Accepting one did not touch
-        // it, in which case this finds nothing unsaved and does nothing.
         saveNow(listOf(file))
 
         val done = document.text == newBaseline
@@ -257,8 +230,6 @@ class ChangeSessionService(private val project: Project) : Disposable {
             }
         })
 
-        // The edits were written to disk as they were made, so restoring the document is only half
-        // the revert -- without this, disk keeps the version being undone.
         saveNow(snapshot.keys)
 
         if (failed.isNotEmpty()) {

@@ -67,8 +67,6 @@ class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
         }
         val endLine = input.get("end_line")?.asInt ?: startLine
 
-        // Documents are always \n internally and setText/replaceString reject anything else. The
-        // model has no way to know the file's on-disk separator, and IntelliJ restores it on save.
         val content = rawContent.replace("\r\n", "\n").replace('\r', '\n')
 
         val vf = PsiTargets.resolveProjectFile(project, path)
@@ -100,14 +98,11 @@ class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
                 if (mode == REPLACE) {
                     from = range.startOffset(startLine)
                     to = range.startOffset(endLine + 1)
-                    // Only the final line of a file may lack a trailing newline; anywhere else, one
-                    // is required or the replacement fuses with the line below it.
                     newText = if (to < range.text.length && !content.endsWith("\n")) "$content\n" else content
                 } else {
                     from = range.startOffset(startLine)
                     to = from
                     newText = when {
-                        // Appending to a file whose last line has no newline: separate them first.
                         from == range.text.length && !range.endsWithNewline && range.text.isNotEmpty() ->
                             if (content.startsWith("\n")) content else "\n$content"
                         content.endsWith("\n") -> content
@@ -135,7 +130,6 @@ class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
         if (startLine < 1) return "Error: start_line must be 1 or greater"
 
         if (mode == INSERT) {
-            // lineCount + 1 is legal and means "append after the last line".
             if (startLine > range.lineCount + 1) {
                 return "Error: start_line $startLine is past the end of $path (${range.lineCount} lines); " +
                     "use ${range.lineCount + 1} to append"

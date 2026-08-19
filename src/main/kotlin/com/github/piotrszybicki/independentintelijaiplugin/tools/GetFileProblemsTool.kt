@@ -132,7 +132,6 @@ class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
         }
         failure?.let { throw it }
 
-        // CodeSmellInfo reports 0-based coordinates.
         return result.map { Problem(it.severity, it.startLine + 1, it.startColumn + 1, describe(it.description)) }
     }
 
@@ -144,10 +143,6 @@ class GetFileProblemsTool(private val project: Project) : AICodingAgentTool {
             }
             val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@computeBlocking null
 
-            // processHighlights is the public form of what the daemon holds: the highlights the
-            // markup model carries for [document], filtered to [minSeverity] and above. Its
-            // impl-class sibling, DaemonCodeAnalyzerImpl.getHighlights, is @ApiStatus.Internal
-            // and fails the plugin verifier.
             val problems = mutableListOf<Problem>()
             DaemonCodeAnalyzerEx.processHighlights(
                 document, project, minSeverity, 0, document.textLength,

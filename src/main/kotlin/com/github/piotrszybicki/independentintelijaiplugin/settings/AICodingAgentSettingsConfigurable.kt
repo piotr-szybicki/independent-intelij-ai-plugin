@@ -299,20 +299,14 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     override fun isModified(): Boolean {
         val settings = AICodingAgentSettingsState.getInstance().state
-        // Against the entry the saved name actually resolves to, not the name itself: a name the
-        // file no longer has resolves to its first entry, and the page showing that is not an edit.
         return selectedConfiguration()?.name !=
             AgentConfigurations.select(loaded.configurations, settings.activeConfiguration)?.name ||
-            // Against the model in force rather than against the saved name, which is empty while
-            // the entry's own default is what is being used.
             modelCombo.selectedItem != selectedConfiguration()?.withModel(settings.activeModel)?.model ||
             maxIterationsField.positiveIntOr(settings.maxIterations) != settings.maxIterations ||
             maxToolOutputField.zeroOrPositiveIntOr(settings.maxToolOutputTokens) != settings.maxToolOutputTokens ||
             mcpServersArea.text != settings.mcpServers ||
             confirmMcpCheckBox.isSelected != settings.confirmMcpToolCalls ||
             skillPathsArea.text != settings.skillPaths ||
-            // Nothing about the usage database is here: it is read out of the configuration file and
-            // displayed, and the file is not this page's to save.
             pendingTools != ToolCatalog.parse(settings.enabledTools) ||
             pendingMcpTools != parseMcpTools(settings.enabledMcpTools) ||
             pendingSkills != parseMcpTools(settings.enabledSkills)
@@ -320,21 +314,13 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     override fun apply() {
         val settings = AICodingAgentSettingsState.getInstance().state
-        // The name rather than the entry: the file is the record of what the entry says, and saving
-        // a copy of it here would be a second answer that goes stale the moment the file is edited.
         settings.activeConfiguration = selectedConfiguration()?.name.orEmpty()
         settings.activeModel = modelCombo.selectedItem as? String ?: ""
         settings.maxIterations = maxIterationsField.positiveIntOr(settings.maxIterations)
         settings.maxToolOutputTokens = maxToolOutputField.zeroOrPositiveIntOr(settings.maxToolOutputTokens)
-        // Put the accepted number back, so a field that was left with something unusable in it
-        // shows what actually got saved rather than the text that was ignored.
         maxIterationsField.text = settings.maxIterations.toString()
         maxToolOutputField.text = settings.maxToolOutputTokens.toString()
-        // Nothing to notify: the roots are rescanned on the next turn, so a path added here is read
-        // the next time the user sends a message.
         settings.skillPaths = skillPathsArea.text
-        // Same again: the chat panel holds every built-in tool and asks the catalog which of them to
-        // send each turn, so this lands on the next message without rebuilding anything.
         settings.enabledTools = ToolCatalog.format(pendingTools)
         settings.enabledMcpTools = if (pendingMcpTools.isEmpty()) "" else pendingMcpTools.joinToString(",")
         settings.enabledSkills = if (pendingSkills.isEmpty()) "" else pendingSkills.joinToString(",")
@@ -342,14 +328,9 @@ class AICodingAgentSettingsConfigurable : Configurable {
         val serversChanged = settings.mcpServers != mcpServersArea.text
         settings.mcpServers = mcpServersArea.text
         settings.confirmMcpToolCalls = confirmMcpCheckBox.isSelected
-        // The service reconnects on its own when the text changes, but only on the next turn --
-        // dropping the old processes here means a server removed from the list stops running now.
         if (serversChanged) {
             ProjectManager.getInstance().openProjects.forEach { McpService.getInstance(it).reload() }
         }
-        // Not to change what the open chats are on -- this page sets the default for the next new
-        // one -- but so a provider added or renamed in the file appears in their dropdowns, which
-        // each read the file for themselves.
         ChatToolWindowFactory.refreshProviderBars()
     }
 
@@ -371,8 +352,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     private fun reloadConfigurations() {
         val settings = AICodingAgentSettingsState.getInstance().state
-        // Off the combo directly rather than through selectedConfiguration(), which resolves against
-        // the list that is about to be replaced.
         val wanted = configurationCombo.selectedItem as? String ?: settings.activeConfiguration
         loaded = project()?.let { AgentConfigurations.getInstance(it).load() }
             ?: AgentConfigurations.Loaded(emptyList(), "no project is open, so there is no file to read")
@@ -390,8 +369,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
             ?: AgentConfigurations.LoadedDatabase(UsageDatabaseConfig.OFF, null)
         val database = loadedDatabase.database
         lastSeenDatabase = database
-        // Null on the first read, which is the page being opened rather than the file changing --
-        // dropping a working connection for that would be a reconnect per visit to this page.
         if (previous != null && previous != database) ModelUsageDatabase.close()
 
         val problem = loadedDatabase.error
@@ -399,8 +376,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
             problem != null -> problem
             database.url.isBlank() -> "Not configured -- nothing is recorded."
             !database.enabled -> "Switched off (\"enabled\": false) -- ${database.url}"
-            // Escaped rather than trusted: the URL came out of a file the user wrote, and a label
-            // reads a stray < as markup.
             else -> "<html><code>${escape(database.url)}</code></html>"
         }
         usageDatabaseLabel.foreground = if (problem != null) {
@@ -415,8 +390,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     private fun updateConfigurationSummary() {
         val selected = selectedConfiguration()
-        // Refilled from the selection rather than left alone, because the model list belongs to the
-        // entry: the models one provider offers mean nothing to the next.
         modelCombo.model = DefaultComboBoxModel((selected?.models ?: emptyList()).toTypedArray())
         modelCombo.isEnabled = selected?.models?.isNotEmpty() == true
         modelCombo.selectedItem = selected
@@ -432,8 +405,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         }
 
         val headers = selected.extraHeaders.keys.joinToString(", ").ifBlank { "none" }
-        // Everything interpolated here came out of a file the user wrote, so it is escaped one value
-        // at a time rather than left to a label that would read a stray < as markup.
         configurationSummaryLabel.text = buildString {
             append("<html>")
             append("Models offered: ").append(escape(selected.models.joinToString(", ")))
@@ -466,9 +437,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         }
         val service = AgentConfigurations.getInstance(project)
         val file = service.virtualFile() ?: run {
-            // An external file is never created, so "could not create it" would be wrong as well as
-            // unhelpful: the thing to do about it is fix the variable, which means being told the
-            // path it currently names.
             val message = if (service.isExternal) {
                 "\$${AgentConfiguration.PATH_ENV_VAR} names ${service.path}, which is not there.\n\n" +
                     "Nothing is created while that variable is set. Create the file at that path, or " +
@@ -488,9 +456,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
             return
         }
         val service = AgentConfigurations.getInstance(project)
-        // A file named by the environment is read and never written, so this button has nothing to
-        // offer for one -- and saying so beats a rewrite that silently reformats a file shared by
-        // every project on the machine.
         if (service.isExternal) {
             Messages.showInfoMessage(
                 "${service.path} is only read, never written, because " +
@@ -509,9 +474,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
             )
             return
         }
-        // Re-read rather than taken from the display, and refused when it will not parse: this
-        // rewrites the whole file, so a section that could not be read is a URL that would be
-        // replaced with an empty one.
         val database = service.usageDatabase()
         if (database.error != null) {
             Messages.showErrorDialog(
@@ -739,8 +701,6 @@ class AICodingAgentSettingsConfigurable : Configurable {
         }
 
         val project: Project? = project()
-        // Modal rather than background: connecting starts processes and can take a while, and the
-        // result only makes sense next to the field it was read from.
         val task = object : Task.Modal(project, "Connecting to MCP Servers", true) {
             var report = ""
 

@@ -56,7 +56,6 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
             ?: return "Error: file not found in the project: $path"
         if (vf.isDirectory) return "Error: $path is a directory"
 
-        // The debugger counts lines from zero; every other tool here reports them from one.
         val line0 = line - 1
         val manager = XDebuggerManager.getInstance(project).breakpointManager
         val existing = existingAt(manager, vf, line0)
@@ -74,8 +73,6 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
     ): String {
         existing.firstOrNull()?.let { return "A breakpoint is already set at $path:$line (${it.type.title})." }
 
-        // Which kinds of breakpoint are legal here is a language question -- canPutAt is what the
-        // gutter itself consults, so a line it rejects is one the debugger could not stop on.
         val type = try {
             ReadAction.computeBlocking<XLineBreakpointType<*>?, RuntimeException> {
                 XDebuggerUtil.getInstance().lineBreakpointTypes.firstOrNull { it.canPutAt(vf, line0, project) }

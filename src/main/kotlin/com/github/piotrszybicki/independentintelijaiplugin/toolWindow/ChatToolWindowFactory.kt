@@ -195,7 +195,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             foreground = ChatColors.muted
         }
 
-        // --- extracted components -----------------------------------------------------------------
 
         private val providerBar = ProviderBar(project) { statusLabel.text = it }
 
@@ -213,7 +212,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         private val sessionListener = ChangeSessionService.Listener { count -> changesBarPanel.update(count) }
 
-        // --- layout ------------------------------------------------------------------------------
 
         private val meterRow = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(10), 0)).apply {
             isOpaque = false
@@ -312,7 +310,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             saveCurrentChat(active = true, background = false)
         }
 
-        // --- chat history ------------------------------------------------------------------------
 
         private fun restoreLastChat() {
             if (isOpened(project)) restoreLastChatNow()
@@ -435,7 +432,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             if (background) ApplicationManager.getApplication().executeOnPooledThread(write) else write.run()
         }
 
-        // --- transcript --------------------------------------------------------------------------
 
         private fun showUserMessage(markdown: String) {
             rows += StoredRow(StoredRow.USER, text = markdown)
@@ -573,7 +569,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
         }
 
-        // --- send / turn lifecycle ---------------------------------------------------------------
 
         private fun send() {
             if (!sendButton.isEnabled) return
@@ -868,7 +863,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             saveCurrentChat(active = true)
         }
 
-        // --- turn cost ---------------------------------------------------------------------------
 
         private fun beginTurnCost() {
             turnCostTracker.begin()
@@ -883,7 +877,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
         }
 
-        // --- token usage -------------------------------------------------------------------------
 
         private fun addUsage(reported: AICodingAgentUsage) = setUsage(usage + reported)
 
@@ -945,7 +938,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
         }
 
-        // --- dialogs -----------------------------------------------------------------------------
 
         private fun askToContinue(limit: Int, suggested: Int): Int? {
             val next = if (suggested > limit) ChatDialogs.confirmContinue(project, limit, suggested)
@@ -970,7 +962,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             return extend
         }
 
-        // --- attachments -------------------------------------------------------------------------
 
         fun startSideChat(code: String, displayPath: String, extension: String, lineRange: String) {
             startNewChat()
@@ -978,7 +969,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             input.requestFocusInWindow()
         }
 
-        // --- helpers -----------------------------------------------------------------------------
 
         private fun rollbackHistoryTo(size: Int) {
             while (history.size > size) history.removeAt(history.lastIndex)

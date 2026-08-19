@@ -49,8 +49,6 @@ object GitRepositories {
         val pathInRepo = VfsUtilCore.getRelativePath(file, repository.root)
             ?: return Resolved.Error("Error: could not locate $relativePath inside ${repository.root.name}")
 
-        // The repository root itself relativises to "", which as a git pathspec matches nothing --
-        // it means the same as naming no path at all, so say that instead.
         return Resolved.Ok(repository, pathInRepo.ifBlank { null })
     }
 

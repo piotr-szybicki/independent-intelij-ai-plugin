@@ -76,8 +76,6 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
         val editor = openEditor(vf, line)
             ?: return "Error: could not open $path in an editor, so its quick fixes cannot be reached."
 
-        // Best effort. Timing out is not fatal -- the fixes found so far are still real, there may
-        // just be fewer of them than a settled daemon would offer.
         awaitAnalysis(vf)
 
         val fixes = collect(vf, editor, line)
@@ -121,8 +119,6 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
     private fun openEditor(vf: VirtualFile, line: Int): Editor? {
         var editor: Editor? = null
         ApplicationManager.getApplication().invokeAndWait {
-            // Not focused: the model is driving, and stealing focus mid-turn is hostile if the user
-            // is typing somewhere else.
             val descriptor = OpenFileDescriptor(project, vf, (line - 1).coerceAtLeast(0), 0)
             editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, false)
         }
@@ -171,8 +167,6 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
             },
         )
 
-        // Keyed by display text: the same fix is reachable from several offsets on a line, and the
-        // model picks by name, so two entries reading alike would be unresolvable anyway.
         val byLabel = LinkedHashMap<String, Fix>()
         for (offset in offsets) {
             val available = try {
@@ -204,9 +198,6 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
             PsiDocumentManager.getInstance(project).commitAllDocuments()
 
             try {
-                // Inside a command either way. ChangeSessionService only records a baseline while a
-                // command is running, so a fix invoked outside one would edit the file untracked --
-                // no diff shown to the user, and not covered by Revert.
                 if (action.startInWriteAction()) {
                     WriteCommandAction.runWriteCommandAction(project, fix.label, null, Runnable {
                         action.invoke(project, editor, psiFile)

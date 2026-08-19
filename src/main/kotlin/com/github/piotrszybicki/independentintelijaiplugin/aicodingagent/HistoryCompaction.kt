@@ -6,8 +6,6 @@ import java.util.Locale
 
 object HistoryCompaction {
 
-    // Internal because the context meter colours on it: the point at which the user's bar changes
-    // colour and the point at which this fires are the same fact, and two copies of it would drift.
     internal const val COMPACT_ABOVE = 0.60
 
     private const val COMPACT_DOWN_TO = 0.40
@@ -63,10 +61,6 @@ object HistoryCompaction {
         history: MutableList<ChatMessage>,
         contextWindowTokens: Int,
         overheadChars: Int = 0,
-        // What a character is worth in this conversation. Left at the standing guess by default and
-        // given [ContextMeter]'s calibrated figure once there is one, so that the gauge the user
-        // reads and the threshold this fires on are the same measurement -- a bar sitting at 45%
-        // when compaction runs at its 60% mark looks like a bug in whichever of the two is right.
         tokensPerChar: Double = ContextMeter.DEFAULT_TOKENS_PER_CHAR,
         summarizer: Summarizer? = null,
     ): Result {
@@ -74,8 +68,6 @@ object HistoryCompaction {
         val before = tokensIn(chars, tokensPerChar)
         if (contextWindowTokens <= 0) return Result(0, before, before)
 
-        // The window converted into characters once, rather than the history converted into tokens
-        // on every comparison below: the history is what changes as the pass runs.
         val windowChars = contextWindowTokens / tokensPerChar
         val triggerChars = windowChars * COMPACT_ABOVE
         if (chars < triggerChars) return Result(0, before, before)
@@ -83,21 +75,13 @@ object HistoryCompaction {
         val targetChars = windowChars * COMPACT_DOWN_TO
         val elidable = (history.size - PROTECTED_TAIL_MESSAGES).coerceAtLeast(0)
 
-        // Oldest first: the earliest output is the least likely to still be what the model is
-        // working from, and going in this order is what leaves the newest prefix untouched.
         var evicted = 0
         for (i in 0 until elidable) {
             if (chars <= targetChars) break
             val message = history[i]
-            // Results only ever arrive on a user message, and only ever in the one right after the
-            // assistant turn that asked for them.
             if (message.role != "user") continue
             val elision = elide(message, history.getOrNull(i - 1)) ?: continue
             history[i] = elision.message
-            // Subtracted rather than re-measured, so a pass is one walk of the history instead of
-            // one per message elided. It undercounts a little -- what was measured is the escaped
-            // JSON and what is subtracted is the raw text -- which errs towards eliding one message
-            // more than needed, the harmless direction.
             chars -= elision.savedChars
             evicted += elision.count
         }
@@ -181,8 +165,6 @@ object HistoryCompaction {
 
             val id = obj.get("tool_use_id")?.asString.orEmpty()
             val stub = stubFor(original, toolNameOf(previous, id))
-            // Rebuilt rather than copied and edited: a `tool_result` is these three fields, and
-            // building it here means nothing else the block was carrying survives into the request.
             copy.add(JsonObject().apply {
                 addProperty("type", "tool_result")
                 addProperty("tool_use_id", id)
@@ -197,7 +179,6 @@ object HistoryCompaction {
 
     private fun stubFor(original: String, toolName: String): String {
         val kb = original.toByteArray(Charsets.UTF_8).size / 1024.0
-        // Locale.ROOT, or this renders as "12,4 kB" wherever the decimal separator is a comma.
         return "$ELIDED_PREFIX to save context: %.1f kB from %s. The call ran; its output is no longer part of this conversation.]"
             .format(Locale.ROOT, kb, toolName)
     }

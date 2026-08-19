@@ -22,8 +22,6 @@ object ModelExchangeLog {
     private val fallback = Logger.getInstance(ModelExchangeLog::class.java)
 
     private val gson = GsonBuilder()
-        // Bodies hold prose, and prose holds angle brackets and ampersands. Escaped to `<` they
-        // are still valid JSON and no longer readable, which defeats the point of the file.
         .disableHtmlEscaping()
         .setPrettyPrinting()
         .create()
@@ -55,7 +53,6 @@ object ModelExchangeLog {
         }
     }
 
-    // --- storage ------------------------------------------------------------------------------------
 
     private const val REQUEST_FILE = "request.json"
     private const val RESPONSE_FILE = "response.json"
@@ -66,7 +63,6 @@ object ModelExchangeLog {
             val directory = root.resolve(segment(conversationId, UNASSIGNED)).resolve(segment(requestId, "request"))
             val fresh = Files.notExists(root)
             Files.createDirectories(directory)
-            // The breadcrumb goes in idea.log, the same as the other two logs'.
             if (fresh) fallback.info("Model request/response files: $root")
             Files.writeString(directory.resolve(name), gson.toJson(document()))
         }.onFailure {

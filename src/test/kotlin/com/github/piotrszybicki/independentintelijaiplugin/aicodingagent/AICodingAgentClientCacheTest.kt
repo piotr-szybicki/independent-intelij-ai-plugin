@@ -33,8 +33,6 @@ class AICodingAgentClientCacheTest {
 
     @Test
     fun `never exceeds the breakpoint budget`() {
-        // Long enough that every message is a candidate, and wide enough that the lookback is
-        // satisfied several times over.
         val messages = (1..40).map { message(if (it % 2 == 0) "assistant" else "user", 4) }
 
         val marked = AICodingAgentClient.withCacheBreakpoints(messages)
@@ -99,13 +97,9 @@ class AICodingAgentClientCacheTest {
         val tail = marked.indexOfLast { it.breakpoints() > 0 }
         val lookback = marked.indexOfFirst { it.breakpoints() > 0 }
         assertTrue("expected two distinct breakpoints", lookback in 0 until tail)
-        // The hour goes on the older of the two, which is the only one allowed to outlast the mark
-        // after it -- and the one covering the part of the conversation that no longer changes.
         assertEquals("1h", marked[lookback].ttl())
         assertEquals("5m", marked[tail].ttl())
 
-        // The system prompt is marked ahead of every one of these and carries an hour, so it leads
-        // the sequence the rule is checked against.
         val ttls = listOf("1h") + marked.filter { it.breakpoints() > 0 }.map { it.ttl() }
         ttls.zipWithNext().forEach { (earlier, later) ->
             assertTrue("ttl '$later' must not come after ttl '$earlier'", rank(later) <= rank(earlier))
@@ -160,7 +154,6 @@ class AICodingAgentClientCacheTest {
         assertEquals(0, marked.sumOf { it.breakpoints() })
     }
 
-    // --- orphaned tool calls ----------------------------------------------------------------------
 
     @Test
     fun `answers a tool_use the following message left unanswered`() {
@@ -213,7 +206,6 @@ class AICodingAgentClientCacheTest {
 
         assertEquals(2, repaired.size)
         assertEquals(setOf("toolu_1"), resultIds(repaired[1]))
-        // The typed text survives, after the result that has to come first.
         assertEquals(2, repaired[1].content.size())
     }
 

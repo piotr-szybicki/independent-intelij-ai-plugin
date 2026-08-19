@@ -17,7 +17,6 @@ class OpenAiProtocolTest {
         JsonObject().apply { addProperty("type", "object") },
     )
 
-    // --- Chat Completions: requests -----------------------------------------------------------------
 
     @Test
     fun `sends the cap under the name the reasoning models accept`() {
@@ -120,7 +119,6 @@ class OpenAiProtocolTest {
         assertEquals("done", body.getAsJsonArray("messages")[0].asJsonObject.get("content").asString)
     }
 
-    // --- Chat Completions: responses ----------------------------------------------------------------
 
     @Test
     fun `reads text and tool calls out of a choice`() {
@@ -172,7 +170,6 @@ class OpenAiProtocolTest {
         assertEquals(56, turn.usage?.input_tokens)
         assertEquals(7, turn.usage?.output_tokens)
         assertEquals(64, turn.usage?.cache_read_input_tokens)
-        // The point of the subtraction: the parts add back up to what the server billed.
         assertEquals(120, turn.usage?.input_tokens!! + turn.usage?.cache_read_input_tokens!!)
     }
 
@@ -213,7 +210,6 @@ class OpenAiProtocolTest {
         assertTrue(failure.exceptionOrNull() is AICodingAgentApiException)
     }
 
-    // --- Responses: requests ------------------------------------------------------------------------
 
     @Test
     fun `sends the conversation as input, not messages`() {
@@ -282,7 +278,6 @@ class OpenAiProtocolTest {
         assertFalse(declared.has("function"))
     }
 
-    // --- Responses: responses -----------------------------------------------------------------------
 
     @Test
     fun `reads output items into text and tool use`() {
@@ -296,7 +291,6 @@ class OpenAiProtocolTest {
 
         assertEquals(2, turn.content.size())
         assertEquals("looking", turn.content[0].asJsonObject.get("text").asString)
-        // The item's own id is a different string, and a result quoting it is not recognised.
         assertEquals("call_1", turn.content[1].asJsonObject.get("id").asString)
         assertEquals("a.kt", turn.content[1].asJsonObject.getAsJsonObject("input").get("path").asString)
         assertEquals("tool_use", turn.stopReason)
@@ -346,7 +340,6 @@ class OpenAiProtocolTest {
         assertTrue(failure.exceptionOrNull() is AICodingAgentApiException)
     }
 
-    // --- round trip ---------------------------------------------------------------------------------
 
     @Test
     fun `a call id parsed out of a response comes back on the answer`() {
@@ -371,7 +364,6 @@ class OpenAiProtocolTest {
         assertNull(messages[1].asJsonObject.get("id"))
     }
 
-    // --- helpers ------------------------------------------------------------------------------------
 
     private fun json(raw: String): JsonObject = JsonParser.parseString(raw.trimIndent()).asJsonObject
 

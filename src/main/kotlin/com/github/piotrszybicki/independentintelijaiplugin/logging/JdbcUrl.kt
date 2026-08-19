@@ -34,8 +34,6 @@ internal data class JdbcUrl(val serverUrl: String, val database: String) {
             val rest = url.removePrefix(PREFIX)
             val query = rest.substringAfter('?', "")
             val path = rest.substringBefore('?')
-            // Everything before the first slash, which is host:port -- or several of them, since the
-            // failover form lists hosts comma-separated in exactly that position.
             val authority = path.substringBefore('/')
             val database = path.substringAfter('/', "")
 

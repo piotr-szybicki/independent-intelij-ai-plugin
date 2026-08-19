@@ -26,7 +26,6 @@ class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
         STEP_OUT("step_out", needsPause = true, expectsStop = true),
         RUN_TO_LINE("run_to_line", needsPause = true, expectsStop = true),
 
-        // Pause acts on a running program; stop ends the session and nothing comes back.
         PAUSE("pause", needsPause = false, expectsStop = true),
         STOP("stop", needsPause = false, expectsStop = false);
 
@@ -97,7 +96,6 @@ class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
             return "The debugger is already paused.\n\n" + pause.describe(session)
         }
 
-        // Resolved before the action runs so a bad path fails without disturbing the session.
         val runTo = if (action == Action.RUN_TO_LINE) {
             val path = input.get("path")?.asString ?: return "Error: run_to_line needs 'path'"
             val line = input.get("line")?.asInt ?: return "Error: run_to_line needs 'line'"
@@ -120,8 +118,6 @@ class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
             return "Stopped debug session \"${session.sessionName}\"."
         }
 
-        // The listeners have to be in place before the step is issued: a step can complete before
-        // the call that started it returns, and that pause would otherwise be missed entirely.
         val landed = pause.awaitPause(waitSeconds * 1000L, acceptAlreadyPaused = false) {
             ApplicationManager.getApplication().invokeAndWait { perform(session, action, runTo) }
         }
@@ -134,7 +130,6 @@ class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
     private fun perform(session: XDebugSession, action: Action, runTo: RunTarget?) {
         when (action) {
             Action.RESUME -> session.resume()
-            // false: honour breakpoints on the way, which is what the toolbar button does.
             Action.STEP_OVER -> session.stepOver(false)
             Action.STEP_INTO -> session.stepInto()
             Action.FORCE_STEP_INTO -> session.forceStepInto()
@@ -162,8 +157,6 @@ class DebuggerActionTool(private val project: Project) : AICodingAgentTool {
 
         if (landed != null) return "$did.\n\n" + pause.describe(landed)
 
-        // No pause came back. Which of the two reasons it is matters: one is worth waiting on, the
-        // other never will be.
         return if (session.isStopped) {
             "$did, and the debug session ended -- the program ran to completion or was terminated."
         } else {

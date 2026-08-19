@@ -85,10 +85,6 @@ class ChatHistoryService(project: Project) {
     fun load(id: String): StoredChat? = synchronized(lock) {
         runCatching {
             gson.fromJson(Files.readString(fileFor(id)), StoredChat::class.java)
-                // Gson fills absent fields with null whatever the Kotlin type says, so a file
-                // written by a different version of these classes -- or one that never finished
-                // being written -- can parse into an object with holes in it. Reading every field
-                // that matters here turns that into a failed load rather than a crash later on.
                 .takeIf { it.id.isNotEmpty() && it.messages.isNotEmpty() && it.transcript.isNotEmpty() }
         }.onFailure { log.warn("Could not read chat $id: ${it.message}") }.getOrNull()
     }
@@ -123,14 +119,12 @@ class ChatHistoryService(project: Project) {
         }
     }
 
-    // --- storage --------------------------------------------------------------------------------
 
     private fun fileFor(id: String): Path = directory.resolve("$id.json")
 
     private fun readIndex(): Index {
         val parsed = runCatching { gson.fromJson(Files.readString(directory.resolve(INDEX_FILE)), Index::class.java) }
             .getOrNull()
-        // Null covers all of "no file yet", "unreadable", and "parsed but missing its chat list".
         val chats = parsed?.chats ?: return rebuildIndex()
         return Index(parsed.activeId, chats)
     }
@@ -140,8 +134,6 @@ class ChatHistoryService(project: Project) {
             .mapNotNull { id -> load(id)?.let { ChatSummary(it.id, it.title, it.updatedAt) } }
             .sortedByDescending { it.updatedAt }
 
-        // The chat the window was last on is not recoverable this way, so the next open starts
-        // fresh rather than guessing at it.
         val index = Index(null, summaries.toMutableList())
         if (summaries.isNotEmpty()) runCatching { writeIndex(index) }
         return index

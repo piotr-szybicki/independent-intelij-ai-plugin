@@ -18,8 +18,6 @@ data class SkillDefinition(
             val text = runCatching { head(file) }.getOrNull() ?: return null
             val frontmatter = SkillFrontmatter.parse(text)
 
-            // The directory is what the user types and what the format treats as the real name; a
-            // `name` field is a display label over the top of it.
             val fallbackName = file.parentFile?.name?.takeIf { it.isNotBlank() }
                 ?: file.nameWithoutExtension
             val name = frontmatter["name"]?.takeIf { it.isNotBlank() } ?: fallbackName
@@ -28,8 +26,6 @@ data class SkillDefinition(
                 ?: firstParagraph(text)
                 ?: return null
 
-            // `when_to_use` carries the trigger phrases that make a skill findable, so it belongs in
-            // the listing next to the description rather than in the body nobody has read yet.
             val whenToUse = frontmatter["when_to_use"]?.takeIf { it.isNotBlank() }
             val full = if (whenToUse == null) described else "$described $whenToUse"
 
@@ -72,7 +68,6 @@ object SkillFrontmatter {
         var i = open + 1
         while (i < close) {
             val line = lines[i]
-            // Blank, commented, or indented: nothing at the top level of the map, so nothing wanted.
             if (line.isBlank() || line.startsWith(" ") || line.startsWith("\t") || line.trimStart().startsWith("#")) {
                 i++
                 continue
@@ -91,8 +86,6 @@ object SkillFrontmatter {
                 val folded = rest.startsWith(">")
                 val body = mutableListOf<String>()
                 i++
-                // A block scalar runs until the indentation stops, which is also where the next
-                // top-level key begins -- so this consumes exactly the continuation lines.
                 while (i < close && (lines[i].isBlank() || lines[i].startsWith(" ") || lines[i].startsWith("\t"))) {
                     body.add(lines[i].trim())
                     i++
@@ -128,8 +121,6 @@ object SkillFrontmatter {
             val trimmed = lines[i].trim()
             if (trimmed == FENCE || trimmed == "...") return i
         }
-        // Unterminated: the file opens with something that looked like a fence but never closed, so
-        // treating the rest of it as fields would invent metadata out of prose.
         return null
     }
 
@@ -140,8 +131,6 @@ object SkillFrontmatter {
                 return value.substring(1, value.length - 1)
             }
         }
-        // An unquoted scalar ends at a comment. YAML wants whitespace before the `#`, which also
-        // keeps a `#` inside a description from truncating it.
         return value.substringBefore(" #").trim()
     }
 }

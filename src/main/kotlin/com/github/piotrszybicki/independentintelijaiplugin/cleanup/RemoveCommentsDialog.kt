@@ -70,8 +70,6 @@ class RemoveCommentsDialog(project: Project, private val selection: List<Virtual
                     "(<code>/* ... */</code>) are always left alone.",
             )
         }
-        // buttonsGroup rather than group: the DSL keeps the exclusivity itself and refuses a radio
-        // button placed outside one, since a ButtonGroup made by hand is not something it can see.
         buttonsGroup("Which comments") {
             row { cell(javadoc) }
             row { cell(blankJavadoc) }

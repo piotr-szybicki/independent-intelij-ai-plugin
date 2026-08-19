@@ -29,8 +29,6 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
             val structured = result.getAsJsonObject("structuredContent")
 
             var text = rendered.joinToString("\n\n").trim()
-            // Servers that return structured output repeat it as text for older clients; only fall
-            // back to the raw JSON when they have not.
             if (text.isEmpty() && structured != null) text = GSON.toJson(structured)
             if (text.isEmpty()) text = "(the tool returned no content)"
 
@@ -39,8 +37,6 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
                     "\n\n[TRUNCATED: ${text.length - MAX_RESULT_CHARS} more characters omitted]"
             }
 
-            // `isError` means the tool ran and failed, which the model should see and react to --
-            // not a protocol failure, which never gets this far.
             return if (result.get("isError")?.asBoolean == true) "Error: $text" else text
         }
 
@@ -81,9 +77,6 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
 
         val initialize = McpRpc.request(nextId.getAndIncrement(), "initialize", JsonObject().apply {
             addProperty("protocolVersion", PROTOCOL_VERSION)
-            // No client capabilities are advertised: this client offers the server no sampling, no
-            // roots and no elicitation, and claiming otherwise would have servers call back into
-            // nothing.
             add("capabilities", JsonObject())
             add("clientInfo", JsonObject().apply {
                 addProperty("name", "aicodingagent-intellij")
@@ -138,8 +131,6 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
                 tools += McpToolDescriptor(
                     name = name,
                     description = tool.get("description")?.asString.orEmpty(),
-                    // A tool with no schema still takes no arguments rather than any arguments, so
-                    // the empty object is the honest translation and keeps the API from rejecting it.
                     inputSchema = tool.getAsJsonObject("inputSchema") ?: emptySchema(),
                 )
             }

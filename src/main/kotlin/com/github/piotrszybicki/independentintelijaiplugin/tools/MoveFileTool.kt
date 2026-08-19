@@ -60,8 +60,6 @@ class MoveFileTool(private val project: Project) : AICodingAgentTool {
         val renaming = source.name != target.name
         val moving = sourceDir != targetDir
 
-        // Both intermediate states have to be checked up front: the failure would otherwise land
-        // halfway through, with the file renamed but not yet moved.
         val renameFirst = !File(sourceDir, target.name).exists()
         val moveFirst = !File(targetDir, source.name).exists()
         if (renaming && moving && !renameFirst && !moveFirst) {
@@ -84,8 +82,6 @@ class MoveFileTool(private val project: Project) : AICodingAgentTool {
         var error: String? = null
         ApplicationManager.getApplication().invokeAndWait {
             try {
-                // Binary files and anything else the IDE has no PSI for cannot go through the
-                // refactorings; there are no references to update for those anyway.
                 if (psiFile == null || psiDir == null) {
                     moveOnDisk(vf, targetDirVf, target.name)
                 } else if (renameFirst) {

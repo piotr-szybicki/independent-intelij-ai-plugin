@@ -34,8 +34,6 @@ class RestoreCommentsAction : AnAction() {
         }
 
         val dryRun = dialog.dryRun
-        // Held rather than built inline: it counts the markers whose rows have gone, which is the
-        // one thing about a restore worth knowing and is not in the report.
         val plan = RestoreMarkers(project)
         val sweep = CommentSweep(project, roots, plan, dryRun)
         val title = if (dryRun) "Counting comment markers" else "Restoring comments from the database"
@@ -71,8 +69,6 @@ class RestoreCommentsAction : AnAction() {
 
         val lines = mutableListOf("Into ${report.changedFiles} of ${report.scannedFiles} file(s) scanned.")
         if (plan.missing > 0) {
-            // The marker is left in place when its row is gone: the id is the only remaining trace
-            // of what the comment said, and blanking it would throw that away too.
             lines.add("${plan.missing} marker(s) had no row in the table and were left as they are.")
         }
         lines.addAll(SweepRunner.footer(report))

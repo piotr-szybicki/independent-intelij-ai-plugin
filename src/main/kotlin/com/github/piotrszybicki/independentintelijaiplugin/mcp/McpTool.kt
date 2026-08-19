@@ -41,8 +41,6 @@ class McpTool(
 
     override fun execute(input: JsonObject): String {
         if (!approvals.confirm(project, name, server, input)) {
-            // A refusal is a normal outcome, not a failure: reported so the model adapts rather
-            // than spending another turn on the same call.
             return "The user declined this MCP tool call. Do not call it again; ask what to do instead."
         }
 

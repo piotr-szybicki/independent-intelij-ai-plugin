@@ -18,8 +18,6 @@ enum class AuthScheme(val headerName: String, val displayName: String, val alias
     companion object {
 
         fun parse(value: String): AuthScheme? {
-            // "Authorization: Bearer" is how the header is usually written down, and the half before
-            // the colon is the part that names it.
             val wanted = value.trim().lowercase().substringBefore(':').trim()
             return entries.firstOrNull { scheme ->
                 wanted == scheme.headerName.lowercase() ||
@@ -35,8 +33,6 @@ enum class Effort(val wireValue: String?, val openAiValue: String?, val displayN
     LOW("low", "low", "Low -- short, scoped work"),
     MEDIUM("medium", "medium", "Medium (recommended)"),
     HIGH("high", "high", "High -- the provider's own default"),
-    // OpenAI's scale stops at high, and a level it does not know is a rejected request rather than a
-    // clamped one -- so the two levels above it are clamped here instead.
     XHIGH("xhigh", "high", "Extra high -- hard agentic work"),
     MAX("max", "high", "Maximum -- correctness over cost"),
     ;

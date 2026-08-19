@@ -13,8 +13,6 @@ class AgentConfigurationStartup : ProjectActivity {
         val configurations = AgentConfigurations.getInstance(project)
         configurations.unavailableReason?.let { reason ->
             LOG.warn("AICodingAgent is not starting: $reason")
-            // Sticky, because it is the whole reason the tool window says what it says, and a
-            // balloon that fades is a balloon that is missed while the IDE is still opening files.
             NotificationGroupManager.getInstance()
                 .getNotificationGroup(NOTIFICATION_GROUP)
                 .createNotification(

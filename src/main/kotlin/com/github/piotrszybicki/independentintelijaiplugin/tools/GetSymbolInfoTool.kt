@@ -72,8 +72,6 @@ class GetSymbolInfoTool(private val project: Project) : AICodingAgentTool {
     }
 
     private fun describe(target: PsiElement): String {
-        // A symbol from a compiled jar resolves to a stub whose text is a decompiled skeleton. The
-        // navigation element is the real source when the library ships one, so prefer it.
         val element = target.navigationElement ?: target
 
         val kind = ElementDescriptionUtil.getElementDescription(element, UsageViewTypeLocation.INSTANCE)
@@ -84,8 +82,6 @@ class GetSymbolInfoTool(private val project: Project) : AICodingAgentTool {
 
         val file = element.containingFile
         val text = file?.text
-        // Both are absent for synthetic elements -- a generated getter, a light class -- which
-        // resolve fine but have no source to point at.
         val range = element.textRange
         if (file == null || text == null || range == null) return "$header\n(no source available)"
 

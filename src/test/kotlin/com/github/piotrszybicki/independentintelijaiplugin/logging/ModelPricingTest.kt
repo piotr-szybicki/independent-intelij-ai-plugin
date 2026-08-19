@@ -13,15 +13,12 @@ class ModelPricingTest {
 
     @Test
     fun `charges each count at its own rate`() {
-        // Opus 5: 5.00 + 6.25 + 0.50 + 25.00
         assertEquals(BigDecimal("36.750000"), cost("claude-opus-5", 1_000_000, 1_000_000, 1_000_000, 1_000_000))
-        // Luna: 0.20 + 0.25 + 0.02 + 0.90
         assertEquals(BigDecimal("1.370000"), cost("gpt-5.6-luna", 1_000_000, 1_000_000, 1_000_000, 1_000_000))
     }
 
     @Test
     fun `prices a typical cached request`() {
-        // 2,000 input at $5, 40,000 cache reads at $0.50, 1,500 output at $25.
         assertEquals(BigDecimal("0.067500"), cost("claude-opus-5", 2_000, 0, 40_000, 1_500))
     }
 

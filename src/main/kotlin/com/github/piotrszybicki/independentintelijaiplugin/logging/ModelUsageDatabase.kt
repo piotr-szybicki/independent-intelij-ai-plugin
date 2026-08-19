@@ -41,7 +41,6 @@ object ModelUsageDatabase {
 
     private var dropped = 0
 
-    // --- writes -------------------------------------------------------------------------------------
 
     fun recordRequest(
         conversationId: String,
@@ -51,8 +50,6 @@ object ModelUsageDatabase {
         model: String,
         body: String,
     ) {
-        // Converted here rather than in the task, so the parse happens once and a body that cannot be
-        // parsed does not fail the write on a background thread.
         val document = asJson(body)
         submit(
             """
@@ -99,8 +96,6 @@ object ModelUsageDatabase {
             setString(1, requestId)
             setString(2, conversationId.ifBlank { UNASSIGNED })
             setTimestamp(3, startedAt)
-            // NULL rather than blank when the body carried no id, which an error body generally does
-            // not -- so `WHERE response_id IS NULL` finds them.
             setString(4, responseId.takeIf { it.isNotBlank() })
             setInt(5, statusCode)
             setLong(6, durationMillis)
@@ -145,13 +140,8 @@ object ModelUsageDatabase {
         outputTokens: Int,
     ) {
         val total = inputTokens + cacheWriteTokens + cacheReadTokens
-        // NULL rather than 0.0 when nothing was read at all: a rate of zero reads as "the cache
-        // missed", and a request with no input to speak of did not have a cache to miss. NULL is
-        // also what AVG() skips, which is the whole reason the distinction is worth keeping.
         val hitRate = if (total > 0) cacheReadTokens.toDouble() / total else null
 
-        // Priced here rather than on the server, so the column holds exactly the number the chat
-        // window drew under the reply -- same function, same counts. See [ModelPricing].
         val cost = ModelPricing.costUsd(model, inputTokens, cacheWriteTokens, cacheReadTokens, outputTokens)
         if (cost == null) reportUnpriced(model)
 
@@ -198,7 +188,6 @@ object ModelUsageDatabase {
         )
     }
 
-    // --- tool calls ---------------------------------------------------------------------------------
 
     fun recordToolCall(
         conversationId: String,
@@ -213,8 +202,6 @@ object ModelUsageDatabase {
         resultTokens: Int,
         durationMillis: Long,
     ) {
-        // A request id is what the row hangs off; without one there is nothing to attach it to and
-        // the insert would only fail on the foreign key.
         if (requestId.isBlank()) return
 
         val document = asJson(arguments)
@@ -265,7 +252,6 @@ object ModelUsageDatabase {
                 "\n\n[... truncated: ${result.length - MAX_RESULT_CHARS} more characters were not recorded]"
         }
 
-    // --- plumbing -----------------------------------------------------------------------------------
 
     private fun submit(sql: String, bind: PreparedStatement.(Timestamp) -> Unit) {
         val target = configuredUrl()
@@ -280,10 +266,6 @@ object ModelUsageDatabase {
             dropped++
             return
         }
-        // Retried once on a fresh connection rather than failed outright: the common failure here is
-        // a connection the server closed while the IDE sat idle -- `wait_timeout` is eight hours by
-        // default and a restarted container is instant -- which looks like an error on first use and
-        // works immediately afterwards.
         runCatching { execute(target, sql, startedAt, bind) }
             .recoverCatching {
                 closeQuietly()
@@ -298,8 +280,6 @@ object ModelUsageDatabase {
             }
             .onFailure {
                 closeQuietly()
-                // One warning per outage rather than one per request: the interval is what makes the
-                // difference, since nothing is attempted again until it has passed.
                 if (nextAttemptAt == 0L) {
                     fallback.warn("Could not write usage rows to $target; retrying in ${RETRY_INTERVAL_MILLIS / 1000}s", it)
                 }
@@ -318,8 +298,6 @@ object ModelUsageDatabase {
 
     private fun connect(target: String): Connection {
         val existing = connection
-        // `isValid` rather than `isClosed`: a connection the server dropped is not closed on this
-        // side, and every statement on it fails until something notices.
         if (existing != null && connectedTo == target && runCatching { existing.isValid(2) }.getOrDefault(false)) {
             return existing
         }
@@ -337,9 +315,6 @@ object ModelUsageDatabase {
         if (parsed.database.isNotEmpty()) {
             open(parsed.serverUrl).use { server ->
                 server.createStatement().use {
-                    // Interpolated rather than bound: a database name cannot be a parameter in DDL.
-                    // `JdbcUrl.parse` rejects anything that is not a plain identifier, which is what
-                    // makes that safe -- a name is never allowed to carry a backtick out of the URL.
                     it.execute("CREATE DATABASE IF NOT EXISTS `${parsed.database}` " +
                         "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
                 }
@@ -349,8 +324,6 @@ object ModelUsageDatabase {
         val opened = open(target)
         try {
             opened.createStatement().use { it.execute(SCHEMA) }
-            // After the table it references: the foreign key is rejected outright if the parent is
-            // not there yet, and on a fresh database the statement above is what puts it there.
             opened.createStatement().use { it.execute(TOOL_SCHEMA) }
             addMissingColumns(opened)
         } catch (e: Exception) {
@@ -402,8 +375,6 @@ object ModelUsageDatabase {
         try {
             JdbcUrl.prepare(loaded.database.url, TIMEOUTS)
         } catch (e: Exception) {
-            // A typo in the URL is the one failure here that would otherwise leave no trace at all:
-            // nothing is written, and nothing is attempted, so no connection ever fails to report it.
             complain("the usage database URL cannot be used: ${e.message}")
         }
     }.getOrDefault("")
@@ -427,7 +398,6 @@ object ModelUsageDatabase {
         if (value == null) setNull(index, Types.DECIMAL) else setBigDecimal(index, value)
     }
 
-    // --- schema -------------------------------------------------------------------------------------
 
     private val SCHEMA = """
         CREATE TABLE IF NOT EXISTS $TABLE (
@@ -484,7 +454,6 @@ object ModelUsageDatabase {
         runCatching { JsonParser.parseString(body) }.getOrNull()?.takeIf { !it.isJsonNull }?.toString()
             ?: JsonPrimitive(body).toString()
 
-    // --- settings page ------------------------------------------------------------------------------
 
     fun test(url: String): String {
         val target = runCatching { JdbcUrl.prepare(url, TIMEOUTS) }.getOrElse { return "Bad URL: ${it.message}" }
@@ -494,8 +463,6 @@ object ModelUsageDatabase {
             openWithSchema(target).use { handle ->
                 val server = handle.metaData.databaseProductVersion
                 val database = handle.catalog ?: JdbcUrl.parse(target).database
-                // Both in one query rather than two, so the count and the total are read from the
-                // same moment even if a turn is writing while this runs.
                 val (rows, spent) = handle.createStatement().use { statement ->
                     statement.executeQuery("SELECT COUNT(*), COALESCE(SUM(cost_usd), 0) FROM $TABLE").use {
                         if (it.next()) it.getLong(1) to it.getBigDecimal(2) else 0L to BigDecimal.ZERO
@@ -506,8 +473,6 @@ object ModelUsageDatabase {
                         if (it.next()) it.getLong(1) else 0L
                     }
                 }
-                // Woken here as well as on a successful write, so a container that has just been
-                // started begins recording without waiting out the retry interval.
                 resetBackoff()
                 "Connected to MySQL $server.\n" +
                     "Database `$database`, table `$TABLE` holds $rows row(s), " +

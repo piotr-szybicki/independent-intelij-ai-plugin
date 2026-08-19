@@ -71,8 +71,6 @@ class AgentConfigurations(private val project: Project) {
         }
         val basePath = project.basePath ?: return "this project has no directory on disk"
         return try {
-            // Dispatches to the EDT and waits, so this is callable from startup and from the
-            // settings page alike.
             WriteAction.runAndWait<IOException> {
                 val directory = LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath)
                     ?: throw IOException("the project directory $basePath is not on disk")
@@ -91,8 +89,6 @@ class AgentConfigurations(private val project: Project) {
         val file = path?.takeIf { Files.exists(it) } ?: return null
         val onDisk = runCatching { Files.readString(file) }.getOrNull()
         val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file.toFile()) ?: return onDisk
-        // getCachedDocument, not getDocument: nothing here is worth loading a document for a file
-        // the user never opened, and a file never opened cannot be holding an edit the disk lacks.
         return ReadAction.computeBlocking<String?, RuntimeException> {
             FileDocumentManager.getInstance().getCachedDocument(virtualFile)?.text
         } ?: onDisk
@@ -120,9 +116,6 @@ class AgentConfigurations(private val project: Project) {
 
     fun usageDatabase(): LoadedDatabase {
         val file = path ?: return LoadedDatabase(UsageDatabaseConfig.OFF, null)
-        // Missing is not an error here, unlike a missing set of configurations: a project that
-        // records nothing never writes the section, and saying so once per request would be noise
-        // about a feature that was never asked for.
         if (!Files.exists(file)) return LoadedDatabase(UsageDatabaseConfig.OFF, null)
         return try {
             LoadedDatabase(UsageDatabaseConfig.parse(text().orEmpty()), null)
@@ -135,8 +128,6 @@ class AgentConfigurations(private val project: Project) {
 
     fun findInFiles(): LoadedFindInFiles {
         val file = path ?: return LoadedFindInFiles(FindInFilesConfig.DEFAULT, null)
-        // Missing is not an error, on the same reasoning as the database section above: a project
-        // that blocks nothing never writes the section.
         if (!Files.exists(file)) return LoadedFindInFiles(FindInFilesConfig.DEFAULT, null)
         return try {
             LoadedFindInFiles(FindInFilesConfig.parse(text().orEmpty()), null)
@@ -153,8 +144,6 @@ class AgentConfigurations(private val project: Project) {
     fun resolve(configurationName: String, modelName: String): AgentConfiguration {
         val configuration = select(load().configurations, configurationName)
             ?: AgentConfiguration.fallback()
-        // Narrowed to the chosen model here rather than everywhere downstream, so nothing below has
-        // to know that the model and the configuration are chosen in two different dropdowns.
         return configuration.withModel(modelName)
     }
 
@@ -163,8 +152,6 @@ class AgentConfigurations(private val project: Project) {
         val raw = System.getenv(AgentConfiguration.PATH_ENV_VAR)
         val resolved = AgentConfiguration.configuredPath(raw)
         if (resolved == null && !raw.isNullOrBlank() && warnedAbout != raw) {
-            // Once per value: this is asked on every action update as well as on every read, and a
-            // variable that cannot be a path stays one for the life of the IDE.
             warnedAbout = raw
             LOG.warn("\$${AgentConfiguration.PATH_ENV_VAR} is not a usable path: ${raw.trim()}")
         }

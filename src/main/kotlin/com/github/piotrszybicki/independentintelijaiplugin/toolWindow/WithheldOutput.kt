@@ -36,9 +36,6 @@ internal object WithheldOutput {
     }
 
     fun open(project: Project, path: Path): Boolean {
-        // Resolving the file through the VFS fires creation events, which is a write -- and this is
-        // called from a Swing callback, which holds no write-intent lock. Same bargain as
-        // [TranscriptExport], down to the reason: see https://jb.gg/ij-platform-threading.
         val file = findFile(path)
         if (file == null) {
             LOG.warn("Wrote the withheld output to $path but could not find it in the VFS")
@@ -54,9 +51,6 @@ internal object WithheldOutput {
             val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
             val documents = FileDocumentManager.getInstance()
             val document = file?.let { documents.getDocument(it) } ?: return@run
-            // Saved as well as read, so what went to the model and what is on disk are the same
-            // text -- the file is the record of what was sent, and one that disagreed with it would
-            // be worse than no record at all.
             runCatching { documents.saveDocument(document) }
                 .onFailure { LOG.warn("Could not save $path before sending it; sending the editor's copy", it) }
             text = document.text

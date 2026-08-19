@@ -132,42 +132,21 @@ class AICodingAgent(
         reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
         conversationId: String = "",
         maxToolOutputTokens: Int = 0,
-        // The conversation's meter, not the turn's: what it has learned about this history and this
-        // model is worth keeping between turns, and a fresh one every turn would spend the first
-        // request of each guessing at what it already knew.
         meter: ContextMeter = ContextMeter(),
     ) {
-        // Once for the whole turn, not once per iteration: connecting to an MCP server is not free,
-        // and a tool list that changed underneath the loop would leave the model calling a tool
-        // that no longer exists.
         val available = tools()
         val toolsByName = available.associateBy { it.name }
         val toolDefinitions = available.map { it.toDefinition() }
-        // Same reasoning as the tool list: resolved once for the whole turn, so the system prompt
-        // cannot change underneath the loop between one iteration and the next.
         val system = systemPrompt(available)
-        // Both halves are fixed for the turn, so what they cost is measured once rather than on
-        // every iteration -- and it is not small: thirty tool schemas are most of a short request.
         val overheadChars = HistoryCompaction.overheadChars(system, toolDefinitions)
 
-        // Measured on demand rather than tracked, because every caller of this already holds the
-        // history it wants measured and the meter costs one walk of it.
         fun reportContext() = listener.onContext(meter.estimate(history, overheadChars), contextWindowTokens)
 
-        // A budget rather than a fixed count: the cap is there to stop a runaway loop, not to end a
-        // long piece of work, and only the user can tell the two apart. When it runs out the loop
-        // stops and asks, and an answer of yes buys another [maxIterations].
         var budget = maxIterations
         var used = 0
 
-        // Climbs rather than staying put: each yes to [Listener.onMaxTokens] doubles it, so a
-        // conversation that keeps overrunning stops being interrupted every thousand tokens.
-        // [maxTokens] itself is taken as given -- the ceiling bounds what doubling adds, not what
-        // the user asked for.
         var tokenCap = maxTokens
 
-        // The finally is what keeps a failed turn from costing the whole conversation: see
-        // [answerDanglingToolUse].
         try {
             while (true) {
                 if (used >= budget) {
@@ -176,17 +155,7 @@ class AICodingAgent(
                     budget += maxIterations
                 }
                 used++
-                // Before the request rather than after the response: what has to fit is what is
-                // about to be sent. And once per iteration rather than once per turn, because a
-                // long tool loop can add more to the history in one turn than the user did in the
-                // whole conversation before it -- the window runs out mid-turn or not at all.
-                //
-                // The summarizer is passed on every call but asked for nothing until eliding tool
-                // output has failed to get the conversation under target; see [HistoryCompaction].
                 val summarizer = HistoryCompaction.Summarizer { messages ->
-                    // A cancel between the decision to summarise and the request for it: the pass
-                    // reads null as "could not", leaves the history alone, and the loop stops at the
-                    // check below without having spent anything.
                     if (isCancelled()) null
                     else summarize(
                         endpoint, model, messages, toolDefinitions, system, reasoning, listener, conversationId,
@@ -199,18 +168,12 @@ class AICodingAgent(
                                 "summarised ${it.summarizedMessages} message(s), " +
                                 "~${it.beforeTokens} tokens -> ~${it.afterTokens}",
                         )
-                        // The messages the last response was counted against have just been
-                        // rewritten, so what the provider said about them no longer describes what
-                        // is there -- and it is too high by exactly the room this pass made.
                         meter.invalidateAnchor()
                         listener.onCompacted(it)
                     }
                 reportContext()
 
                 if (isCancelled()) return
-                // What the prompt about to go out is made of, kept for the calibration below: after
-                // the response lands the history has grown by the reply, and the two figures the
-                // meter needs are measured either side of that.
                 val sentMessages = history.size
                 val sentChars = HistoryCompaction.charsOf(history) + overheadChars
                 val turn = AICodingAgentClient.sendMessage(
@@ -219,15 +182,10 @@ class AICodingAgent(
                 turn.usage?.let(listener::onUsage)
                 val truncated = turn.stopReason == "max_tokens"
                 val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
-                // Whether the limit landed mid-tool-call rather than mid-sentence, which is the
-                // difference between a reply to be continued and a call to be made again.
                 val droppedToolUse = content.size() < turn.content.size()
                 if (content.size() > 0) {
                     history.add(ChatMessage("assistant", content))
                 }
-                // After the reply reaches the history, because the reply is part of the next
-                // request: what the meter anchors on is the conversation the next prompt starts
-                // from, not the one this prompt was.
                 turn.usage?.let {
                     meter.observe(
                         promptTokens = it.promptTokens,
@@ -242,8 +200,6 @@ class AICodingAgent(
                     val obj = block.asJsonObject
                     when (obj.get("type")?.asString) {
                         "text" -> listener.onAssistantText(obj.get("text")?.asString.orEmpty())
-                        // Empty unless the request asked for the summary, and empty is the default:
-                        // the models return the block either way and blank the text when not asked.
                         "thinking" -> obj.get("thinking")
                             ?.takeIf { it.isJsonPrimitive }
                             ?.asString
@@ -255,14 +211,9 @@ class AICodingAgent(
                 val toolUseBlocks = content.filter { it.asJsonObject.get("type")?.asString == "tool_use" }
                 if (toolUseBlocks.isEmpty()) {
                     if (!truncated) return
-                    // The answer stopped mid-sentence. Only the user can say whether it is worth
-                    // another round trip, so ask before spending one -- and offer the continuation
-                    // twice the room, since one cut-off reply predicts the next.
                     val suggested =
                         if (tokenCap >= MAX_TOKENS_CEILING) tokenCap
                         else (tokenCap * 2).coerceAtMost(MAX_TOKENS_CEILING)
-                    // A cap of zero or less would be a request the API rejects, so it is read as a
-                    // stop rather than sent.
                     val next = listener.onMaxTokens(tokenCap, suggested)?.takeIf { it > 0 } ?: return
                     tokenCap = next
                     history.add(
@@ -272,9 +223,6 @@ class AICodingAgent(
                 }
 
                 val toolResults = JsonArray()
-                // The calls that overran the limit, in the order they ran. A list rather than the
-                // first one found, because the round is run to the end regardless: see the note on
-                // the limit in this function's docs.
                 val overruns = mutableListOf<Overrun>()
                 for ((ordinal, block) in toolUseBlocks.withIndex()) {
                     val obj = block.asJsonObject
@@ -284,8 +232,6 @@ class AICodingAgent(
                     val call = ToolCallId(turn.requestId, toolUseId)
 
                     val startedAt = System.currentTimeMillis()
-                    // Cancelling stops the work but still answers the block: an assistant turn whose
-                    // tool_use has no matching tool_result is rejected by the API on the next message.
                     var outcome = ToolOutcome.OK
                     val resultText = if (isCancelled()) {
                         outcome = ToolOutcome.CANCELLED
@@ -297,9 +243,6 @@ class AICodingAgent(
                             tool.execute(input)
                         }.getOrElse { e ->
                             log.info("Tool '$toolName' failed: ${e.message}")
-                            // A cancel usually reaches a running tool as an interrupt, so the throw
-                            // is how it fails -- reporting that as a failure would blame the user's
-                            // Stop on the tool.
                             if (isCancelled()) {
                                 outcome = ToolOutcome.CANCELLED
                                 CANCELLED_RESULT
@@ -311,14 +254,7 @@ class AICodingAgent(
                     }
                     val elapsed = System.currentTimeMillis() - startedAt
 
-                    // Counted once and used twice: the limit below decides on it, and the row
-                    // recorded further down reports it. Tokenizing a large result is not free, and
-                    // doing it a second time for the log would be paying for the same answer twice.
                     val resultTokens = TokenCounter.count(resultText)
-                    // Only what a tool actually produced is weighed against the limit. The three
-                    // stand-in texts above are a sentence each and are the loop's own words, so
-                    // stopping on one would be stopping on nothing -- and a cancelled turn must not
-                    // also report an overrun.
                     val produced = outcome == ToolOutcome.OK || outcome == ToolOutcome.FAILED
                     if (maxToolOutputTokens > 0 && produced && resultTokens > maxToolOutputTokens) {
                         log.info(
@@ -329,12 +265,8 @@ class AICodingAgent(
                         overruns += Overrun(toolName, toolUseId, resultText, resultTokens)
                     }
 
-                    // The real output, whatever is about to be sent in its place: the transcript is
-                    // the user's copy and the point of stopping is that they can go and read it.
                     listener.onToolCall(call, toolName, input, resultText, outcome)
 
-                    // The same output again, to the request's own row. A no-op when no usage
-                    // database is configured, which is the usual case -- see [ModelUsageDatabase].
                     val arguments = input.toString()
                     ModelUsageDatabase.recordToolCall(
                         conversationId = conversationId,
@@ -365,12 +297,7 @@ class AICodingAgent(
                 }
 
                 history.add(ChatMessage("user", toolResults))
-                // A round of tool results can be most of what a turn costs, and the loop may go
-                // round many times before the next response corrects the figure -- so the meter is
-                // told here rather than left to catch up.
                 reportContext()
-                // After the results reach the history, never before: leaving the round unanswered
-                // would be exactly the dangling `tool_use` that kills a conversation for good.
                 if (overruns.isNotEmpty()) {
                     overruns.forEach {
                         listener.onToolOutputTooLarge(it.name, it.toolUseId, it.output, it.tokens, maxToolOutputTokens)
@@ -401,14 +328,9 @@ class AICodingAgent(
                 endpoint, model, SUMMARY_MAX_TOKENS, request, tools, system, reasoning, conversationId,
             )
         } catch (e: Exception) {
-            // Logged and swallowed. A summary that could not be had is a turn that goes out
-            // oversized, which is the provider's to complain about; failing here would turn it into
-            // a turn the user never gets an answer to.
             log.info("Summarising the conversation failed, leaving the history as it is: ${e.message}")
             return null
         }
-        // Billed like any other request, so it goes through the same counter -- a pass that shows up
-        // as tokens from nowhere is the thing that makes the usage figures untrustworthy.
         turn.usage?.let(listener::onUsage)
 
         return turn.content

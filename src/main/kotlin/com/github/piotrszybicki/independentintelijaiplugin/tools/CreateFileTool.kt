@@ -36,7 +36,6 @@ class CreateFileTool(private val project: Project) : AICodingAgentTool {
         val path = input.get("path")?.asString ?: return "Error: missing 'path'"
         val rawContent = input.get("content")?.asString ?: return "Error: missing 'content'"
 
-        // Documents are always \n internally; IntelliJ restores the platform separator on save.
         val content = rawContent.replace("\r\n", "\n").replace('\r', '\n')
 
         val target = PsiTargets.resolveProjectPath(project, path)
@@ -64,8 +63,6 @@ class CreateFileTool(private val project: Project) : AICodingAgentTool {
 
                 val document = FileDocumentManager.getInstance().getDocument(file)
                 if (document == null) {
-                    // The file exists at this point but has no text document -- report it rather
-                    // than leaving the model to assume the content was written.
                     result = "Error: created $path but cannot open it as text; it is left empty"
                     return@Runnable
                 }

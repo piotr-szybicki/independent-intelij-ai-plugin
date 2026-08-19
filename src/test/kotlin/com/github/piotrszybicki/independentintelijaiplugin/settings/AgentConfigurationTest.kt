@@ -134,7 +134,6 @@ class AgentConfigurationTest {
         assertEquals(ThinkingMode.OFF, configuration.thinking)
         assertEquals(Effort.XHIGH, configuration.effort)
         assertEquals(32000, configuration.maxTokens)
-        // Zero is a real answer here -- it switches compaction off rather than meaning "unset".
         assertEquals(0, configuration.contextWindowTokens)
     }
 
@@ -250,7 +249,6 @@ class AgentConfigurationTest {
     fun `anything else is the token itself`() {
         assertNull(AgentConfiguration.envVarName("sk-ant-0123"))
         assertNull(AgentConfiguration.envVarName(""))
-        // A lone dollar names nothing, so it is not treated as a variable reference.
         assertNull(AgentConfiguration.envVarName("$"))
     }
 

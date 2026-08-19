@@ -174,20 +174,13 @@ data class AgentConfiguration(
                 model = "qwen3-coder",
                 models = listOf("qwen3-coder"),
                 url = "http://localhost:11434/v1/chat/completions",
-                // Literal rather than a variable: a local server wants a token it will not look at,
-                // and this is the example of the plain-text form.
                 token = "ollama",
                 authScheme = AuthScheme.BEARER,
                 protocol = WireProtocol.OPENAI_CHAT_COMPLETIONS,
-                // Nothing is sent on Chat Completions whatever this says, because too many of the
-                // compatible servers answer a field they do not know with a 400.
                 thinking = ThinkingMode.PROVIDER_DEFAULT,
                 effort = Effort.PROVIDER_DEFAULT,
                 maxTokens = DEFAULT_MAX_TOKENS,
-                // A local model is usually served with far less window than it was trained for.
                 contextWindowTokens = 32_000,
-                // Longer than the default: a local model runs at whatever speed the machine has
-                // left, and the same prompt that answers in seconds on a server can take minutes.
                 requestTimeoutSeconds = 300,
                 apiVersion = "",
                 extraHeaders = emptyMap(),
@@ -241,22 +234,13 @@ data class AgentConfiguration(
             val url = entry.string(URL).orEmpty().trim()
             if (url.isBlank()) throw AgentConfigurationException("\"$name\" has no \"$URL\"")
 
-            // Either field on its own is a complete answer: "model" alone is one model to send to,
-            // "models" alone makes its first entry the default. Both is the useful case -- a default
-            // that is not the first of the list.
             val listed = entry.strings(name, MODELS)
             val model = entry.string(MODEL)?.trim().orEmpty().ifBlank { listed.firstOrNull().orEmpty() }
             if (model.isBlank()) {
                 throw AgentConfigurationException("\"$name\" has no \"$MODEL\" and no \"$MODELS\"")
             }
-            // A default outside the list is a list missing an entry rather than a mistake worth
-            // refusing over: writing both and forgetting to repeat one in the other is the obvious
-            // way to write this, and dropping the default would send a model that was not asked for.
             val models = if (model in listed) listed else listOf(model) + listed
 
-            // Both of these are optional, because the URL already says what they are for every
-            // provider whose URL says anything -- see [ProviderProfile]. Stating them is for the
-            // gateway serving one API from a path that looks like another's.
             val detected = ProviderProfile.detect(url)
 
             val protocolName = entry.string(PROTOCOL)?.trim()
@@ -271,9 +255,6 @@ data class AgentConfiguration(
 
             val headerType = entry.string(HEADER_TYPE)?.trim()
             val authScheme = when {
-                // The host settles it where it is one of the known ones; otherwise the protocol is
-                // the better guess than a fixed default, since everything OpenAI-shaped takes a
-                // bearer token and the Messages API takes x-api-key.
                 headerType.isNullOrBlank() -> detected?.authScheme ?: when (protocol) {
                     WireProtocol.ANTHROPIC_MESSAGES -> AuthScheme.X_API_KEY
                     else -> AuthScheme.BEARER
@@ -287,8 +268,6 @@ data class AgentConfiguration(
 
             val thinkingName = entry.string(THINKING)?.trim()
             val thinking = when {
-                // Absent means what the protocol can honestly do: on where there is a field to
-                // carry it, and nothing at all on Chat Completions -- see [ProviderProfile].
                 thinkingName.isNullOrBlank() -> ProviderProfile.defaultThinking(protocol)
                 else -> ThinkingMode.parse(thinkingName)
                     ?: throw AgentConfigurationException(
@@ -319,17 +298,9 @@ data class AgentConfiguration(
                 protocol = protocol,
                 thinking = thinking,
                 effort = effort,
-                // A budget the agent counts down, so a zero or a negative is refused rather than
-                // saved and acted on -- unlike the window below, where zero means "do not compact".
                 maxTokens = entry.int(name, MAX_TOKENS, DEFAULT_MAX_TOKENS, minimum = 1),
                 contextWindowTokens = entry.int(name, CONTEXT_WINDOW, DEFAULT_CONTEXT_WINDOW, minimum = 0),
-                // At least a second, and no way to say "wait forever": a request with no ceiling is
-                // a turn that hangs on "AI is working" with nothing to press but Stop, which is the
-                // state this field exists to let the user tune rather than remove.
                 requestTimeoutSeconds = entry.int(name, REQUEST_TIMEOUT, DEFAULT_REQUEST_TIMEOUT_SECONDS, minimum = 1),
-                // Absent means the Messages API default rather than "send nothing", so a file
-                // written without the section keeps working against Anthropic. Present and empty
-                // is the way to say the header should be left off.
                 apiVersion = customizations?.string(API_VERSION)?.trim()
                     ?: if (protocol == WireProtocol.ANTHROPIC_MESSAGES) DEFAULT_API_VERSION else "",
                 extraHeaders = customizations?.stringMap(name, EXTRA_HEADERS).orEmpty(),
@@ -342,8 +313,6 @@ data class AgentConfiguration(
             findInFiles: FindInFilesConfig = FindInFilesConfig.DEFAULT,
         ): String {
             val root = JsonObject().apply {
-                // First, because they are a few lines each and the array below is however many
-                // providers long -- a section at the bottom of that is a section nobody finds.
                 add(UsageDatabaseConfig.SECTION, database.toJson())
                 add(FindInFilesConfig.SECTION, findInFiles.toJson())
                 add(CONFIGURATIONS, JsonArray().apply { configurations.forEach { add(it.toJson()) } })

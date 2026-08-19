@@ -35,8 +35,6 @@ class MoveCommentsToDatabaseAction : AnAction() {
         }
 
         val dryRun = dialog.dryRun
-        // Held rather than built inline: it counts the comments it could not replace with a line
-        // comment, which is the one thing about a store worth knowing and is not in the report.
         val plan = StoreJavadoc(project)
         val sweep = CommentSweep(project, roots, plan, dryRun)
         val title = if (dryRun) "Counting Javadoc comments" else "Moving Javadoc comments to the database"
@@ -82,8 +80,6 @@ class MoveCommentsToDatabaseAction : AnAction() {
             )
         }
         lines.addAll(SweepRunner.footer(report))
-        // Worth saying every time rather than once in the dialog: the rows outlive the Undo, so
-        // taking the edit back does not take the storing back.
         lines.add("Undo restores the files; the rows stay in the table.")
 
         SweepRunner.notify(

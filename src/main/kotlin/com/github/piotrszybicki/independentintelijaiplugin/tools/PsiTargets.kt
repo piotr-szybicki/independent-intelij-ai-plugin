@@ -97,7 +97,6 @@ object PsiTargets {
                 if (leaf != null && leaf.text.isNotBlank()) return@computeBlocking leaf
                 offset = leaf?.textRange?.endOffset?.coerceAtLeast(offset + 1) ?: (offset + 1)
             }
-            // A blank line still belongs to something -- the enclosing class, usually.
             psiFile.findElementAt(lineStart) ?: psiFile
         }
 

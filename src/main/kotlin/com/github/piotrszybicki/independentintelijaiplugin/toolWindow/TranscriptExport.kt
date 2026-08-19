@@ -32,8 +32,6 @@ internal object TranscriptExport {
             "Save this reply as a Markdown file",
             "md",
         )
-        // Defaulted to the project root: it is the folder the answer is about, and the dialog
-        // remembers wherever the user moves to from there.
         val target = FileChooserFactory.getInstance()
             .createSaveFileDialog(descriptor, project)
             .save(project.basePath?.let { Path.of(it) }, "ai-reply-${FILE_STAMP.format(now)}.md")
@@ -48,13 +46,6 @@ internal object TranscriptExport {
             return
         }
 
-        // Without this a file written inside the project stays invisible in the project view until
-        // something else happens to refresh it.
-        //
-        // Asynchronous only in the part that walks the tree: the call still resolves the file
-        // through the VFS on this thread first, and that fires creation events, which is a write.
-        // A Swing listener runs on the EDT without the write-intent lock, so the refresh has to
-        // take it -- see https://jb.gg/ij-platform-threading.
         WriteIntentReadAction.run { VfsUtil.markDirtyAndRefresh(true, false, false, file) }
         notify("Reply exported", file.path, NotificationType.INFORMATION, project, file)
     }
@@ -69,10 +60,6 @@ internal object TranscriptExport {
         if (exported != null) {
             notification.addAction(
                 NotificationAction.createSimpleExpiring("Open") {
-                    // Looked up when the action is used rather than when the balloon is built: the
-                    // refresh above is asynchronous, so the file may not be in the VFS yet. Under
-                    // the same lock as that refresh, and for the same reason -- this runs on the
-                    // EDT too, and finding the file is what puts it in the VFS.
                     WriteIntentReadAction.run {
                         LocalFileSystem.getInstance().refreshAndFindFileByNioFile(exported.toPath())
                             ?.let { FileEditorManager.getInstance(project).openFile(it, true) }

@@ -94,9 +94,6 @@ class DirectoryListingTest {
         assertEquals("src/ is empty.", DirectoryListing.format("src", emptyList(), truncated = false))
     }
 
-    // What find_by_name's file results are rendered through. The prefix is the whole point: a search
-    // for ".kt" matches every file in a package, and a path per line is that package's name once per
-    // file -- the bulk of the answer and none of the information.
     @Test
     fun `the tree says a deep package once rather than once per file`() {
         assertEquals(
@@ -128,7 +125,6 @@ class DirectoryListingTest {
         )
     }
 
-    // The walk can reach one file by two routes, and the same name twice reads as two files.
     @Test
     fun `the tree lists a repeated path once`() {
         assertEquals(

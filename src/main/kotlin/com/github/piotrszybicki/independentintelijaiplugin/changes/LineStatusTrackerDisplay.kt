@@ -25,19 +25,9 @@ class LineStatusTrackerDisplay(private val project: Project) : ChangeDisplay, Di
 
         val document = FileDocumentManager.getInstance().getDocument(file) ?: return
         val tracker = try {
-            // The two-argument constructor installs no renderer at all -- it only records the
-            // virtual file, so the tracker computes ranges that nothing ever paints. The renderer
-            // has to be supplied here. LineStatusMarkerPopupRenderer is the concrete one that draws
-            // the gutter stripes and opens the hunk popup (old text, rollback, show diff, copy).
-            // Deprecated in favour of LineStatusMarkerRendererWithPopup, which is abstract and takes
-            // (project, document, rangesSource, disposable, editorFilter, ...) -- porting means
-            // supplying the popup panel ourselves rather than swapping a constructor, so this stays
-            // on the tracker-bound renderer until that port is done deliberately.
             @Suppress("DEPRECATION")
             SimpleLineStatusTracker(project, document) { LineStatusMarkerPopupRenderer(it) }
         } catch (e: Throwable) {
-            // openapi.vcs.ex is semi-internal; if it ever moves, the session still works, it just
-            // stops drawing. Approve/revert stay functional because they only need the baselines.
             log.warn("Could not create a line status tracker for ${file.path}", e)
             return
         }

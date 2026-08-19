@@ -9,7 +9,6 @@ import com.google.gson.JsonPrimitive
 
 internal object OpenAiProtocol {
 
-    // --- Chat Completions ---------------------------------------------------------------------------
 
     fun chatCompletionsRequest(
         model: String,
@@ -25,8 +24,6 @@ internal object OpenAiProtocol {
 
         val out = JsonArray()
         if (!system.isNullOrEmpty()) {
-            // "system" rather than "developer": the newer models accept both and map one onto the
-            // other, while everything older and everything self-hosted only knows this one.
             out.add(JsonObject().apply {
                 addProperty("role", "system")
                 addProperty("content", system)
@@ -36,9 +33,6 @@ internal object OpenAiProtocol {
         for (message in messages) {
             val parts = split(message)
 
-            // Results first and prose after, whatever order the blocks were in: a `tool` message has
-            // to follow the assistant turn that asked for it, and anything the user typed alongside
-            // belongs after the answers rather than in among them.
             for (result in parts.results) {
                 out.add(JsonObject().apply {
                     addProperty("role", "tool")
@@ -50,8 +44,6 @@ internal object OpenAiProtocol {
             if (message.role == "assistant") {
                 if (parts.text.isEmpty() && parts.calls.isEmpty()) continue
                 out.add(JsonObject().apply {
-                    // Explicitly null rather than absent when the turn was nothing but tool calls:
-                    // the API allows either, but some compatible servers insist the key is there.
                     addProperty("role", "assistant")
                     add("content", if (parts.text.isEmpty()) JsonNull.INSTANCE else JsonPrimitive(parts.text))
                     if (parts.calls.isNotEmpty()) {
@@ -129,7 +121,6 @@ internal object OpenAiProtocol {
         )
     }
 
-    // --- Responses ----------------------------------------------------------------------------------
 
     fun responsesRequest(
         model: String,
@@ -145,9 +136,6 @@ internal object OpenAiProtocol {
         addCacheKey(cacheKey)
         if (!system.isNullOrEmpty()) addProperty("instructions", system)
         if (reasoning != null) add("reasoning", reasoning)
-        // The plugin resends the whole conversation on every request, so a server-side copy buys it
-        // nothing -- and this endpoint keeps one by default, which would leave the user's source
-        // sitting on the provider for no reason.
         addProperty("store", false)
 
         val input = JsonArray()
@@ -163,8 +151,6 @@ internal object OpenAiProtocol {
             }
 
             if (parts.text.isNotEmpty()) {
-                // The part type depends on who is speaking: an assistant turn replayed as
-                // `input_text` is rejected, and so is a user turn sent as `output_text`.
                 val partType = if (message.role == "assistant") "output_text" else "input_text"
                 input.add(JsonObject().apply {
                     addProperty("role", message.role)
@@ -189,7 +175,6 @@ internal object OpenAiProtocol {
         add("input", input)
 
         if (tools.isNotEmpty()) {
-            // Flat, unlike Chat Completions' nested `function` object -- same fields, one level up.
             add("tools", JsonArray().apply {
                 tools.forEach { tool ->
                     add(JsonObject().apply {
@@ -221,18 +206,14 @@ internal object OpenAiProtocol {
 
                 "function_call" -> content.add(
                     toolUseBlock(
-                        // `call_id` is what an answer has to quote; the item's own `id` is a
-                        // different string and a result carrying it is not recognised.
                         id = obj.string("call_id").ifEmpty { obj.string("id") },
                         name = obj.string("name"),
                         arguments = obj.get("arguments"),
                     )
                 )
-                // "reasoning" and anything else: read past, see the class comment.
             }
         }
 
-        // Truncation is a status on the whole response here rather than a reason on a choice.
         val truncated = root.string("status") == "incomplete" &&
             root.obj("incomplete_details").string("reason") == "max_output_tokens"
 
@@ -250,7 +231,6 @@ internal object OpenAiProtocol {
         )
     }
 
-    // --- shared -------------------------------------------------------------------------------------
 
     private fun JsonObject.addCacheKey(cacheKey: String?) {
         if (!cacheKey.isNullOrBlank()) addProperty("prompt_cache_key", cacheKey)
@@ -287,8 +267,6 @@ internal object OpenAiProtocol {
                 )
 
                 "tool_result" -> results.add(ToolResult(obj.string("tool_use_id"), resultText(obj)))
-                // "thinking" and "redacted_thinking" are Anthropic's own, and only turn up here in a
-                // chat that started against Anthropic and was carried on against something else.
             }
         }
         return Parts(text.toString(), calls, results)
@@ -322,8 +300,6 @@ internal object OpenAiProtocol {
         "length" -> "max_tokens"
         "tool_calls", "function_call" -> "tool_use"
         "content_filter" -> "refusal"
-        // Responses has no per-choice reason at all, and a Chat Completions "stop" alongside tool
-        // calls is what the looser servers report. The content is the better witness in both cases.
         else -> if (content.any { it.isJsonObject && it.asJsonObject.string("type") == "tool_use" }) {
             "tool_use"
         } else {
@@ -346,7 +322,6 @@ internal object OpenAiProtocol {
 
     private fun parseArguments(element: JsonElement?): JsonObject {
         if (element == null || element.isJsonNull) return JsonObject()
-        // Some compatible servers send the object itself rather than a string of it.
         if (element.isJsonObject) return element.asJsonObject
         val raw = runCatching { element.asString }.getOrNull()?.trim().orEmpty()
         if (raw.isEmpty()) return JsonObject()
@@ -358,8 +333,6 @@ internal object OpenAiProtocol {
         ?.asString
         ?.takeIf { it.isNotEmpty() }
 
-    // Gson's own getAsJsonObject/getAsJsonArray throw a ClassCastException on a member that is JSON
-    // null, which is exactly how several of these fields arrive when they are empty.
     private fun JsonObject?.obj(name: String): JsonObject? =
         this?.get(name)?.takeIf { it.isJsonObject }?.asJsonObject
 

@@ -62,14 +62,12 @@ class FindInFilesConfigTest {
 
         assertEquals(FindInFilesConfig.DEFAULT, FindInFilesConfig.parse(without))
         assertEquals(FindInFilesConfig.DEFAULT, FindInFilesConfig.parse(""))
-        // The bare-array form parseAll also accepts has nowhere to put a section.
         assertEquals(FindInFilesConfig.DEFAULT, FindInFilesConfig.parse("""[{"name": "One"}]"""))
         assertEquals(FindInFilesConfig.DEFAULT, FindInFilesConfig.parse(file("{}")))
     }
 
     @Test
     fun `refuses a section it cannot read`() {
-        // The list written straight into the section rather than under its field.
         assertThrows(AgentConfigurationException::class.java) { FindInFilesConfig.parse(file("""["public"]""")) }
         assertThrows(AgentConfigurationException::class.java) {
             FindInFilesConfig.parse(file("""{"blocked-phrases": "public"}"""))

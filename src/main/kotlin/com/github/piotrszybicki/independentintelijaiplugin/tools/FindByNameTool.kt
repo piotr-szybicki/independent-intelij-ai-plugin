@@ -93,24 +93,16 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
             append("${results.size} $type result(s) for \"$query\"")
             if (results.size >= maxResults) append(" (stopped at the limit; narrow the query to see the rest)")
             append(":\n")
-            // Files are grouped into a tree rather than listed one path per line. A query like ".kt"
-            // matches every file in a package, and a path per line repeats that package's prefix
-            // once per file -- for a deep package that is most of the characters in the answer, and
-            // it is re-sent with every later request of the conversation. Classes and actions are
-            // names rather than paths and have nothing to group by, so they stay as they were.
             if (type == "file") append(DirectoryListing.tree(results))
             else results.forEach { append(it).append('\n') }
         }
     }
 
-    // --- classes ------------------------------------------------------------------------------
 
     private fun findClasses(matches: (String) -> Boolean, maxResults: Int): List<String> {
         val results = mutableListOf<String>()
 
         for (contributor in ChooseByNameContributor.CLASS_EP_NAME.extensionList) {
-            // A contributor that throws (an unhealthy language plugin, an index still building) must
-            // not take the whole search down -- the others may still have the answer.
             val names = runCatching {
                 ReadAction.computeBlocking<Array<String>, RuntimeException> {
                     contributor.getNames(project, false)
@@ -122,8 +114,6 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
 
                 val items = runCatching {
                     ReadAction.computeBlocking<Array<NavigationItem>, RuntimeException> {
-                        // includeNonProjectItems stays false: library and JDK classes are not part
-                        // of the project the user is asking about, and there are a great many of them.
                         contributor.getItemsByName(candidateName, candidateName, project, false)
                     }
                 }.getOrDefault(emptyArray())
@@ -151,7 +141,6 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
             "$name — $path:${document.getLineNumber(offset) + 1}"
         }
 
-    // --- files --------------------------------------------------------------------------------
 
     private fun findFiles(matches: (String) -> Boolean, maxResults: Int): List<String> {
         val results = mutableListOf<String>()
@@ -166,15 +155,12 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
         return results
     }
 
-    // --- actions ------------------------------------------------------------------------------
 
     private fun findActions(matches: (String) -> Boolean, maxResults: Int): List<String> {
         val manager = ActionManager.getInstance()
         val results = mutableListOf<String>()
 
         for (id in manager.getActionIdList("")) {
-            // An action's visible name is what a user would search for, but the id is what
-            // run_action needs, so either matching is a hit and both go in the output.
             val text = runCatching { manager.getAction(id)?.templatePresentation?.text }.getOrNull()
             if (!matches(id) && !(text != null && matches(text))) continue
 

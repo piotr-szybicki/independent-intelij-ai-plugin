@@ -42,13 +42,10 @@ object ModelTrafficLog {
         }
 
         return java.util.logging.Logger.getLogger("independent-ai-plugin.traffic").apply {
-            // Without this the records also travel up to the root logger, which is where the IDE's
-            // own handler sits -- the traffic would land in both files instead of only in this one.
             useParentHandlers = false
             level = Level.INFO
             handlers.forEach { removeHandler(it) }
             addHandler(handler)
-            // Left in idea.log on purpose: the breadcrumb that says where the traffic went.
             fallback.info("Model request/response log: $currentFile")
         }
     }
@@ -61,8 +58,6 @@ object ModelTrafficLog {
 
         override fun format(record: LogRecord): String {
             val thrown = record.thrown?.stackTraceToString()?.let { "\n$it" } ?: ""
-            // `record.message`, not `formatMessage(record)`: the latter runs MessageFormat, and a
-            // JSON body is nothing but the braces MessageFormat treats as placeholders.
             return "${timestamp.format(Instant.ofEpochMilli(record.millis))} " +
                 "[${record.level.name}] ${record.message.orEmpty()}$thrown\n"
         }

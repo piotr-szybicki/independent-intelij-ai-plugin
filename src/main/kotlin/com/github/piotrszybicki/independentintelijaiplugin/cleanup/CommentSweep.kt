@@ -157,8 +157,6 @@ class CommentSweep(
                 PsiDocumentManager.getInstance(project).commitAllDocuments()
             })
 
-            // After the command rather than inside it: saving is not part of the change, and a
-            // command that saves is a command Undo has to unpick around.
             saveNow(changed)
         }
 
@@ -176,8 +174,6 @@ class CommentSweep(
                 try {
                     documentManager.saveDocument(document)
                 } catch (e: Exception) {
-                    // Read-only, or deleted underneath us. The edit is still in the document and
-                    // still revertible; only the write-through failed.
                     log.warn("Could not save ${file.path}: ${e.message}")
                 }
             }

@@ -35,8 +35,6 @@ class CommentMarkerTest {
 
     @Test
     fun `a doc comment is never a marker, however it is written`() {
-        // Otherwise a stored marker would be re-stored on the next sweep, and the file would end up
-        // holding an id pointing at a row holding an id.
         assertNull(CommentMarker.idIn("/** comment_id: 42 */"))
         assertNull(CommentMarker.idIn("/* comment_id: 42 */"))
     }

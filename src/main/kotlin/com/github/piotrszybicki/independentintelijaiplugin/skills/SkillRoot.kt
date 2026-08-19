@@ -41,8 +41,6 @@ data class SkillRoot(
             val resolved = when {
                 file.isAbsolute -> file
                 projectBase != null -> File(projectBase, expanded)
-                // A relative path with nothing to resolve it against would land wherever the IDE
-                // happens to have been started from, which is never what was meant.
                 else -> return SkillRoot(line, null, "relative path, but the project has no directory on disk")
             }
 
@@ -56,8 +54,6 @@ data class SkillRoot(
                 System.getenv(variable)
                     ?: throw IllegalArgumentException("the environment variable $variable is not set in the IDE's environment")
             }
-            // Only a leading `~`: anywhere else it is a legal character in a file name, and on
-            // Windows it is a real one -- short 8.3 names are full of them.
             return when {
                 withEnv == "~" -> System.getProperty("user.home")
                 withEnv.startsWith("~/") || withEnv.startsWith("~\\") ->

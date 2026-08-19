@@ -83,7 +83,6 @@ class RunAtLocationTool(private val project: Project) : AICodingAgentTool {
         val line = input.get("line")?.asInt
         val debug = input.get("debug")?.asBoolean ?: false
 
-        // The same field means a different wait in each mode, so it is bounded differently too.
         val timeoutSeconds = if (debug) {
             (input.get("timeout_seconds")?.asInt ?: ConfigurationRunner.DEFAULT_DEBUG_WAIT_SECONDS)
                 .coerceIn(1, ConfigurationRunner.MAX_DEBUG_WAIT_SECONDS)
@@ -155,22 +154,14 @@ class RunAtLocationTool(private val project: Project) : AICodingAgentTool {
         val location = PsiLocation.fromPsiElement(project, element) ?: return null
         val context = ConfigurationContext.createEmptyContextForLocation(location)
 
-        // Reuse before create: without this, every call mints another configuration for a test that
-        // already has a perfectly good one.
         context.findExisting()?.let { existing ->
             return Produced(existing, existing.type.displayName, reused = true, alternatives = emptyList())
         }
 
-        // Ordered by the platform's own preference comparator, so the first is what the gutter would
-        // have run. The rest are worth naming: a Gradle project typically offers both a Gradle and a
-        // JUnit way to run the same test.
         val candidates = context.configurationsFromContext.orEmpty()
         val best = candidates.firstOrNull() ?: return null
         val settings = best.configurationSettings
 
-        // Temporary, i.e. italic in the run dropdown and evicted automatically once enough pile up
-        // -- the same status the gutter gives it, so this does not slowly fill the user's
-        // configuration list with one entry per test we ran.
         RunManager.getInstance(project).setTemporaryConfiguration(settings)
 
         return Produced(

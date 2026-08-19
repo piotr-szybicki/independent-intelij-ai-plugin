@@ -50,8 +50,6 @@ internal object ChatHistoryPopup {
             }
         }
 
-        // The builder owns its list, so the delete action below cannot read the selection off it --
-        // it is tracked here instead, seeded with whatever the popup opens on.
         var selected: ChatSummary? = chats.firstOrNull { it.id == currentId }
         var popup: JBPopup? = null
 
@@ -72,8 +70,6 @@ internal object ChatHistoryPopup {
                 if (victim != null) {
                     service.delete(victim.id)
                     if (victim.id == currentId) onCurrentDeleted()
-                    // The list cannot be refreshed from out here, so the popup closes rather
-                    // than going on offering a chat that is no longer there.
                     popup?.cancel()
                 }
             }

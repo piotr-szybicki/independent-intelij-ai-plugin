@@ -90,16 +90,11 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         if (query.isEmpty()) return "Error: missing 'query'"
 
         blockedBy(query)?.let { phrase ->
-            // Named rather than refused blankly, so the next attempt is a different question rather
-            // than the same one in different case.
             return "Error: \"$phrase\" is blocked in this project's \"${FindInFilesConfig.SECTION}\" " +
                 "settings -- it matches too much of the project to be worth listing. Search for " +
                 "something more specific, or use find_usages if it is a declaration you are after."
         }
 
-        // "max_results" is what this was called while it counted matches. A conversation that has
-        // been going a while still has the old schema in it, and the old name means the new thing
-        // closely enough that refusing it would be pedantry.
         val maxFiles = (input.get("max_files")?.asInt ?: input.get("max_results")?.asInt ?: DEFAULT_MAX_FILES)
             .coerceIn(1, MAX_MAX_FILES)
 
@@ -130,19 +125,13 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         val presentation = FindInProjectUtil.setupProcessPresentation(UsageViewPresentation())
 
         val failure = runCatching {
-            // The engine expects a progress indicator on the thread; without one it has nothing to
-            // report cancellation through. Ours is a placeholder -- the caps are what bound the run.
             ProgressManager.getInstance().runProcess({
                 FindInProjectUtil.findUsages(
                     model,
                     project,
                     Processor { usage ->
-                        // Which file a hit is in is a PSI question, so it needs read access; the
-                        // engine usually has it already, and asking again while it does is free.
                         val file = ReadAction.compute<VirtualFile?, RuntimeException> { usage.virtualFile }
                             ?: return@Processor true
-                        // Hits arrive from several threads, so the counting that decides when to
-                        // stop has to happen under one lock.
                         synchronized(found) {
                             if (file !in files && files.size >= maxFiles) {
                                 limit = Limit.FILES
@@ -163,7 +152,6 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         }.exceptionOrNull()
 
         failure?.let {
-            // A bad regular expression is the overwhelmingly likely cause, and the model can fix it.
             return "Error: the search failed: ${it.message ?: it::class.java.simpleName}"
         }
 
@@ -184,7 +172,6 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
                 val offset = usage.navigationOffset.takeIf { it in 0..document.textLength }
                     ?: return@mapNotNull null
 
-                // No text: the location is the whole answer -- see the note on the class.
                 MatchListing.Match(PsiTargets.relativePath(project, file), document.getLineNumber(offset) + 1)
             }
         }
@@ -193,9 +180,6 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         val fileCount = matches.distinctBy { it.path }.size
         val summary = buildString {
             append("${MatchListing.count(matches)} line(s) in $fileCount file(s) for \"$query\"")
-            // Which cap ran out decides what a narrower query has to change: fewer files is a
-            // different word, while a hit on the line ceiling inside a handful of files is a mask
-            // or a directory away from being answerable.
             when (limit) {
                 Limit.FILES -> append(", the most files this tool lists")
                 Limit.MATCHES -> append(", the most lines this tool lists")

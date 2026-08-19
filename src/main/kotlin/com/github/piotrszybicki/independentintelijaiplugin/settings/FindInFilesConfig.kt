@@ -34,8 +34,6 @@ data class FindInFilesConfig(
             } catch (e: Exception) {
                 throw AgentConfigurationException("not valid JSON: ${e.message}")
             }
-            // A bare array at the top level is the configurations and nothing else, which parseAll
-            // accepts and which has nowhere to put this section.
             if (root == null || root.isJsonNull || !root.isJsonObject) return DEFAULT
 
             val section = root.asJsonObject.get(SECTION) ?: return DEFAULT
@@ -55,8 +53,6 @@ data class FindInFilesConfig(
                 }
                 it.asString.trim()
             }
-            // Blanks would block nothing -- blocking() never asks about an empty query -- and a
-            // duplicate is a line the reader has to check twice for no reason.
             return FindInFilesConfig(phrases.filter { it.isNotBlank() }.distinct())
         }
     }

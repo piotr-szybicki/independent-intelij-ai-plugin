@@ -73,8 +73,6 @@ class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
                 "made this session that this tool would not."
         }
 
-        // Reading the text is what runs the decompiler for a class with no sources attached, so it
-        // can be slow on a large one and is worth doing off the caller's assumptions about cost.
         val text = try {
             ReadAction.computeBlocking<String, RuntimeException> { candidate.file.text.orEmpty() }
         } catch (e: Exception) {

@@ -37,8 +37,6 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
                     extensions.map { File(directory, command + it) }
                 candidates.firstOrNull { it.isFile }?.let { return it.absolutePath }
             }
-            // Not on the PATH: hand it over unchanged so the failure comes from the spawn, whose
-            // message names the command, rather than from a guess made here.
             return command
         }
     }
@@ -89,14 +87,11 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
     override fun close() {
         closed = true
         runCatching { writer.close() }
-        // Closing stdin is how a well-behaved server is asked to stop; the destroy is for the ones
-        // that do not take the hint, and the wait between them is what gives the first a chance.
         if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroy()
         if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly()
         failPending("the server was shut down")
     }
 
-    // --- plumbing -----------------------------------------------------------------------------
 
     private fun write(message: JsonObject) {
         if (closed || !process.isAlive) {
@@ -104,8 +99,6 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
         }
         try {
             synchronized(writer) {
-                // One message per line: the framing forbids a newline inside a message, and Gson
-                // does not emit one, so nothing has to be escaped here.
                 writer.write(gson.toJson(message))
                 writer.write("\n")
                 writer.flush()
@@ -121,28 +114,18 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
                 if (line.isBlank()) continue
                 val message = runCatching { JsonParser.parseString(line) }.getOrNull()?.takeIf { it.isJsonObject }
                 if (message == null) {
-                    // Servers that print banners to stdout are not conforming, but they are common
-                    // enough that dropping the line is better than tearing the connection down.
                     LOG.info("MCP server '$name' wrote a non-JSON line to stdout: ${line.take(200)}")
                     continue
                 }
                 val obj = message.asJsonObject
-                // runCatching because the id is the server's to echo: a string one would otherwise
-                // end the reader thread rather than simply not matching.
                 val id = runCatching { obj.get("id")?.asInt }.getOrNull()
                 if (id == null) {
-                    // A notification -- progress, a tools/list_changed. Nothing consumes these yet;
-                    // the tool list is re-read every turn, which covers the case they announce.
                     LOG.debug("MCP server '$name' notification: ${obj.get("method")}")
                     continue
                 }
-                // offer, not put: a caller that gave up has already removed its mailbox, and the
-                // reader must not block on a response nobody is waiting for any more.
                 pending[id]?.offer(obj)
             }
         }
-        // stdout reached EOF, so the process is gone or going. Waiters would otherwise sit until
-        // their timeout for an answer that can no longer come.
         if (!closed) failPending(deathNote() ?: "the server closed its output")
     }
 

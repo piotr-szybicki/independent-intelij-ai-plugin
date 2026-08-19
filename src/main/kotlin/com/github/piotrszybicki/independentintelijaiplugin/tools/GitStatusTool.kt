@@ -70,8 +70,6 @@ class GitStatusTool(private val project: Project) : AICodingAgentTool {
     private fun header(repository: GitRepository): String {
         val branch = repository.currentBranchName ?: "a detached HEAD"
         val revision = repository.currentRevision?.take(7)?.let { " at $it" }.orEmpty()
-        // A half-finished merge or rebase is the thing most worth knowing before touching anything,
-        // and it does not show up in the change list at all.
         val state = repository.state.takeIf { it != Repository.State.NORMAL }
             ?.let { ", ${it.name.lowercase()} in progress" }
             .orEmpty()
@@ -88,7 +86,6 @@ class GitStatusTool(private val project: Project) : AICodingAgentTool {
         return when (change.type) {
             Change.Type.NEW -> "added     $path"
             Change.Type.DELETED -> "deleted   $path"
-            // Where it came from is the point of a move, and the new path alone does not say it.
             Change.Type.MOVED -> "moved     ${before?.let { relativePath(it) }} -> $path"
             Change.Type.MODIFICATION -> "modified  $path"
         }

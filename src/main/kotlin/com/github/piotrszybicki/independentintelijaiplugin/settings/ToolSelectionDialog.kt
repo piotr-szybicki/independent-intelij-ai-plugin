@@ -30,7 +30,6 @@ class ToolSelectionDialog(project: Project?, selected: Set<String>) : DialogWrap
         title = "Select Tools"
         setOKButtonText("Use These Tools")
         wireListeners()
-        // Builds the UI, so everything it touches has to exist by now.
         init()
         syncMasters()
         refreshSummary()
@@ -63,8 +62,6 @@ class ToolSelectionDialog(project: Project?, selected: Set<String>) : DialogWrap
             }
         }
 
-        // The count sits outside the scroll pane so it stays put while the list is scrolled --
-        // it is the one thing here worth watching as boxes are ticked.
         return JPanel(BorderLayout()).apply {
             add(JBScrollPane(content).apply { border = JBUI.Borders.empty() }, BorderLayout.CENTER)
             add(summary.apply { border = JBUI.Borders.emptyTop(8) }, BorderLayout.SOUTH)

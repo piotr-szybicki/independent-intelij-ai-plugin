@@ -77,8 +77,6 @@ data class McpServerConfig(
                 throw McpConfigException("\"$name\" has both \"command\" and \"url\"; a server is one or the other")
             }
 
-            // `disabled` is what the other clients' config files use; `enabled` reads better in a
-            // hand-written entry. Accept both rather than making the user guess which one works.
             val enabled = entry.get("enabled")?.asBoolean ?: entry.get("disabled")?.asBoolean?.not() ?: true
 
             return McpServerConfig(

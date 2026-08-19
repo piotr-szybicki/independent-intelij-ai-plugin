@@ -47,8 +47,6 @@ class GitDiffTool(private val project: Project) : AICodingAgentTool {
         if (to != null && from == null) return "Error: 'to' needs a 'from' to diff against"
 
         val parameters = mutableListOf<String>()
-        // Against HEAD rather than the index, so staged and unstaged changes come back together --
-        // git_status does not distinguish them either.
         parameters.add(from ?: "HEAD")
         to?.let { parameters.add(it) }
         resolved.pathInRepo?.let { parameters.add("--"); parameters.add(it) }

@@ -45,17 +45,12 @@ class ReadProjectFileTool(private val project: Project) : AICodingAgentTool {
     override fun execute(input: JsonObject): String {
         val relativePath = input.get("path")?.asString ?: return "Error: missing 'path' argument"
 
-        // Rejects any path (e.g. via "..") that resolves outside the project root, since this file
-        // content is fed back to the model and must not be able to exfiltrate arbitrary local files.
         val target = PsiTargets.resolveProjectPath(project, relativePath)
             ?: return "Error: path is outside the project directory"
         if (!target.exists() || !target.isFile) {
             return "Error: file not found: $relativePath"
         }
 
-        // Read through the Document when one exists, not off disk. Tool edits are written out after
-        // every call, so for those the two agree -- but the user's own edits may be sitting unsaved
-        // in an editor, and the model would then be numbering lines that are stale.
         val text = ReadAction.computeBlocking<String, RuntimeException> {
             val vf = PsiTargets.resolveProjectFile(project, relativePath)
             val document = vf?.let { FileDocumentManager.getInstance().getDocument(it) }

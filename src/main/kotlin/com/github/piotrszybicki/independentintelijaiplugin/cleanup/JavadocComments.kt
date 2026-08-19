@@ -25,21 +25,15 @@ object JavadocComments {
         val lineEnd = fileText.indexOf('\n', commentEnd).takeIf { it >= 0 } ?: fileText.length
 
         if (isAlone(fileText, commentStart, commentEnd)) {
-            // The line break goes too, unless the comment ends the file and there is none.
             return Removal(lineStart, if (lineEnd < fileText.length) lineEnd + 1 else fileText.length)
         }
 
         if (fileText.substring(commentEnd, lineEnd).isBlank()) {
-            // Code, then the comment, then the end of the line -- every trailing `//` comment, and a
-            // doc comment used the same way. The whitespace *before* it goes too, or `val x = 1`
-            // keeps the space that used to separate it from what has just been removed.
             var start = commentStart
             while (start > lineStart && (fileText[start - 1] == ' ' || fileText[start - 1] == '\t')) start--
             return Removal(start, lineEnd)
         }
 
-        // Code on both sides, so the line stays and only the comment leaves, plus the spaces after
-        // it: `foo(x)` rather than `foo( x)`.
         var end = commentEnd
         while (end < fileText.length && (fileText[end] == ' ' || fileText[end] == '\t')) end++
         return Removal(commentStart, end)

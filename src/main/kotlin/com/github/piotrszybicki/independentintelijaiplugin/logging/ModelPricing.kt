@@ -13,7 +13,6 @@ object ModelPricing {
     )
 
     private val RATES: Map<String, Rates> = mapOf(
-        //                       input  cache read  cache write  output
         "claude-opus-5" to Rates(5.00, 0.50, 6.25, 25.00),
         "claude-opus-4-6" to Rates(5.00, 0.50, 6.25, 25.00),
         "claude-haiku-4-5" to Rates(1.00, 0.10, 1.25, 5.00),
@@ -37,9 +36,6 @@ object ModelPricing {
             .add(charge(cacheWriteTokens, rates.cacheWrite))
             .add(charge(cacheReadTokens, rates.cacheRead))
             .add(charge(outputTokens, rates.output))
-        // BigDecimal rather than Double: this is money, it is summed across a turn and then across a
-        // column, and dividing a rate that is exactly representable in decimal by a million should
-        // not introduce a drift that only appears once a few thousand rows have been added up.
         return total.divide(PER_MILLION).setScale(SCALE, RoundingMode.HALF_UP)
     }
 

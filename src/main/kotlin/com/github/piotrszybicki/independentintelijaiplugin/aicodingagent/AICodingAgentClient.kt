@@ -109,17 +109,9 @@ object AICodingAgentClient {
     ): AICodingAgentTurn {
         endpoint.validate()?.let { throw AICodingAgentApiException("Cannot send the request: $it") }
 
-        // The repair runs before the translation, not instead of it: the invariant it restores is
-        // one every provider enforces, and it is easier to reason about on the plugin's own shape
-        // than on either of the wire ones.
         val repaired = withOrphanedToolUsesAnswered(messages)
 
         val requestBody = when (endpoint.protocol) {
-            // Cache breakpoints go on only here, and so do `thinking` and `output_config`. All of
-            // them are Anthropic's, and OpenAI's APIs reject an unknown field rather than ignoring
-            // it -- so a request bound for one of them would fail outright. Caching on the OpenAI
-            // shapes is asked for the other way round, by naming the conversation rather than
-            // marking the prompt -- see [OpenAiProtocol.addCacheKey].
             WireProtocol.ANTHROPIC_MESSAGES -> gson.toJson(
                 AICodingAgentRequest(
                     model,
@@ -144,10 +136,7 @@ object AICodingAgentClient {
                     reasoning = reasoning.reasoningJson(),
                 ).toString()
         }
-        // Headers are deliberately not logged: one of them is the token.
         LOG.info("${endpoint.protocol.name} request -> ${endpoint.url}: $requestBody")
-        // Minted before the request goes out, not after it comes back: it names the directory the
-        // request body is written to, which has to happen whether or not there is ever a response.
         val requestId = ModelExchangeLog.newRequestId()
         ModelExchangeLog.recordRequest(conversationId, requestId, requestBody)
         ModelUsageDatabase.recordRequest(
@@ -156,9 +145,6 @@ object AICodingAgentClient {
 
         val request = HttpRequest.newBuilder()
             .uri(URI.create(endpoint.url))
-            // The configuration's, not a constant: how long is too long is a property of the
-            // provider, and one number cannot be right for both a reasoning model behind a gateway
-            // and a local server -- see [AgentConfiguration.requestTimeoutSeconds].
             .timeout(Duration.ofSeconds(endpoint.requestTimeoutSeconds.toLong()))
             .apply { endpoint.headers().forEach { (name, value) -> header(name, value) } }
             .POST(HttpRequest.BodyPublishers.ofString(requestBody))
@@ -182,8 +168,6 @@ object AICodingAgentClient {
             ?.takeIf { it.isJsonObject }
             ?.asJsonObject
 
-        // Before the status check, so a rejected request is a directory holding both halves of what
-        // happened rather than a request and a silence.
         val responseId = providerResponseId(root)
         ModelExchangeLog.recordResponse(conversationId, requestId, response.body())
         ModelUsageDatabase.recordResponse(
@@ -196,9 +180,6 @@ object AICodingAgentClient {
         )
 
         if (response.statusCode() !in 200..299) {
-            // Anthropic and OpenAI both nest the message under `error`, so one path covers the
-            // providers -- but a gateway in front of either may return neither shape, so fall back
-            // to the raw body rather than reporting nothing.
             throw AICodingAgentApiException(errorMessage(root) ?: "HTTP ${response.statusCode()}: ${response.body()}")
         }
         if (root == null) throw AICodingAgentApiException("Empty or unrecognised response from ${endpoint.url}")
@@ -220,14 +201,9 @@ object AICodingAgentClient {
                 "usage: input=${it.input_tokens} output=${it.output_tokens} " +
                     "cache_write=${it.cache_creation_input_tokens} cache_read=${it.cache_read_input_tokens}",
             )
-            // Fills in the token columns of the row opened above, rather than a row of its own: the
-            // response has already been recorded, and a usage block is only ever part of one.
             ModelUsageDatabase.recordUsage(
                 conversationId,
                 requestId,
-                // The model asked for rather than one read back off the response: it is the same
-                // string the row's `model` column holds and the same one the chat window prices its
-                // label with, so the two figures cannot come from different rate cards.
                 model,
                 it.input_tokens,
                 it.cache_creation_input_tokens,
@@ -235,8 +211,6 @@ object AICodingAgentClient {
                 it.output_tokens,
             )
         }
-        // Stamped here rather than by each parser: the id belongs to the exchange this function
-        // made, and the three branches above only know how to read a body.
         return turn.copy(requestId = requestId)
     }
 
@@ -253,7 +227,6 @@ object AICodingAgentClient {
             ?.takeIf { it.isNotBlank() }
     }
 
-    // --- repair -----------------------------------------------------------------------------------
 
     private const val ORPHANED_RESULT =
         "This tool call was interrupted and never ran. Nothing it would have done has happened. " +
@@ -268,7 +241,6 @@ object AICodingAgentClient {
 
             val pending = toolUseIds(message)
             val next = messages.getOrNull(i + 1)
-            // Only a user message can carry results; anything else leaves every id unanswered.
             val answered = if (next != null && next.role == "user") toolResultIds(next) else emptySet()
             val missing = pending - answered
             if (missing.isEmpty()) {
@@ -287,8 +259,6 @@ object AICodingAgentClient {
             }
 
             if (next != null && next.role == "user") {
-                // Merge rather than insert: two user messages in a row would put the real results
-                // one message too late, which is the same rejection again.
                 next.content.forEach { content.add(it) }
                 repaired.add(ChatMessage("user", content))
                 i += 2
@@ -323,7 +293,6 @@ object AICodingAgentClient {
         return ids
     }
 
-    // --- prompt caching ---------------------------------------------------------------------------
 
     private const val LOOKBACK_BLOCKS = 15
 
@@ -354,18 +323,12 @@ object AICodingAgentClient {
     internal fun withCacheBreakpoints(messages: List<ChatMessage>): List<ChatMessage> {
         if (messages.isEmpty()) return messages
 
-        // Not necessarily the last message: a turn can end on a thinking block, which cannot carry
-        // the marker, so the newest markable message is what the tail breakpoint lands on.
         val tail = messages.indices.lastOrNull { markableBlock(messages[it]) >= 0 } ?: return messages
         val marked = mutableMapOf(tail to TAIL_TTL)
 
         var blocks = 0
         for (i in tail downTo 0) {
             blocks += messages[i].content.size()
-            // The tail is excluded because it already carries a breakpoint. Without that, a message
-            // wide enough to satisfy the lookback on its own -- the user turn answering a round of
-            // tool calls, which is several blocks at once -- ends the search on itself and leaves
-            // the second breakpoint unplaced, in exactly the case it exists for.
             if (i < tail && blocks >= LOOKBACK_BLOCKS && markableBlock(messages[i]) >= 0) {
                 marked[i] = LOOKBACK_TTL
                 break

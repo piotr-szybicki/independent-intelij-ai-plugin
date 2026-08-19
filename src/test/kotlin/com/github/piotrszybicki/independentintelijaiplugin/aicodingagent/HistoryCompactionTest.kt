@@ -55,8 +55,6 @@ class HistoryCompactionTest {
         val result = HistoryCompaction.compact(history, WINDOW)
 
         assertTrue("still over target: ${result.afterTokens}", result.afterTokens <= WINDOW * 0.4)
-        // And stopped there rather than emptying everything it was allowed to touch: 20 turns are
-        // 16 elidable results, and getting under target does not take all of them.
         assertTrue("evicted everything in range", result.evicted < 16)
     }
 
@@ -77,9 +75,6 @@ class HistoryCompactionTest {
 
         HistoryCompaction.compact(history, WINDOW)
 
-        // The invariant the API enforces: every id asked for in an assistant turn is answered in
-        // the message right after it. Eliding may change what a result says, never which call it
-        // belongs to.
         for (i in history.indices) {
             val asked = idsOf(history[i], "tool_use", "id")
             if (asked.isEmpty()) continue
@@ -94,8 +89,6 @@ class HistoryCompactionTest {
         HistoryCompaction.compact(history, WINDOW)
 
         assertTrue(oldestResult(history).contains("read_project_file"))
-        // A decimal point, not a comma: this formats through Locale.ROOT, or it reads as "19,5 kB"
-        // on every machine whose locale separates decimals the other way.
         assertTrue(oldestResult(history), oldestResult(history).contains("19.5 kB"))
     }
 
@@ -105,9 +98,6 @@ class HistoryCompactionTest {
 
         HistoryCompaction.compact(history, WINDOW)
 
-        // Half the catalog edits files or runs commands, and the stub cannot tell which -- so it
-        // must never suggest the call be made again. Re-running an edit whose line numbers have
-        // since moved is worse than the context it would save.
         val stub = oldestResult(history).lowercase()
         assertFalse(stub, stub.contains("call it again"))
         assertFalse(stub, stub.contains("if you need"))
@@ -122,8 +112,6 @@ class HistoryCompactionTest {
 
         val again = HistoryCompaction.compact(history, WINDOW)
 
-        // The point of eliding the history itself rather than the outgoing request: what was
-        // dropped stays dropped, so the prefix the cache matches on stops moving.
         assertTrue(again.isEmpty)
         assertEquals(compacted, history)
     }
@@ -131,7 +119,6 @@ class HistoryCompactionTest {
     @Test
     fun `leaves short results alone`() {
         val history = historyOf(turns = 20)
-        // The answer to the second tool call, well inside the range the pass walks.
         history[4] = ChatMessage("user", toolResult("toolu_1", "ok"))
 
         HistoryCompaction.compact(history, WINDOW)
@@ -146,9 +133,6 @@ class HistoryCompactionTest {
         val untouched = history.toList()
         val overhead = HistoryCompaction.charsOf(historyOf(turns = 10))
 
-        // The same history is left alone on its own and compacted once the fixed part of the
-        // request is counted too -- which is the whole point of measuring it. Thirty tool schemas
-        // and a system prompt are not a rounding error next to a young conversation.
         assertTrue(HistoryCompaction.compact(history, WINDOW).isEmpty)
         assertEquals(untouched, history)
         assertFalse(HistoryCompaction.compact(history, WINDOW, overheadChars = overhead).isEmpty)
@@ -164,7 +148,6 @@ class HistoryCompactionTest {
         assertTrue(withTools > HistoryCompaction.overheadTokens("s".repeat(400), emptyList()))
     }
 
-    // --- tier 2: summarising ----------------------------------------------------------------------
 
     @Test
     fun `does not summarise while eliding tool output is still enough`() {
@@ -173,8 +156,6 @@ class HistoryCompactionTest {
 
         val result = HistoryCompaction.compact(history, WINDOW) { asked = true; "a summary" }
 
-        // The expensive tier stays unused as long as the cheap one can do the job: 20 turns of tool
-        // output is exactly the case eliding was written for.
         assertFalse("summarised when eliding would have done", asked)
         assertFalse(result.summarized)
         assertTrue(result.evicted > 0)
@@ -182,8 +163,6 @@ class HistoryCompactionTest {
 
     @Test
     fun `summarises when the conversation itself is what fills the window`() {
-        // No tool calls at all, so there is nothing for tier 1 to elide and the window is full of
-        // what the two of them wrote -- the case that used to have no answer.
         val history = proseHistoryOf(turns = 12)
 
         val result = HistoryCompaction.compact(history, WINDOW) { "the story so far" }
@@ -212,8 +191,6 @@ class HistoryCompactionTest {
 
         val result = HistoryCompaction.compact(history, WINDOW) { null }
 
-        // A failed summary request must cost nothing but the request: the alternative is a
-        // conversation cut down on the strength of a summary that never arrived.
         assertFalse(result.summarized)
         assertEquals(before, history)
     }
@@ -230,8 +207,6 @@ class HistoryCompactionTest {
 
     @Test
     fun `cuts only at a turn boundary, so no tool result loses its tool use`() {
-        // Prose turns with a tool call inside each one: every cut but the turn boundaries would
-        // strand a tool_result whose tool_use it had just deleted, which the API refuses outright.
         val history = mutableListOf(ChatMessage.text("user", "go"))
         for (i in 0 until 12) {
             history.add(ChatMessage("assistant", toolUse("toolu_$i")))
@@ -247,7 +222,6 @@ class HistoryCompactionTest {
             if (asked.isEmpty()) continue
             assertEquals("message $i", asked, idsOf(history.getOrNull(i + 1), "tool_result", "tool_use_id"))
         }
-        // And nothing is left answering a call that is no longer there.
         for (i in history.indices) {
             val answered = idsOf(history[i], "tool_result", "tool_use_id")
             if (answered.isEmpty()) continue
@@ -261,8 +235,6 @@ class HistoryCompactionTest {
 
         HistoryCompaction.compact(history, WINDOW) { "the story so far" }
 
-        // The summary goes in as a user/assistant pair for this reason: a lone user message would
-        // leave two user turns in a row where the kept half begins.
         assertEquals("user", history[0].role)
         assertEquals("assistant", history[1].role)
         for (i in 1 until history.size) {
@@ -272,9 +244,6 @@ class HistoryCompactionTest {
 
     @Test
     fun `declines to summarise a history too short to be worth it`() {
-        // Over the trigger on the strength of two enormous messages. There is no cut that leaves the
-        // tail protected and still takes enough with it, so a pass does nothing rather than
-        // summarising a single exchange.
         val history = mutableListOf(
             ChatMessage.text("user", "x".repeat(RESULT_CHARS * 10)),
             ChatMessage.text("assistant", "y".repeat(RESULT_CHARS * 10)),
@@ -293,8 +262,6 @@ class HistoryCompactionTest {
 
         HistoryCompaction.compact(history, WINDOW) { "the story so far" }
 
-        // Not dressed up as something the user wrote: a model that thinks it still has the
-        // transcript will act on a paraphrase of it instead of re-reading.
         val inserted = textOf(history[0]).lowercase()
         assertTrue(inserted, inserted.contains("summary"))
         assertTrue(inserted, inserted.contains("not a transcript"))
@@ -304,14 +271,11 @@ class HistoryCompactionTest {
     fun `asks for the things an agent mid-task needs kept`() {
         val request = HistoryCompaction.SUMMARY_REQUEST.lowercase()
 
-        // A general "summarise this" drops exactly these first, and they are what the next turn is
-        // built on.
         assertTrue(request.contains("outstanding"))
         assertTrue(request.contains("paths exactly"))
         assertTrue(request.contains("do not reproduce file contents"))
     }
 
-    // --- fixtures ---------------------------------------------------------------------------------
 
     private fun historyOf(turns: Int): MutableList<ChatMessage> {
         val history = mutableListOf(ChatMessage.text("user", "go"))

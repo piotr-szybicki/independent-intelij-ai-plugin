@@ -66,9 +66,6 @@ class ConfigurationRunner(private val project: Project) {
             }
         }
 
-        // Another configuration may be launched by the user while this one runs, so match on the
-        // settings rather than taking whatever starts first. Identity first, because two
-        // configurations are allowed to share a name across different types.
         fun matches(env: ExecutionEnvironment): Boolean =
             env.runnerAndConfigurationSettings?.let { it === settings }
                 ?: (env.runProfile.name == settings.name)
@@ -80,8 +77,6 @@ class ConfigurationRunner(private val project: Project) {
             handler.addProcessListener(collector)
             started.countDown()
 
-            // Attaching from processStarted means startNotify has already run, so a process that
-            // finished in the meantime will never call back. Its exit code is still readable.
             if (handler.isProcessTerminated) {
                 exitCode.set(handler.exitCode ?: Int.MIN_VALUE)
                 finished.countDown()
@@ -91,14 +86,8 @@ class ConfigurationRunner(private val project: Project) {
         val tests = TestResults()
 
         try {
-            // Subscribed before the launch: a short-lived process can terminate before
-            // executeConfiguration has even returned.
             val connection = project.messageBus.connect(scope)
 
-            // A Gradle test configuration streams its results to the IDE as tooling-API events and
-            // leaves the process handler's text stream empty, so the ProcessListener above sees
-            // nothing at all -- only an exit code. This is the layer both Gradle and a plain JUnit
-            // run report into, so it is what makes "which test failed, and why" answerable.
             connection.subscribe(
                 SMTRunnerEventsListener.TEST_STATUS,
                 object : SMTRunnerEventsAdapter() {
@@ -124,7 +113,6 @@ class ConfigurationRunner(private val project: Project) {
 
                     override fun processNotStarted(executorId: String, env: ExecutionEnvironment) {
                         if (!matches(env)) return
-                        // Nothing will ever start, so do not sit out the full start timeout.
                         started.countDown()
                         finished.countDown()
                     }
@@ -143,8 +131,6 @@ class ConfigurationRunner(private val project: Project) {
 
             val appeared = started.await(START_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             if (!appeared || handlerRef.get() == null) {
-                // executeConfiguration reports its own failures in the Run window, not to the
-                // caller, so a missing process is the only signal available here.
                 return "\"$label\" did not start. This is usually a compilation error " +
                     "or a broken configuration -- the IDE's Run tool window has the real error."
             }
@@ -155,8 +141,6 @@ class ConfigurationRunner(private val project: Project) {
                     report(tests, tail(output))
             }
 
-            // The last few test events can land just after the process exits, so give them the
-            // moment they need rather than reporting a truncated tally.
             if (tests.sawAnyTest) Thread.sleep(TEST_EVENT_SETTLE_MILLIS)
         } finally {
             Disposer.dispose(scope)
@@ -181,9 +165,6 @@ class ConfigurationRunner(private val project: Project) {
     fun debug(settings: RunnerAndConfigurationSettings, label: String, waitSeconds: Int): String {
         val executor = DefaultDebugExecutor.getDebugExecutorInstance()
 
-        // Not every configuration can be debugged -- a Maven goal or a shell script has no runner
-        // for the debug executor. executeConfiguration answers that by doing nothing at all, which
-        // is indistinguishable from a slow start, so ask first and say so.
         if (ProgramRunner.getRunner(executor.id, settings.configuration) == null) {
             return "\"$label\" (${settings.type.displayName}) cannot be debugged: the IDE has no " +
                 "debug runner for this kind of configuration, which is why its Debug button is " +
@@ -196,8 +177,6 @@ class ConfigurationRunner(private val project: Project) {
         val scope = Disposer.newDisposable("configuration_runner_debug")
 
         try {
-            // Subscribed before the launch: attaching to an already-running JVM can complete before
-            // executeConfiguration has even returned.
             project.messageBus.connect(scope).subscribe(
                 XDebuggerManager.TOPIC,
                 object : XDebuggerManagerListener {
@@ -218,8 +197,6 @@ class ConfigurationRunner(private val project: Project) {
             failure?.let { return "Error: could not start \"$label\" under the debugger: ${it.message}" }
 
             if (!attached.await(waitSeconds.toLong(), TimeUnit.SECONDS)) {
-                // executeConfiguration reports its own failures in the Run window, not to the
-                // caller, so a missing session is the only signal available here.
                 return "Started \"$label\" under the debugger, but no debug session appeared within " +
                     "${waitSeconds}s. That is usually a compilation error, or -- for a remote " +
                     "configuration -- nothing listening on the configured host and port, so check " +
@@ -261,7 +238,6 @@ class ConfigurationRunner(private val project: Project) {
 
         fun recordFinished(test: SMTestProxy) {
             synchronized(lock) {
-                // Failures arrive on onTestFailed as well; counting them there keeps the tally honest.
                 when {
                     test.isIgnored -> ignored++
                     test.isPassed -> passed++

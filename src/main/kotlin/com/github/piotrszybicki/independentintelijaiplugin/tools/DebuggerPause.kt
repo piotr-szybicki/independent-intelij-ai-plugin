@@ -53,7 +53,6 @@ internal class DebuggerPause(private val project: Project) {
                 session.addSessionListener(
                     object : XDebugSessionListener {
                         override fun sessionPaused() {
-                            // First pause wins; a later one is a separate call's business.
                             if (paused.compareAndSet(null, session)) stopped.countDown()
                         }
                     },
@@ -63,8 +62,6 @@ internal class DebuggerPause(private val project: Project) {
 
             manager.debugSessions.forEach(::watch)
 
-            // A session started after this call still counts: the user may well launch the debugger
-            // in response to being asked to.
             project.messageBus.connect(scope).subscribe(
                 XDebuggerManager.TOPIC,
                 object : XDebuggerManagerListener {
@@ -119,7 +116,6 @@ internal class DebuggerPause(private val project: Project) {
         }
     }
 
-    // --- evaluation -----------------------------------------------------------------------------
 
     fun evaluate(session: XDebugSession, expression: String, timeoutMillis: Long): String {
         val frame = session.currentStackFrame
@@ -149,8 +145,6 @@ internal class DebuggerPause(private val project: Project) {
         }
 
         try {
-            // The frame's position is what gives the expression its scope: which locals are visible,
-            // and what `this` means.
             evaluator.evaluate(expression, callback, frame.sourcePosition)
         } catch (e: Exception) {
             return "Could not evaluate \"$expression\": ${e.message ?: e::class.java.simpleName}"
@@ -168,7 +162,6 @@ internal class DebuggerPause(private val project: Project) {
             ?: "$expression = <not rendered in time>"
     }
 
-    // --- variables ------------------------------------------------------------------------------
 
     private class Variables(
         val values: List<String>,
@@ -196,9 +189,6 @@ internal class DebuggerPause(private val project: Project) {
                 if (last) listed.countDown()
             }
 
-            // Everything below ends the wait rather than reporting into a tree that does not exist.
-            // tooManyChildren(Int) is deprecated in favour of the (Int, Runnable) overload, but it is
-            // still abstract on XCompositeNode, so it has to be implemented either way.
             @Suppress("OVERRIDE_DEPRECATION")
             override fun tooManyChildren(remaining: Int) {
                 truncated.set(true)
@@ -246,8 +236,6 @@ internal class DebuggerPause(private val project: Project) {
             val key = "$index:$name"
             val answered = AtomicBoolean(false)
             fun answer(text: String) {
-                // Some values present twice -- a placeholder, then the real thing. The first
-                // release of the latch is what matters; later text still overwrites the entry.
                 rendered[key] = text
                 if (answered.compareAndSet(false, true)) remaining.countDown()
             }
@@ -289,7 +277,6 @@ internal class DebuggerPause(private val project: Project) {
             if (!type.isNullOrBlank()) append(": $type")
             append(" = ")
             append(trimmed)
-            // Flagged rather than expanded: reading nested fields is another round of async calls.
             if (hasChildren) append("  (has fields)")
         }
     }
