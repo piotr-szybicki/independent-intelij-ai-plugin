@@ -6,6 +6,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ContextMeter
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
+import com.github.piotrszybicki.independentintelijaiplugin.settings.ConversationTools
 import com.google.gson.Gson
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.Service
@@ -63,6 +64,8 @@ data class StoredChat(
     val agent: AgentSession? = null,
 
     val returns: List<AgentReturn>? = null,
+
+    val conversationTools: ConversationTools? = null,
 )
 
 data class ChatSummary(

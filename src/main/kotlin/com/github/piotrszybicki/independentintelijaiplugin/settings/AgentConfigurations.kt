@@ -27,6 +27,8 @@ class AgentConfigurations(private val project: Project) {
 
     data class LoadedSummarizer(val summarizer: SummarizerConfig, val error: String?)
 
+    data class LoadedConversationDefaults(val defaults: ConversationDefaultsConfig, val error: String?)
+
     val path: Path?
         get() = configuredPath() ?: project.basePath?.let { Paths.get(it, AgentConfiguration.FILE_NAME) }
 
@@ -68,7 +70,17 @@ class AgentConfigurations(private val project: Project) {
         findInFiles: FindInFilesConfig,
         agents: AgentRosterConfig,
         summarizer: SummarizerConfig,
-    ): String? = save(AgentConfiguration.render(configurations, database, findInFiles, agents, summarizer))
+        conversationDefaults: ConversationDefaultsConfig,
+    ): String? = save(
+        AgentConfiguration.render(
+            configurations,
+            database,
+            findInFiles,
+            agents,
+            summarizer,
+            conversationDefaults,
+        ),
+    )
 
     private fun save(text: String): String? {
         configuredPath()?.let {
@@ -172,6 +184,24 @@ class AgentConfigurations(private val project: Project) {
         } catch (e: Exception) {
             LoadedSummarizer(
                 SummarizerConfig.DEFAULT,
+                "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}",
+            )
+        }
+    }
+
+    fun conversationDefaults(): LoadedConversationDefaults {
+        val file = path ?: return LoadedConversationDefaults(ConversationDefaultsConfig.DEFAULT, null)
+        if (!Files.exists(file)) return LoadedConversationDefaults(ConversationDefaultsConfig.DEFAULT, null)
+        return try {
+            LoadedConversationDefaults(ConversationDefaultsConfig.parse(text().orEmpty()), null)
+        } catch (e: AgentConfigurationException) {
+            LoadedConversationDefaults(
+                ConversationDefaultsConfig.DEFAULT,
+                "${AgentConfiguration.FILE_NAME} is ${e.message}",
+            )
+        } catch (e: Exception) {
+            LoadedConversationDefaults(
+                ConversationDefaultsConfig.DEFAULT,
                 "${AgentConfiguration.FILE_NAME} could not be read: ${e.message}",
             )
         }

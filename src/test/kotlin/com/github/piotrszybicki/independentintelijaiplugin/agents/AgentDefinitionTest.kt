@@ -51,19 +51,24 @@ class AgentToolPolicyTest {
     }
 
     @Test
-    fun `the built-in coding agent can write from the start`() {
-        val coding = AgentCatalog.BUILT_IN.first { it.name == AgentCatalog.CODING_AGENT }
+    fun `a tool list written for an agent is exactly what that agent gets`() {
+        val policy = AgentToolPolicy.of(
+            listOf("read_project_file", "create_file", "edit_file_lines", "run_shell_command"),
+        )
 
-        assertFalse(coding.tools.saysNothing)
-        AgentCatalog.WRITING_TOOLS.forEach { assertTrue(it, coding.tools.keeps(it)) }
+        assertFalse(policy.saysNothing)
+        assertTrue(policy.keeps("create_file"))
+        assertFalse("nothing outside the list", policy.keeps("delete_file"))
     }
 
     @Test
-    fun `the built-in review agent cannot write`() {
-        val review = AgentCatalog.BUILT_IN.first { it.name == AgentCatalog.REVIEW_AGENT }
+    fun `a reading-only agent is one that never lists a writing tool`() {
+        val policy = AgentToolPolicy.of(listOf("read_project_file", "find_in_files", "git_diff"))
 
-        AgentCatalog.WRITING_TOOLS.forEach { assertFalse(it, review.tools.keeps(it)) }
-        assertTrue(review.tools.keeps("read_project_file"))
+        assertTrue(policy.keeps("read_project_file"))
+        listOf("create_file", "edit_file_lines", "delete_file", "safe_delete").forEach {
+            assertFalse(it, policy.keeps(it))
+        }
     }
 }
 
@@ -97,7 +102,7 @@ class AgentDefinitionTest {
         assertEquals("claude-sonnet-4-5", agent.model)
         assertTrue(agent.tools.keeps("create_file"))
         assertFalse(agent.tools.keeps("delete_file"))
-        assertFalse(agent.isBuiltIn)
+        assertTrue(agent.isFromFile)
     }
 
     @Test

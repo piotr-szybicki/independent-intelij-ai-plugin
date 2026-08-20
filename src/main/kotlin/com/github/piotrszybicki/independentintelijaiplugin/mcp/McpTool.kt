@@ -28,6 +28,12 @@ class McpTool(
 
     override val interruptible = true
 
+    val serverName: String get() = server.name
+
+    val toolName: String get() = descriptor.name
+
+    val toolDescription: String get() = descriptor.description
+
     override val description: String = buildString {
         append("(via the MCP server \"${server.name}\") ")
         val given = descriptor.description.trim()

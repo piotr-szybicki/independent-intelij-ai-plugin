@@ -48,7 +48,9 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgen
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
+import com.github.piotrszybicki.independentintelijaiplugin.settings.ConversationTools
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillDefinition
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunShellCommandTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.SummarizeTool
@@ -166,22 +168,110 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private var activeAgent: AgentDefinition? = null
         private var agentSession: AgentSession? = null
 
+        /* What this one chat may call, when it has been given a set of its own. */
+        private var conversationTools = ConversationTools.INHERIT
+
+        /* Skills the user invoked with / and that the next message has still to carry. */
+        private val invokedSkills = mutableListOf<SkillDefinition>()
+
         private fun agentTools(): List<AICodingAgentTool> {
-            val mcpTools = mcp.tools()
-            val policy = activeAgent?.tools ?: AgentToolPolicy.INHERIT
-            return ChangeTrackingTool.wrapAll(
-                policy.select(
-                    everything = builtInTools + mcpTools,
-                    enabledInSettings = ToolCatalog.enabledIn(builtInTools) + mcpTools,
-                ),
-                session,
+            val selected = if (conversationTools.overridden) {
+                val wanted = conversationTools.toolNames + conversationTools.mcpToolNames
+                (builtInTools + mcp.allTools()).filter { it.name in wanted }
+            } else {
+                val defaults = defaultTools()
+                (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
+                    .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
+            }
+            return ChangeTrackingTool.wrapAll(selected, session)
+        }
+
+        private class DefaultTools(
+            val everything: List<AICodingAgentTool>,
+            val enabled: List<AICodingAgentTool>,
+        )
+
+        /*
+         * The layer under the agent and under this chat: the `conversation-defaults` section of
+         * the settings file where it names tools, and the settings page where it does not. A named
+         * but empty array there means none of that kind, which is why the section is asked whether
+         * it said anything rather than whether it listed anything.
+         */
+        private fun defaultTools(): DefaultTools {
+            val defaults = AgentConfigurations.getInstance(project).conversationDefaults().defaults
+            val mcpTools = if (defaults.mcpTools == null) mcp.tools() else mcp.allTools()
+            val enabledBuiltIn = defaults.tools?.toSet()
+                ?.let { names -> builtInTools.filter { it.name in names } }
+                ?: ToolCatalog.enabledIn(builtInTools)
+            val enabledMcp = defaults.mcpTools?.toSet()
+                ?.let { names -> mcpTools.filter { it.name in names } }
+                ?: mcpTools
+            return DefaultTools(builtInTools + mcpTools, enabledBuiltIn + enabledMcp)
+        }
+
+        /* The skills every new chat in this project starts with, which is none unless the file says. */
+        private fun defaultConversationTools(): ConversationTools =
+            ConversationTools(
+                skills = AgentConfigurations.getInstance(project).conversationDefaults().defaults.skills,
+            )
+
+        /*
+         * The tools this chat runs with when it has no selection of its own: the defaults above,
+         * narrowed by the agent's tool list. The dialog shows it while the chat is inheriting, and
+         * starts from it when the chat is given its own set. Skills are not in it -- they are never
+         * inherited from one chat to the next, only started with.
+         */
+        private fun inheritedTools(): ConversationTools {
+            val defaults = defaultTools()
+            val selected = (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
+                .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
+                .map { it.name }
+            val builtInNames = builtInTools.mapTo(mutableSetOf()) { it.name }
+            return ConversationTools(
+                tools = selected.filter { it in builtInNames },
+                mcpTools = selected.filter { it !in builtInNames },
             )
         }
+
+        private val toolsButton = ConversationToolsButton(
+            project = project,
+            mcpTools = { mcp.allTools() },
+            inherited = { inheritedTools() },
+            onChanged = { chosen -> conversationToolsChosen(chosen) },
+        )
+
+        private fun conversationToolsChosen(chosen: ConversationTools) {
+            applyConversationTools(chosen)
+            statusLabel.text = chosen.describe() + " It takes effect from the next message."
+            saveCurrentChat(active = true)
+        }
+
+        /*
+         * The / popup's half of the same choice. Unlike the checkbox it is also an instruction:
+         * the skill is switched on for the rest of the chat and the next message carries a block
+         * telling the model to read it and follow it now, which is what typing /name means.
+         */
+        private fun addSkill(skill: SkillDefinition) {
+            applyConversationTools(conversationTools.withSkill(skill.name))
+            if (invokedSkills.none { it.name == skill.name }) invokedSkills += skill
+            statusLabel.text = "/${skill.name} will be used for the next message, and stays available after it."
+            saveCurrentChat(active = true)
+        }
+
+        private fun applyConversationTools(chosen: ConversationTools) {
+            conversationTools = chosen
+            toolsButton.set(chosen)
+            agentBanner.show(agentSession, toolsDescription())
+        }
+
+        /* What is actually in force: this chat's own set when it has one, the agent's list otherwise. */
+        private fun toolsDescription(): String? =
+            if (conversationTools.isCustom) conversationTools.describe() else activeAgent?.tools?.describe()
 
         private val agent = AICodingAgent(
             tools = { agentTools() },
             environment = { ProjectEnvironment.describe(project) },
-            skills = { SkillCatalog.describe(project) },
+            skills = { SkillCatalog.describe(project, conversationTools.activeSkills) },
         )
 
         private val transcript = ChatTranscript(
@@ -221,7 +311,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
 
-        private val providerBar = ProviderBar(project) { statusLabel.text = it }
+        private val providerBar = ProviderBar(project, { statusLabel.text = it }, toolsButton.component)
 
         private val agentBanner = AgentBanner(
             onOpenParent = { openChat(it) },
@@ -345,10 +435,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
             })
 
             AgentMentionPopup(project, input) { beginHandoff(it) }.install()
+            SkillMentionPopup(project, input, { conversationTools.activeSkills }) { addSkill(it) }.install()
 
             session.addListener(sessionListener)
             changesBarPanel.update(session.changedFileCount)
             providerBar.seedFromDefault()
+            applyConversationTools(defaultConversationTools())
             restoreLastChat()
         }
 
@@ -417,6 +509,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             history.addAll(chat.messages)
             rows.addAll(chat.transcript)
             applyAgent(chat.agent)
+            applyConversationTools(chat.conversationTools ?: defaultConversationTools())
             agentReturns.set(chat.returns.orEmpty())
             providerBar.setSelection(chat.configurationName, chat.model)
             setUsage(chat.usage ?: SessionUsage())
@@ -434,7 +527,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             activeAgent = session?.let {
                 known ?: AgentCatalog.find(project, it.agentName) ?: AgentCatalog.placeholderFor(it.agentName)
             }
-            agentBanner.show(session, activeAgent?.tools?.describe())
+            agentBanner.show(session, toolsDescription())
             transcript.onReturnSummary = if (session?.parentChatId == null) null else ::returnSummary
         }
 
@@ -450,6 +543,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             runningToolIndex = -1
             withheldCards.clear()
             applyAgent(null)
+            applyConversationTools(defaultConversationTools())
             shellTool?.forgetApprovals()
             mcp.forgetApprovals()
             raisedMaxTokens = 0
@@ -461,6 +555,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             transcript.clear()
             chatAttachments.clear()
             agentReturns.clear()
+            invokedSkills.clear()
         }
 
         private fun snapshot(): StoredChat? {
@@ -478,6 +573,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 model = providerBar.modelName,
                 agent = agentSession,
                 returns = agentReturns.returns(),
+                conversationTools = conversationTools.takeIf { it.isCustom },
             )
         }
 
@@ -734,6 +830,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
         ) {
             resetConversation(childId)
             applyAgent(session, definition)
+            applyConversationTools(
+                ConversationTools(skills = definition.skills.ifEmpty { defaultConversationTools().skills }),
+            )
             providerBar.setSelection(definition.configurationName, definition.model)
             input.text = ""
             chatAttachments.clear()
@@ -773,6 +872,23 @@ class ChatToolWindowFactory : ToolWindowFactory {
             return true
         }
 
+        /*
+         * What a /name adds to the message it precedes. The skill's own file is where the
+         * procedure is, so this says where to find it rather than repeating any of it, and it goes
+         * ahead of the user's text so the model reads the skill before deciding anything.
+         */
+        private fun invokedSkillBlocks(): List<PrependedBlock> = invokedSkills.map { skill ->
+            val path = SkillCatalog.displayPath(project, skill.file)
+            PrependedBlock(
+                marker = "🧭 `/${skill.name}`",
+                body = "The user invoked the skill \"${skill.name}\" for this message by typing " +
+                    "/${skill.name}. Its instructions are in `$path`: read that file first and " +
+                    "follow it for this request, rather than working from the description of it " +
+                    "you were given. If it turns out not to fit what is being asked, say so " +
+                    "instead of quietly ignoring it.",
+            )
+        }
+
         private data class PrependedBlock(val marker: String, val body: String)
 
         private fun returnedBlocks(): List<PrependedBlock> {
@@ -804,7 +920,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             if (!sendButton.isEnabled) return
             val text = input.text.trim()
             val attachments = chatAttachments.attachments()
-            val prepended = returnedBlocks() +
+            val prepended = returnedBlocks() + invokedSkillBlocks() +
                 attachments.map { PrependedBlock("📎 `${it.summary}`", it.body) }
             if (text.isEmpty() && prepended.isEmpty()) return
 
@@ -832,6 +948,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             input.text = ""
             chatAttachments.clear()
             agentReturns.clear()
+            invokedSkills.clear()
 
             startTurn(sizeBeforeTurn)
         }

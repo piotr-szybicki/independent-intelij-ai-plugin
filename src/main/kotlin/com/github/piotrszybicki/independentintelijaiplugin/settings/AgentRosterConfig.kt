@@ -11,6 +11,16 @@ data class AgentRosterEntry(
     val tools: List<String>,
     val configurationName: String,
     val model: String,
+
+    /*
+     * The skills this agent starts its chats with switched on. Chats begin with none otherwise,
+     * so this is how an agent that is meant to follow a written procedure gets it without the
+     * user typing /name first.
+     */
+    val skills: List<String> = emptyList(),
+
+    /* What a spec file for this agent starts from when there is no reply to draft one out of. */
+    val specTemplate: String = "",
 ) {
 
     fun toJson(): JsonObject = JsonObject().apply {
@@ -18,6 +28,8 @@ data class AgentRosterEntry(
         addProperty(DESCRIPTION, description)
         addProperty(PROMPT, prompt)
         add(TOOLS, JsonArray().apply { tools.forEach { add(it) } })
+        add(SKILLS, JsonArray().apply { skills.forEach { add(it) } })
+        addProperty(SPEC_TEMPLATE, specTemplate)
         addProperty(CONFIGURATION, configurationName)
         addProperty(MODEL, model)
     }
@@ -27,6 +39,8 @@ data class AgentRosterEntry(
         const val DESCRIPTION = "description"
         const val PROMPT = "prompt"
         const val TOOLS = "tools"
+        const val SKILLS = "skills"
+        const val SPEC_TEMPLATE = "spec-template"
         const val CONFIGURATION = "configuration"
         const val MODEL = "model"
     }
@@ -83,7 +97,9 @@ data class AgentRosterConfig(val agents: List<AgentRosterEntry>) {
                 name = name,
                 description = entry.string(AgentRosterEntry.DESCRIPTION).orEmpty().trim(),
                 prompt = entry.string(AgentRosterEntry.PROMPT).orEmpty().trim(),
-                tools = entry.tools(name),
+                tools = entry.names(name, AgentRosterEntry.TOOLS),
+                skills = entry.names(name, AgentRosterEntry.SKILLS),
+                specTemplate = entry.string(AgentRosterEntry.SPEC_TEMPLATE).orEmpty().trim(),
                 configurationName = entry.string(AgentRosterEntry.CONFIGURATION).orEmpty().trim(),
                 model = entry.string(AgentRosterEntry.MODEL).orEmpty().trim(),
             )
@@ -92,17 +108,17 @@ data class AgentRosterConfig(val agents: List<AgentRosterEntry>) {
         private fun JsonObject.string(field: String): String? =
             get(field)?.takeIf { it.isJsonPrimitive }?.asString
 
-        private fun JsonObject.tools(agent: String): List<String> {
-            val element = get(AgentRosterEntry.TOOLS) ?: return emptyList()
+        private fun JsonObject.names(agent: String, field: String): List<String> {
+            val element = get(field) ?: return emptyList()
             if (!element.isJsonArray) {
                 throw AgentConfigurationException(
-                    "\"$SECTION\".\"$agent\".${AgentRosterEntry.TOOLS} must be an array of tool names",
+                    "\"$SECTION\".\"$agent\".$field must be an array of names",
                 )
             }
             return element.asJsonArray.map {
                 if (!it.isJsonPrimitive) {
                     throw AgentConfigurationException(
-                        "\"$SECTION\".\"$agent\".${AgentRosterEntry.TOOLS} must hold tool names in quotes",
+                        "\"$SECTION\".\"$agent\".$field must hold names in quotes",
                     )
                 }
                 it.asString.trim()

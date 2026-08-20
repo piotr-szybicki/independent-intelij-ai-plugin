@@ -11,10 +11,6 @@ import java.io.File
 
 object AgentCatalog {
 
-    const val CODING_AGENT = "coding-agent"
-
-    const val REVIEW_AGENT = "review-agent"
-
     private const val AGENT_FILE = "AGENT.md"
 
     private const val MAX_AGENTS = 50
@@ -25,91 +21,19 @@ object AgentCatalog {
         ~/.claude/agents
     """.trimIndent()
 
-    val READING_TOOLS = listOf(
-        "list_directory", "read_project_file", "read_library_class", "get_file_structure",
-        "find_in_files", "find_by_name", "find_usages", "find_implementations", "get_symbol_info",
-    )
-
-    val WRITING_TOOLS = listOf(
-        "create_file", "edit_file_lines", "move_file", "delete_file",
-        "rename_symbol", "safe_delete", "apply_quick_fix",
-    )
-
     private val LOG = Logger.getInstance(AgentCatalog::class.java)
 
-    val BUILT_IN: List<AgentDefinition> = listOf(
-        AgentDefinition(
-            name = CODING_AGENT,
-            description = "Implements an agreed specification: writes the code, runs it, reports what it did.",
-            prompt = """
-                You are a coding agent. The message you were started with is a specification that a
-                user and another model agreed on, and it is the whole of your brief: implement it.
-
-                Work from the specification, not from a guess at what was meant. Where it is
-                explicit, follow it exactly. Where it is silent on something you must decide, pick
-                what the surrounding code already does and say in your final message which
-                decisions you made that the specification did not cover.
-
-                Do the work rather than describing it. Read what you are changing before you change
-                it, make the edits, and check them -- compile errors, the file's problems, the test
-                or run configuration that covers the change, whichever the project makes available
-                to you. Do not end a turn on a statement of intent.
-
-                Finish with a short report: what you changed, file by file; what you verified and
-                how; and anything in the specification you could not do, said plainly rather than
-                left out.
-            """.trimIndent(),
-            specTemplate = """
-                # What to build
-
-                Describe the change here.
-
-                # Constraints
-
-                # Done when
-            """.trimIndent(),
-            tools = AgentToolPolicy.of(
-                READING_TOOLS + WRITING_TOOLS +
-                    listOf("get_file_problems", "git_status", "git_diff", "run_shell_command"),
-            ),
-        ),
-        AgentDefinition(
-            name = REVIEW_AGENT,
-            description = "Reviews the code against a specification and reports findings. Reads only, never edits.",
-            prompt = """
-                You are a review agent. The message you were started with is a specification, and
-                your brief is to judge the code in this project against it -- not to change
-                anything. You have reading and navigation tools only; there is nothing to edit
-                with, by design.
-
-                Read the code that the specification touches before saying anything about it.
-                Report what you actually found: where the code and the specification disagree,
-                where the specification is ambiguous enough that the code could not have been
-                right, and what looks correct. Give the file and line for every finding.
-
-                Rank findings by what they would cost if left alone. Say when you are unsure
-                rather than padding the list.
-            """.trimIndent(),
-            tools = AgentToolPolicy.of(
-                READING_TOOLS +
-                    listOf("git_status", "git_diff", "git_log", "git_blame", "get_file_problems"),
-            ),
-            specTemplate = """
-                # What to review
-
-                # What it has to satisfy
-            """.trimIndent(),
-        ),
-    )
-
+    /*
+     * Every agent there is, and there are none this file knows by heart. An agent is either an
+     * AGENT.md somewhere on [SEARCH_PATHS] or an entry in the "agents" section of the settings
+     * file; nothing is defined in code, so an agent a user has not written does not exist.
+     */
     fun all(project: Project): List<AgentDefinition> {
         val found = runCatching { scan(project) }.getOrElse {
             LOG.info("Could not scan for agents: ${it.message}")
             emptyList()
         }
-        val names = found.mapTo(mutableSetOf()) { it.name }
-        val defined = found + BUILT_IN.filter { it.name !in names }
-        return withRoster(defined, AgentConfigurations.getInstance(project).agents().roster)
+        return withRoster(found, AgentConfigurations.getInstance(project).agents().roster)
     }
 
     fun rosterFor(project: Project): AgentRosterConfig {
@@ -121,7 +45,9 @@ object AgentCatalog {
         name = agent.name,
         description = agent.description,
         prompt = written.forAgent(agent.name)?.prompt.orEmpty(),
+        specTemplate = written.forAgent(agent.name)?.specTemplate.orEmpty(),
         tools = toolNames(agent.tools),
+        skills = agent.skills,
         configurationName = agent.configurationName.orEmpty(),
         model = agent.model.orEmpty(),
     )
@@ -141,6 +67,8 @@ object AgentCatalog {
                 description = entry.description.ifBlank { agent.description },
                 prompt = entry.prompt.ifBlank { agent.prompt },
                 tools = if (entry.tools.isEmpty()) agent.tools else AgentToolPolicy.of(entry.tools),
+                skills = entry.skills.ifEmpty { agent.skills },
+                specTemplate = entry.specTemplate.ifBlank { agent.specTemplate },
                 configurationName = entry.configurationName.ifBlank { null } ?: agent.configurationName,
                 model = entry.model.ifBlank { null } ?: agent.model,
             )
@@ -153,6 +81,8 @@ object AgentCatalog {
                 description = entry.description.ifBlank { "Defined in ${AgentConfiguration.FILE_NAME}." },
                 prompt = entry.prompt,
                 tools = AgentToolPolicy.of(entry.tools),
+                skills = entry.skills,
+                specTemplate = entry.specTemplate,
                 configurationName = entry.configurationName.ifBlank { null },
                 model = entry.model.ifBlank { null },
                 origin = AgentDefinition.CONFIGURATION,
@@ -169,6 +99,7 @@ object AgentCatalog {
             name = name,
             description = "This agent is no longer defined; the chat keeps its name only.",
             prompt = "",
+            origin = AgentDefinition.MISSING,
         )
 
     private fun scan(project: Project): List<AgentDefinition> {

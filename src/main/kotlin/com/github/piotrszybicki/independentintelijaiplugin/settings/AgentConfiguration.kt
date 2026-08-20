@@ -313,11 +313,13 @@ data class AgentConfiguration(
             findInFiles: FindInFilesConfig = FindInFilesConfig.DEFAULT,
             agents: AgentRosterConfig = AgentRosterConfig.EMPTY,
             summarizer: SummarizerConfig = SummarizerConfig.DEFAULT,
+            conversationDefaults: ConversationDefaultsConfig = ConversationDefaultsConfig.DEFAULT,
         ): String {
             val root = JsonObject().apply {
                 add(UsageDatabaseConfig.SECTION, database.toJson())
                 add(FindInFilesConfig.SECTION, findInFiles.toJson())
                 add(SummarizerConfig.SECTION, summarizer.toJson())
+                add(ConversationDefaultsConfig.SECTION, conversationDefaults.toJson())
                 if (agents.agents.isNotEmpty()) add(AgentRosterConfig.SECTION, agents.toJson())
                 add(CONFIGURATIONS, JsonArray().apply { configurations.forEach { add(it.toJson()) } })
             }

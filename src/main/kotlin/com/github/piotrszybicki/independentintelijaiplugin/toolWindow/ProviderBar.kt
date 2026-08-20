@@ -19,6 +19,7 @@ import javax.swing.JPanel
 internal class ProviderBar(
     private val project: Project,
     private val onStatus: (String) -> Unit,
+    trailing: JComponent? = null,
 ) {
     private var refilling = false
     private var providers: List<AgentConfiguration> = emptyList()
@@ -55,8 +56,14 @@ internal class ProviderBar(
             BorderLayout.CENTER,
         )
         add(
-            InplaceButton("Re-read ${AgentConfiguration.FILE_NAME}", AllIcons.Actions.Refresh) {
-                refresh()
+            JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply {
+                isOpaque = false
+                trailing?.let { add(it) }
+                add(
+                    InplaceButton("Re-read ${AgentConfiguration.FILE_NAME}", AllIcons.Actions.Refresh) {
+                        refresh()
+                    },
+                )
             },
             BorderLayout.EAST,
         )

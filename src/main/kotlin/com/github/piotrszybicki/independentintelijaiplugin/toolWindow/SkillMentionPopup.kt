@@ -1,10 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
-import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentCatalog
-import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentDefinition
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentRosterConfig
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillDefinition
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillRoot
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -19,10 +17,17 @@ import javax.swing.SwingUtilities
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 
-internal class AgentMentionPopup(
+/**
+ * The / at the start of a message, which switches a skill on for this chat -- the same thing the
+ * checkbox in [com.github.piotrszybicki.independentintelijaiplugin.settings.ConversationToolsDialog]
+ * does, reachable without leaving the keyboard. Only the first non-blank character of the message
+ * opens it, so a path typed mid-sentence is left alone.
+ */
+internal class SkillMentionPopup(
     private val project: Project,
     private val input: JTextPane,
-    private val onChosen: (AgentDefinition) -> Unit,
+    private val active: () -> Set<String>,
+    private val onChosen: (SkillDefinition) -> Unit,
 ) {
 
     private var popup: JBPopup? = null
@@ -45,7 +50,7 @@ internal class AgentMentionPopup(
 
     private fun opensMention(e: DocumentEvent, offset: Int): Boolean {
         if (offset == 0) return true
-        val before = runCatching { e.document.getText(offset - 1, 1) }.getOrNull() ?: return false
+        val before = runCatching { e.document.getText(0, offset) }.getOrNull() ?: return false
         return before.isBlank()
     }
 
@@ -55,52 +60,49 @@ internal class AgentMentionPopup(
 
         val at = caretPoint(offset) ?: return
 
-        val broken = AgentConfigurations.getInstance(project).agents().error
-        if (broken != null) {
-            JBPopupFactory.getInstance()
-                .createMessage("$broken -- fix that section before handing work over.")
-                .show(at)
-            return
-        }
-
-        val agents = AgentCatalog.all(project)
-        if (agents.isEmpty()) {
+        val skills = runCatching { SkillCatalog.enabledIn(SkillCatalog.scan(project).skills) }
+            .getOrDefault(emptyList())
+        if (skills.isEmpty()) {
             JBPopupFactory.getInstance()
                 .createMessage(
-                    "No agents are defined. Write one into the \"${AgentRosterConfig.SECTION}\" section " +
-                        "of ${AgentConfiguration.FILE_NAME}, or as .agents/<name>/AGENT.md.",
+                    "No skills were found. Add one at ${SkillRoot.DEFAULT_PATHS.lines().first()}/" +
+                        "<name>/SKILL.md, or point the settings page at another directory.",
                 )
                 .show(at)
             return
         }
 
-        val renderer = object : ColoredListCellRenderer<AgentDefinition>() {
+        val alreadyOn = active()
+
+        val renderer = object : ColoredListCellRenderer<SkillDefinition>() {
             override fun customizeCellRenderer(
-                list: JList<out AgentDefinition>,
-                value: AgentDefinition,
+                list: JList<out SkillDefinition>,
+                value: SkillDefinition,
                 index: Int,
                 selected: Boolean,
                 hasFocus: Boolean,
             ) {
-                append("@${value.name}", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                append("/${value.name}", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                if (value.name in alreadyOn) {
+                    append("  already on", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                }
                 append("  ${value.description}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                if (!value.isFromFile) append("  ${value.origin}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
-                toolTipText = "Tools: ${value.tools.describe()}"
+                toolTipText = value.description
             }
         }
 
-        val created = JBPopupFactory.getInstance().createPopupChooserBuilder(agents)
-            .setTitle("Hand Over To")
+        val created = JBPopupFactory.getInstance().createPopupChooserBuilder(skills)
+            .setTitle("Switch a Skill On for This Chat")
             .setMovable(false)
             .setResizable(false)
             .setRenderer(renderer)
             .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
             .setNamerForFiltering { "${it.name} ${it.description}" }
-            .setItemChosenCallback { agent ->
+            .setItemChosenCallback { skill ->
                 removeMention(offset)
-                onChosen(agent)
+                onChosen(skill)
             }
-            .setAdText("Keep typing to filter, Enter hands over, Escape leaves the @ alone")
+            .setAdText("Keep typing to filter, Enter switches it on, Escape leaves the / alone")
             .createPopup()
 
         popup = created
@@ -122,6 +124,6 @@ internal class AgentMentionPopup(
     }
 
     private companion object {
-        const val MENTION = "@"
+        const val MENTION = "/"
     }
 }

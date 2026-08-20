@@ -29,6 +29,10 @@ class McpService(private val project: Project) : Disposable {
         return all.filter { it.name in enabledSet }
     }
 
+    /** Every tool every connected server offers, before the settings page's selection narrows it. */
+    @Synchronized
+    fun allTools(): List<AICodingAgentTool> = current().flatMap { it.tools }
+
     @Synchronized
     fun statuses(): List<ServerStatus> = current().map { it.status }
 

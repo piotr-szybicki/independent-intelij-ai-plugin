@@ -57,22 +57,23 @@ data class AgentDefinition(
     val description: String,
     val prompt: String,
     val tools: AgentToolPolicy = AgentToolPolicy.INHERIT,
+
+    /* Skills switched on in the chats this agent starts; every other chat begins with none. */
+    val skills: List<String> = emptyList(),
     val configurationName: String? = null,
     val model: String? = null,
     val specTemplate: String = "",
     val file: File? = null,
-    val origin: String = BUILT_IN,
+    val origin: String,
 ) {
-
-    val isBuiltIn: Boolean get() = origin == BUILT_IN
 
     val isFromFile: Boolean get() = origin == FILE
 
     companion object {
 
-        const val BUILT_IN = "built-in"
         const val FILE = "file"
         const val CONFIGURATION = "settings file"
+        const val MISSING = "no longer defined"
 
         private const val MAX_READ_CHARS = 256 * 1024
 
@@ -94,6 +95,7 @@ data class AgentDefinition(
                 description = truncate(description),
                 prompt = body,
                 tools = AgentToolPolicy.parse(frontmatter["tools"]),
+                skills = namesOf(frontmatter["skills"]),
                 configurationName = frontmatter["configuration"]?.takeIf { it.isNotBlank() },
                 model = frontmatter["model"]?.takeIf { it.isNotBlank() },
                 specTemplate = frontmatter["spec_template"].orEmpty().trim(),
@@ -101,6 +103,9 @@ data class AgentDefinition(
                 origin = FILE,
             )
         }
+
+        private fun namesOf(value: String?): List<String> =
+            value.orEmpty().split(',', '\n').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 
         private fun nameOf(file: File): String {
             val base = file.nameWithoutExtension

@@ -69,38 +69,55 @@ object SkillCatalog {
         return own + nested
     }
 
-    fun describe(project: Project): String {
+    /**
+     * The skills the settings page leaves enabled, out of [scanned]. A blank selection there means
+     * every skill, which is why an empty list is not the same as none.
+     */
+    fun enabledIn(scanned: List<SkillDefinition>): List<SkillDefinition> {
+        val enabled = AICodingAgentSettingsState.getInstance().state.enabledSkills
+        if (enabled.isBlank()) return scanned
+        val enabledSet = enabled.split(",").mapTo(mutableSetOf()) { it.trim() }
+        return scanned.filter { it.name in enabledSet }
+    }
+
+    /**
+     * [active] is the set of skills one chat has been given -- by the dialog or the / popup -- and
+     * nothing outside it is described to the model. An empty set means no skills at all, which is
+     * where every chat starts.
+     */
+    fun describe(project: Project, active: Set<String>): String {
+        if (active.isEmpty()) return ""
         val allSkills = runCatching { scan(project).skills }.getOrElse {
             LOG.info("Could not scan for skills: ${it.message}")
             return ""
         }
-        val enabled = AICodingAgentSettingsState.getInstance().state.enabledSkills
-        val skills = if (enabled.isBlank()) allSkills else {
-            val enabledSet = enabled.split(",").mapTo(mutableSetOf()) { it.trim() }
-            allSkills.filter { it.name in enabledSet }
-        }
+        val skills = allSkills.filter { it.name in active }
         if (skills.isEmpty()) return ""
 
         val base = project.basePath?.let(::File)
         return buildString {
-            appendLine("Skills available for this project:")
+            appendLine("Skills the user has switched on for this chat:")
             for (skill in skills) {
                 appendLine("- ${skill.name}: ${skill.description}")
                 appendLine("  Instructions: ${displayPath(base, skill.file)}")
             }
             appendLine()
             append(
-                "A skill is a written procedure for one kind of task. The list above is names and " +
-                    "descriptions only -- what a skill actually tells you to do is in its file, " +
-                    "which you read when you decide the skill applies. When one matches what the " +
-                    "user is asking for, read it and follow it before doing the work, rather than " +
-                    "working from its description. A path shown relative to the project root is " +
-                    "read with `read_project_file`; an absolute one is outside the project, so " +
-                    "`run_shell_command` is what reads it. A skill may name further files beside " +
-                    "it -- read those only when its instructions say to.",
+                "A skill is a written procedure for one kind of task. Each one above was switched " +
+                    "on for this chat deliberately, so treat it as the user pointing at it. The " +
+                    "list is names and descriptions only -- what a skill actually tells you to do " +
+                    "is in its file, which you read when you decide the skill applies. When one " +
+                    "matches what the user is asking for, read it and follow it before doing the " +
+                    "work, rather than working from its description. A path shown relative to the " +
+                    "project root is read with `read_project_file`; an absolute one is outside the " +
+                    "project, so `run_shell_command` is what reads it. A skill may name further " +
+                    "files beside it -- read those only when its instructions say to.",
             )
         }
     }
+
+    /** How a skill's file is named to the model: project-relative where it can be, absolute otherwise. */
+    fun displayPath(project: Project, file: File): String = displayPath(project.basePath?.let(::File), file)
 
     private fun displayPath(base: File?, file: File): String {
         if (base == null) return file.path

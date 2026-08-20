@@ -52,41 +52,44 @@ project root, written with three example entries the first time a project is ope
     "enabled": true
   },
   "find-in-files": {
-    "blocked-phrases": ["public", "private", "import", "TODO"]
+    "blocked-phrases": ["public", "import", "TODO", "comment_id"]
   },
   "summarizer": {
-    "configuration": "Anthropic Claude",
-    "model": "claude-haiku-4-5-20251001",
+    "configuration": "Azure Foundry",
+    "model": "gpt-5-nano",
     "max-tokens": 1500,
-    "min-input-tokens": 400,
+    "min-input-tokens": 0,
     "thinking": "off",
     "prompt": ""
   },
-  "configurations": [
+  "agents": [
     {
-      "name": "Anthropic Claude",
-      "model": "claude-sonnet-5",
-      "models": ["claude-sonnet-5", "claude-opus-5", "claude-haiku-4-5-20251001", "claude-opus-4-6"],
-      "url": "https://api.anthropic.com/v1/messages",
-      "token": "",
-      "header-type": "x-api-key",
-      "protocol": "anthropic-messages",
-      "thinking": "on",
-      "effort": "medium",
-      "max-tokens": 8000,
-      "context-window": 200000,
-      "request-timeout-seconds": 300,
-      "additional-customizations": {
-        "anthropic-version": "2023-06-01",
-        "extra-headers": {}
-      }
+      "name": "coding-agent",
+      "tools": [
+        "list_directory", "read_project_file", "read_library_class", "get_file_structure",
+        "find_in_files", "find_by_name", "find_usages", "find_implementations", "get_symbol_info",
+        "create_file", "edit_file_lines", "move_file", "delete_file",
+        "rename_symbol", "safe_delete", "apply_quick_fix",
+        "get_file_problems", "git_status", "git_diff", "run_shell_command", "summarize"
+      ]
     },
+    {
+      "name": "review-agent",
+      "tools": [
+        "list_directory", "read_project_file", "read_library_class", "get_file_structure",
+        "find_in_files", "find_by_name", "find_usages", "find_implementations", "get_symbol_info",
+        "get_comment", "get_file_problems",
+        "git_status", "git_diff", "git_log", "git_blame"
+      ]
+    }
+  ],
+  "configurations": [
     {
       "name": "Azure Foundry",
       "model": "gpt-5.2-codex",
-      "models": ["gpt-5.6-luna", "gpt-5.1-codex", "gpt-5.2-codex", "gpt-5.3-codex"],
-      "url": "https://###.services.ai.azure.com/openai/v1/responses",
-      "token": "",
+      "models": ["gpt-5.6-luna", "gpt-5.1-codex", "gpt-5.2-codex", "gpt-5.3-codex", "gpt-5-nano"],
+      "url": "https://foundry-pszybicki.services.ai.azure.com/openai/v1/responses",
+      "token": "TOKEN",
       "header-type": "Authorization",
       "protocol": "openai-responses",
       "thinking": "on",
@@ -297,6 +300,57 @@ note has gone to the provider and replacing what it stands for would be rewritin
 sent. The conversation is never stuck either way. Files in `.cache/` are never deleted by the plugin;
 empty the folder whenever you like.
 
+### Tools and skills for one conversation
+
+The tools on the settings page are the default, not the last word. The **Tools** button beside the
+provider dropdowns opens the same three lists — tools, MCP tools, skills — **for the chat you are in
+and nothing else**. Tick *Use a tool set chosen for this chat only* and that chat calls exactly what
+you left ticked, whatever the settings page says and whatever the agent's own list says; leave it
+clear and the chat inherits as before. The choice is saved with the chat, so one reopened from the
+history comes back with it, and a new chat starts inheriting again. The button says which it is on.
+
+**Skills are off in every new chat.** Nothing in the skill directories is described to the model
+until that chat is told to use one, so the standing cost of a skill you have written but do not want
+today is zero. There are two ways to switch one on:
+
+- The **Skills** tab of that same dialog, which makes it *available*: its name and description ride
+  along with each message, and the assistant reads the `SKILL.md` if it decides the skill applies.
+- Typing **`/`** as the first character of a message, which makes it *available and used*. A
+  dropdown of skills opens at the caret, <kbd>Enter</kbd> picks one and <kbd>Escape</kbd> leaves the
+  `/` alone. The skill stays on for the rest of the chat, and the message you are writing carries a
+  block telling the model to read that file and follow it for this request — the difference between
+  "you may use this" and "use this". A `/` anywhere but the start of a message is left alone, so
+  paths and `and/or` are safe to type.
+
+The settings page keeps deciding which skills *exist* to be picked — directories to scan, and
+**Select Skills…** to narrow the list a chat may choose from — but nothing there is sent on its own.
+
+#### What a new chat starts with
+
+The IDE settings page is one machine's answer; a project can give its own in the
+**`conversation-defaults`** section of `independent-ai-plugin-settings.json`, which travels with the
+project the way the providers and the agents already do.
+
+```json
+"conversation-defaults": {
+  "tools": ["read_project_file", "get_file_structure", "find_in_files"],
+  "mcp-tools": ["mcp__github__search_issues"],
+  "skills": ["write-tests"]
+}
+```
+
+Each array is what a **new** chat opens with. `tools` and `mcp-tools` replace what the settings page
+has switched on; `skills` is switched on outright, the one way a chat starts with skills without
+anyone typing `/`. **A missing array is not an empty one**: leave `tools` out and the settings page
+decides, write `"tools": []` and chats in this project start with no built-in tools at all. Leaving
+`mcp-tools` out is how you keep whatever the settings page allows, which is *every* MCP tool unless
+you have narrowed it there.
+
+This is the bottom layer, and everything above it still applies: an agent's own `tools` and `skills`
+replace it in the chats that agent starts, and the **Tools** button replaces it for one chat. **Fill
+In Defaults** writes the section out at what the IDE is already running on, so a file written before
+the section existed gets it filled in rather than guessed at.
+
 ### Handing work to an agent
 
 Work out **what** to build in the main chat, then hand the building over. Type **`@`** anywhere in
@@ -329,9 +383,16 @@ still count. Send, and the chip clears like an attachment does. The section surv
 closed and reopened, which is the point — the agent usually finishes while you are looking at
 something else.
 
-Two agents come built in. **`@coding-agent`** implements the spec and reports what it changed and
-what it verified. **`@review-agent`** judges the code against the spec and has reading and navigation
-tools only — there is nothing for it to edit with, by design.
+**No agent comes built in.** Nothing in the plugin's code defines one: an agent is either an entry
+in the `agents` section of `independent-ai-plugin-settings.json` or an `AGENT.md` on disk, both of
+them yours to write and change without rebuilding anything. Type `@` in an empty project and the
+dropdown says so rather than offering something you never asked for.
+
+The two worth starting from, and the two this repository's own settings file carries, are
+**`coding-agent`** — implements the spec and reports what it changed and what it verified — and
+**`review-agent`**, which judges the code against the spec and is given reading and navigation tools
+only, so there is nothing for it to edit with. Both are written out in full in the section below;
+copy them into your own file and edit from there.
 
 #### What an agent may call
 
@@ -342,46 +403,63 @@ first message, in a chat you started from a specification you approved, without 
 armed in every conversation you have. An agent that names no tools inherits the settings page as
 before. The banner at the top of an agent chat lists what that chat can call.
 
-The **`agents`** section of `independent-ai-plugin-settings.json` is where you say so. It is the
-roster: one entry per agent, and `tools` is the array that decides what it may call.
+The **`agents`** section of `independent-ai-plugin-settings.json` is where an agent is defined. It is
+the roster: one entry per agent, `name` and `prompt` being the whole of what makes one, plus two
+arrays — `tools`, which decides what it may call, and `skills`, which decides what its chats start
+with switched on.
 
 ```json
 "agents": [
   {
     "name": "coding-agent",
+    "description": "Implements an agreed specification: writes the code, runs it, reports what it did.",
+    "prompt": "You are a coding agent. The message you were started with is a specification...",
+    "spec-template": "# What to build\n\nDescribe the change here.\n\n# Constraints\n\n# Done when",
     "tools": ["read_project_file", "get_file_structure", "find_in_files",
               "edit_file_lines", "create_file", "get_file_problems", "run_shell_command"],
+    "skills": ["write-tests"],
     "model": "claude-opus-5"
   },
   {
     "name": "migrator",
     "description": "Moves calls from the old API to the new one.",
     "prompt": "You migrate call sites, one file at a time...",
-    "tools": ["*", "-run_shell_command", "-delete_file"]
+    "tools": ["*", "-run_shell_command", "-delete_file"],
+    "skills": ["explain-code"]
   }
 ]
 ```
 
-An entry naming an agent that already exists — built in, or an `AGENT.md` — overrides it, field by
-field: `tools` replaces its tool list, `description`, `prompt`, `configuration` and `model` replace
-theirs when they are not empty. An entry naming an agent nothing else defines creates one, and then
-`prompt` is its whole brief. `"tools": []` or no `tools` at all means *inherit the settings page*,
-`["*"]` means every tool there is, and a `-name` entry takes one away. Left-out fields keep whatever
-the built-in or the `AGENT.md` said, so overriding just the tools is two lines.
+`prompt` is the agent's whole brief and `description` is the line the `@` dropdown shows.
+`spec-template` is what its spec file starts from when there is no reply to draft one out of.
+
+`skills` is the one exception to skills being off by default, and it is the same exception `tools`
+already is: an agent chat is started from a specification you approved, for an agent you wrote, so
+the procedure it is meant to follow is switched on from its first message instead of waiting for you
+to type `/`. Names come from the skill directories. `"skills": []` or no `skills` at all means the
+agent's chats start with none, like every other chat.
+
+An entry naming an agent an `AGENT.md` already defines overrides it, field by field: `tools` replaces
+its tool list, `skills` its starting skills, and `description`, `prompt`, `spec-template`,
+`configuration` and `model` replace theirs when they are not empty. Left-out fields keep whatever the
+`AGENT.md` said, so overriding just the tools is two lines. `"tools": []` or no `tools` at all means
+*inherit the settings page*, `["*"]` means every tool there is, and a `-name` entry takes one away.
 
 **Fill In Defaults** on the settings page writes the section out at the values it is already running
-on — the quickest way to see every agent's real tool list and start editing from it. Prompts that
-live in code or in an `AGENT.md` are not copied into the JSON; only what you wrote there stays there.
+on — the quickest way to see every agent's real tool list and start editing from it. Prompts and spec
+templates that live in an `AGENT.md` are not copied into the JSON; only what you wrote there stays
+there.
 
-Add your own as **`.agents/<name>/AGENT.md`** in the project (`.claude/agents/*.md` and
-`~/.claude/agents/*.md` are read too). Everything below the frontmatter is the agent's system prompt,
-and a file's agent replaces a built-in one of the same name:
+Or define one as **`.agents/<name>/AGENT.md`** in the project (`.claude/agents/*.md` and
+`~/.claude/agents/*.md` are read too), which keeps a long prompt out of JSON string escapes.
+Everything below the frontmatter is the agent's system prompt:
 
 ```markdown
 ---
 name: test-writer
 description: Writes the tests for a change that is already made.
 tools: read_project_file, get_file_structure, find_in_files, create_file, edit_file_lines
+skills: write-tests
 model: claude-sonnet-4-5
 ---
 
@@ -390,9 +468,10 @@ You write tests, and nothing else...
 
 `tools` is the tools that agent may call — a list to allow exactly those, `*` for every tool there
 is, or `-name` entries to take a few away. Leave it out and the agent inherits the settings page.
-`configuration` and `model` name the provider and model its chats open on, and `spec_template` is
-what its spec file starts from when there is no reply to draft one out of. The `agents` section of
-the settings file overrides any of this.
+`skills` is the skills its chats start with switched on, comma-separated; leave it out and they
+start with none, as every other chat does. `configuration` and `model` name the provider and model
+its chats open on, and `spec_template` is what its spec file starts from when there is no reply to
+draft one out of. The `agents` section of the settings file overrides any of this.
 
 ### Running it
 

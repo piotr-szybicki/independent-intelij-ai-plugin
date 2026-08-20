@@ -85,4 +85,79 @@ class AgentRosterConfigTest {
 
         assertEquals(roster, AgentRosterConfig.parse(rendered))
     }
+
+    @Test
+    fun `reads the skills an agent starts its chats with`() {
+        val roster = AgentRosterConfig.parse(
+            """
+            {
+              "agents": [
+                {
+                  "name": "coding-agent",
+                  "tools": ["read_project_file"],
+                  "skills": ["write-tests", "explain-code"]
+                },
+                { "name": "review-agent", "tools": ["read_project_file"] }
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        assertEquals(listOf("write-tests", "explain-code"), roster.forAgent("coding-agent")!!.skills)
+        assertEquals(emptyList<String>(), roster.forAgent("review-agent")!!.skills)
+    }
+
+    @Test
+    fun `skills must be an array`() {
+        assertThrows(AgentConfigurationException::class.java) {
+            AgentRosterConfig.parse("""{"agents": [{"name": "a", "skills": "write-tests"}]}""")
+        }
+    }
+
+    @Test
+    fun `both arrays survive a render and read back`() {
+        val roster = AgentRosterConfig(
+            listOf(
+                AgentRosterEntry(
+                    name = "coding-agent",
+                    description = "Implements a spec.",
+                    prompt = "",
+                    tools = listOf("*", "-run_shell_command"),
+                    configurationName = "Anthropic Claude",
+                    model = "claude-opus-5",
+                    skills = listOf("write-tests"),
+                ),
+            ),
+        )
+
+        val rendered = AgentConfiguration.render(
+            configurations = listOf(AgentConfiguration.DEFAULT),
+            agents = roster,
+        )
+
+        assertTrue(rendered.contains("\"skills\""))
+        assertEquals(roster, AgentRosterConfig.parse(rendered))
+    }
+
+    @Test
+    fun `an agent's spec template survives the file too`() {
+        val roster = AgentRosterConfig.parse(
+            """
+            {
+              "agents": [
+                {
+                  "name": "review-agent",
+                  "prompt": "You are a review agent.",
+                  "spec-template": "# What to review\n\n# What it has to satisfy"
+                }
+              ]
+            }
+            """.trimIndent(),
+        )
+
+        val review = roster.forAgent("review-agent")!!
+        assertEquals("# What to review\n\n# What it has to satisfy", review.specTemplate)
+        assertEquals("You are a review agent.", review.prompt)
+        assertEquals("", roster.forAgent("review-agent")!!.description)
+    }
 }

@@ -236,10 +236,13 @@ class AICodingAgentSettingsConfigurable : Configurable {
                 scrollCell(skillPathsArea).align(AlignX.FILL)
             }.rowComment(
                 "Directories to look for skills in, one per line. A skill is a " +
-                    "<code>SKILL.md</code> in its own folder below one of these, and its " +
-                    "<code>name</code> and <code>description</code> are added to every request so " +
-                    "the model knows the skill exists &mdash; the instructions in it are only read " +
-                    "when it is actually used.<br/>" +
+                    "<code>SKILL.md</code> in its own folder below one of these.<br/>" +
+                    "Nothing here is sent to the model on its own: every chat starts with no " +
+                    "skills, and one becomes available only when that chat switches it on, from " +
+                    "the Tools button in the chat window or by typing <code>/</code> at the start " +
+                    "of a message. What is selected below is the list a chat may pick from. Even " +
+                    "then only the <code>name</code> and <code>description</code> are sent &mdash; " +
+                    "the instructions in the file are read when the skill is actually used.<br/>" +
                     "Relative paths are resolved against the project root, absolute ones are not, " +
                     "so a directory outside the project works. <code>~</code> is your home " +
                     "directory and <code>\${env:NAME}</code> reads a variable. Earlier lines win " +
@@ -507,7 +510,16 @@ class AICodingAgentSettingsConfigurable : Configurable {
             )
             return
         }
+        val defaults = service.conversationDefaults()
+        if (defaults.error != null) {
+            Messages.showErrorDialog(
+                "${defaults.error}\n\nFix that section first -- rewriting the file now would drop it.",
+                "Configuration File",
+            )
+            return
+        }
         val roster = AgentCatalog.rosterFor(project)
+        val conversationDefaults = writtenConversationDefaults(defaults.defaults)
 
         if (service.text() ==
             AgentConfiguration.render(
@@ -516,6 +528,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
                 findInFiles.findInFiles,
                 roster,
                 summarizer.summarizer,
+                conversationDefaults,
             )
         ) {
             Messages.showInfoMessage(
@@ -544,6 +557,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
             findInFiles.findInFiles,
             roster,
             summarizer.summarizer,
+            conversationDefaults,
         )
         if (failure != null) {
             Messages.showErrorDialog(failure, "Configuration File")
@@ -552,6 +566,21 @@ class AICodingAgentSettingsConfigurable : Configurable {
         reloadConfigurations()
     }
 
+
+    /*
+     * What Fill In Defaults writes for the conversation-defaults section: whatever the file already
+     * says, or -- when it says nothing -- the values the IDE settings page is running on, so the
+     * rewrite records the behaviour rather than changing it. An unset MCP selection means *every*
+     * MCP tool, which an empty array would not say, so that key is left out instead of guessed at.
+     */
+    private fun writtenConversationDefaults(current: ConversationDefaultsConfig): ConversationDefaultsConfig {
+        if (!current.saysNothing) return current
+        return ConversationDefaultsConfig(
+            tools = ToolCatalog.format(pendingTools).split(',').filter { it.isNotBlank() },
+            mcpTools = pendingMcpTools.takeIf { it.isNotEmpty() }?.sorted(),
+            skills = emptyList(),
+        )
+    }
     private fun project(): Project? = ProjectManager.getInstance().openProjects.firstOrNull()
 
     private fun chooseTools() {
@@ -600,9 +629,9 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     private fun updateSkillsSummary() {
         skillsSummaryLabel.text = if (pendingSkills.isEmpty()) {
-            "All skills enabled (no selection made)"
+            "Every skill found is offered to chats (no selection made)"
         } else {
-            "${pendingSkills.size} skill(s) selected"
+            "${pendingSkills.size} skill(s) offered to chats"
         }
     }
 

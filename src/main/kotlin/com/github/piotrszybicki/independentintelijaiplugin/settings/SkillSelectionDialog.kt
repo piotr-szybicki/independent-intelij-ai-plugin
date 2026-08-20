@@ -42,8 +42,10 @@ class SkillSelectionDialog(
         val content = panel {
             row {
                 comment(
-                    "Every selected skill's name and description is sent with every message. " +
-                        "A skill that is not selected will not be known to the model.",
+                    "These are the skills a chat may switch on, not what is sent. Every chat " +
+                        "starts with none; one is switched on from the Tools button in the chat " +
+                        "window, or by typing / at the start of a message. A skill left out here " +
+                        "is not offered at all.",
                 )
             }
             row {
