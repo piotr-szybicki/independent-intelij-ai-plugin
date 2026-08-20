@@ -52,7 +52,7 @@ project root, written with three example entries the first time a project is ope
     "enabled": true
   },
   "find-in-files": {
-    "blocked-phrases": ["public", "private", "import", "TODO", "comment_id"]
+    "blocked-phrases": ["public", "private", "import", "TODO"]
   },
   "summarizer": {
     "configuration": "Anthropic Claude",

@@ -23,15 +23,6 @@ class RemoveCommentsDialog(project: Project, private val selection: List<Virtual
     private val line = JBRadioButton("Line comments (//)")
     private val both = JBRadioButton("Javadoc and line comments")
 
-    /**
-     * Off by default, and enabled only while a choice that could reach a marker is selected.
-     *
-     * A `// comment_id: N` line is the only pointer to a comment in the database. Removing it does
-     * not delete a line of text so much as strand the paragraph it stood for, so it takes a deliberate
-     * tick rather than coming along with "remove the line comments".
-     */
-    private val markers = JBCheckBox("Include // comment_id markers -- the stored comments become unreachable")
-
     private val wholeProject = JBRadioButton("The whole project", true)
     private val selectedFiles = JBRadioButton(selectionLabel(project))
 
@@ -46,20 +37,14 @@ class RemoveCommentsDialog(project: Project, private val selection: List<Virtual
             else -> CommentChoice.JAVADOC
         }
 
-    /** Gated on the choice as well as the box, so a tick left over from an earlier choice cannot act. */
-    val includeMarkers: Boolean
-        get() = markers.isSelected && touchesLineComments()
-
     val useSelection: Boolean get() = selectedFiles.isSelected
     val dryRun: Boolean get() = reportOnly.isSelected
 
     init {
         title = "Remove Comments"
         setOKButtonText("Remove")
-        listOf(javadoc, blankJavadoc, line, both).forEach { it.addActionListener { syncMarkers() } }
         reportOnly.addActionListener { setOKButtonText(if (reportOnly.isSelected) "Count" else "Remove") }
         init()
-        syncMarkers()
     }
 
     override fun createCenterPanel(): JComponent = panel {
@@ -76,7 +61,6 @@ class RemoveCommentsDialog(project: Project, private val selection: List<Virtual
             row { cell(line) }
             row { cell(both) }
         }
-        row { cell(markers) }
         if (selection.isNotEmpty()) {
             buttonsGroup("Where") {
                 row { cell(wholeProject) }
@@ -90,12 +74,6 @@ class RemoveCommentsDialog(project: Project, private val selection: List<Virtual
                     "files it changes are saved when it finishes.",
             )
         }
-    }
-
-    private fun touchesLineComments(): Boolean = line.isSelected || both.isSelected
-
-    private fun syncMarkers() {
-        markers.isEnabled = touchesLineComments()
     }
 
     private fun selectionLabel(project: Project): String = when (selection.size) {

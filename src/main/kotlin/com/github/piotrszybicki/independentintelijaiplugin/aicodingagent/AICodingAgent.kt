@@ -47,11 +47,13 @@ class AICodingAgent(
             steps, take the first one now instead of describing the plan and stopping.
 
             Outline before you read. For a file you do not already know, call get_file_structure
-            first and read only the ranges it points at. Each declaration comes back with the
+            first and read only the ranges you need to understand the structure. Each declaration comes back with the
             span it covers -- start-end for anything spanning several lines, a single number
             when it fits on one -- and that range is what read_project_file and edit_file_lines
             take, so a method can be read on its own. Read a file whole only when the outline
             shows it is small, or when what you need is code the outline does not name.
+
+            Use summary tool each time you want to run a build a longer output. 
         """.trimIndent()
 
         const val MAX_TOKENS_CEILING = 12_000
@@ -84,39 +86,11 @@ class AICodingAgent(
         if (facts.isEmpty()) SYSTEM_PROMPT else "$SYSTEM_PROMPT\n\n$facts"
     }
 
-    private fun systemPrompt(available: List<AICodingAgentTool>, agentPrompt: String): String {
-        val names = available.mapTo(mutableSetOf()) { it.name }
+    private fun systemPrompt(agentPrompt: String): String {
         val parts = mutableListOf(basePrompt)
         agentPrompt.trim().takeIf { it.isNotEmpty() }?.let { parts.add(it) }
-        commentRule(names)?.let { parts.add(it) }
         runCatching { skills() }.getOrDefault("").trim().takeIf { it.isNotEmpty() }?.let { parts.add(it) }
         return parts.joinToString("\n\n")
-    }
-
-    private fun commentRule(enabled: Set<String>): String? {
-        val writes = "insert_comment" in enabled
-        val reads = "get_comment" in enabled
-        if (!writes && !reads) return null
-
-        val rules = mutableListOf<String>()
-        if (writes) {
-            rules.add(
-                "Documentation comments are kept in a database rather than in the files. When what " +
-                    "you are writing would be a Javadoc or KDoc block -- anything of the /** ... */ " +
-                    "form -- call insert_comment with the comment text and write the " +
-                    "\"// comment_id: <id>\" line it gives you back at the place that comment " +
-                    "belongs. Never write a /** ... */ block into a file. Comments starting with // " +
-                    "are written into the code as normal.",
-            )
-        }
-        if (reads) {
-            rules.add(
-                "A \"// comment_id: N\" line in a file is a stored comment, and is the documentation " +
-                    "for whatever follows it. Call get_comment with N to read it -- the code around " +
-                    "it may make no sense without what it says.",
-            )
-        }
-        return rules.joinToString("\n\n")
     }
 
     private val log = Logger.getInstance(AICodingAgent::class.java)
@@ -139,7 +113,7 @@ class AICodingAgent(
         val available = tools()
         val toolsByName = available.associateBy { it.name }
         val toolDefinitions = available.map { it.toDefinition() }
-        val system = systemPrompt(available, agentPrompt)
+        val system = systemPrompt(agentPrompt)
         val overheadChars = HistoryCompaction.overheadChars(system, toolDefinitions)
 
         fun reportContext() = listener.onContext(meter.estimate(history, overheadChars), contextWindowTokens)

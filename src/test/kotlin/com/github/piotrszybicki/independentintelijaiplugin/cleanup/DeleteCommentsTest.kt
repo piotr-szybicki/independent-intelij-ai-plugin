@@ -5,16 +5,10 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Which comments each choice claims, and what the line looks like once a comment leaves it.
- *
- * The marker cases are the ones that matter most: a `comment_id` line deleted by accident does not
- * lose a line of text, it strands the paragraph in the database that line stood for.
- */
+/** Which comments each choice claims, and what the line looks like once a comment leaves it. */
 class DeleteCommentsTest {
 
-    private fun plan(choice: CommentChoice, includeMarkers: Boolean = false) =
-        DeleteComments(choice, includeMarkers)
+    private fun plan(choice: CommentChoice) = DeleteComments(choice)
 
     /** Applies what the plan would do to the single comment spanning [start, end). */
     private fun cut(source: String, start: Int, end: Int): String {
@@ -49,22 +43,6 @@ class DeleteCommentsTest {
         assertTrue(both.wants("// a"))
         assertTrue(both.wants("/** a */"))
         assertFalse(both.wants("/* a */"))
-    }
-
-    @Test
-    fun `a comment_id marker is spared unless it is asked for by name`() {
-        val sparing = plan(CommentChoice.LINE)
-        assertFalse(sparing.wants("// comment_id: 42"))
-        assertEquals("and it is counted, so the summary can say so", 1, sparing.markersKept)
-
-        val taking = plan(CommentChoice.LINE, includeMarkers = true)
-        assertTrue(taking.wants("// comment_id: 42"))
-        assertEquals(0, taking.markersKept)
-    }
-
-    @Test
-    fun `both spares markers too`() {
-        assertFalse(plan(CommentChoice.JAVADOC_AND_LINE).wants("// comment_id: 42"))
     }
 
     @Test

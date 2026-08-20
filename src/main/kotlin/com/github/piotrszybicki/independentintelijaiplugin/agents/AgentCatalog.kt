@@ -92,7 +92,7 @@ object AgentCatalog {
             """.trimIndent(),
             tools = AgentToolPolicy.of(
                 READING_TOOLS +
-                    listOf("get_comment", "git_status", "git_diff", "git_log", "git_blame", "get_file_problems"),
+                    listOf("git_status", "git_diff", "git_log", "git_blame", "get_file_problems"),
             ),
             specTemplate = """
                 # What to review

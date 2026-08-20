@@ -61,19 +61,5 @@
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
-        <action id="AICodingAgent.MoveCommentsToDatabase"
-                class="com.github.piotrszybicki.independentintelijaiplugin.cleanup.MoveCommentsToDatabaseAction"
-                text="Move Javadoc Comments to Database..."
-                description="Store Javadoc-form comments in the database and leave a comment_id marker in their place">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
-        </action>
-        <action id="AICodingAgent.RestoreComments"
-                class="com.github.piotrszybicki.independentintelijaiplugin.cleanup.RestoreCommentsAction"
-                text="Restore Comments From Database..."
-                description="Replace every comment_id marker with the comment stored under that id">
-            <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
-        </action>
     </actions>
 </idea-plugin>

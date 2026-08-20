@@ -34,8 +34,6 @@ object ToolCatalog {
         Entry("get_file_structure", ToolCategory.READ, true, ::GetFileStructureTool),
         Entry("attach_library_sources", ToolCategory.READ, false, ::AttachLibrarySourcesTool),
 
-        Entry("get_comment", ToolCategory.READ, false, ::GetCommentTool),
-
         Entry("find_in_files", ToolCategory.NAVIGATE, true, ::FindInFilesTool),
         Entry("find_by_name", ToolCategory.NAVIGATE, true, ::FindByNameTool),
         Entry("find_usages", ToolCategory.NAVIGATE, true, ::FindUsagesTool),
@@ -55,7 +53,6 @@ object ToolCatalog {
         Entry("delete_file", ToolCategory.EDIT, false, ::DeleteFileTool),
         Entry("rename_symbol", ToolCategory.EDIT, false, ::RenameSymbolTool),
         Entry("safe_delete", ToolCategory.EDIT, false, ::SafeDeleteTool),
-        Entry("insert_comment", ToolCategory.EDIT, false, ::InsertCommentTool),
 
         Entry("run_action", ToolCategory.RUN, false, ::RunActionTool),
         Entry("run_shell_command", ToolCategory.RUN, false, ::RunShellCommandTool),

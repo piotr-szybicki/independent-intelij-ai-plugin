@@ -15,8 +15,6 @@ import com.intellij.openapi.vfs.VirtualFile
  * A user-driven action rather than one of the model tools -- it is here to be run by hand and its
  * effect looked at, which is why it reports what it did, does the whole thing as one undoable
  * change, and offers to count without touching anything.
- *
- * The one that throws the comments away. [MoveCommentsToDatabaseAction] is the one that keeps them.
  */
 class RemoveCommentsAction : AnAction() {
 
@@ -46,12 +44,12 @@ class RemoveCommentsAction : AnAction() {
 
         val dryRun = dialog.dryRun
         val choice = dialog.choice
-        val plan = DeleteComments(choice, dialog.includeMarkers)
+        val plan = DeleteComments(choice)
         val sweep = CommentSweep(project, roots, plan, dryRun)
         val what = describe(choice)
         val title = if (dryRun) "Counting $what" else "Removing $what"
 
-        SweepRunner.launch(project, title, sweep) { report -> notifyResult(project, report, plan, what, dryRun) }
+        SweepRunner.launch(project, title, sweep) { report -> notifyResult(project, report, what, dryRun) }
     }
 
     private fun describe(choice: CommentChoice): String = when (choice) {
@@ -64,7 +62,6 @@ class RemoveCommentsAction : AnAction() {
     private fun notifyResult(
         project: Project,
         report: CommentSweep.Report,
-        plan: DeleteComments,
         what: String,
         dryRun: Boolean,
     ) {
@@ -89,12 +86,6 @@ class RemoveCommentsAction : AnAction() {
         }
 
         val lines = mutableListOf("From ${report.changedFiles} of ${report.scannedFiles} file(s) scanned.")
-        if (plan.markersKept > 0) {
-            lines.add(
-                "${plan.markersKept} <code>comment_id</code> marker(s) were left alone; the comments " +
-                    "they point at are still in the database.",
-            )
-        }
         lines.addAll(SweepRunner.footer(report))
 
         SweepRunner.notify(
