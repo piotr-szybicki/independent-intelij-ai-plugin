@@ -1,100 +1,88 @@
-# GitHub Actions Workflow created for handling the release process based on the draft release prepared with the Build workflow.
-# Running the publishPlugin task requires all the following secrets to be provided: PUBLISH_TOKEN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD, CERTIFICATE_CHAIN.
-# See https://plugins.jetbrains.com/docs/intellij/plugin-signing.html for more information.
+name: Release plugin
 
-name: Release
 on:
-  release:
-    types: [ prereleased, released ]
+  push:
+    tags:
+      - 'release/**'
+
+# Needed to create a GitHub Release and upload the plugin ZIP to it.
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-
-  # Prepare and publish the plugin to JetBrains Marketplace repository
   release:
-    name: Publish Plugin
+    name: Build and publish plugin
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
     steps:
-
-      # Free GitHub Actions Environment Disk Space
-      - name: Maximize Build Space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          tool-cache: false
-          large-packages: false
-
-      # Check out the current repository
-      - name: Fetch Sources
+      - name: Fetch sources
         uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.release.tag_name }}
 
-      # Set up the Java environment for the next steps
-      - name: Setup Java
+      - name: Set up Java
         uses: actions/setup-java@v5
         with:
           distribution: zulu
           java-version: 25
 
-      # Setup Gradle
-      - name: Setup Gradle
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-read-only: true
 
-      # Update the Unreleased section with the current release note
-      - name: Patch Changelog
-        if: ${{ github.event.release.body != '' }}
-        env:
-          CHANGELOG: ${{ github.event.release.body }}
+      - name: Validate release version and calculate next patch version
+        id: version
+        shell: bash
         run: |
-          RELEASE_NOTE="./build/tmp/release_note.txt"
-          mkdir -p "$(dirname "$RELEASE_NOTE")"
-          echo "$CHANGELOG" > $RELEASE_NOTE
+          RELEASE_VERSION="${GITHUB_REF_NAME#release/}"
+          if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tags must use release/<major>.<minor>.<patch>, such as release/1.0.0." >&2
+            exit 1
+          fi
 
-          ./gradlew patchChangelog --release-note-file=$RELEASE_NOTE
+          PROJECT_VERSION="$(sed -n 's/^version = //p' gradle.properties)"
+          if [[ "$PROJECT_VERSION" != "$RELEASE_VERSION" ]]; then
+            echo "Tag version ($RELEASE_VERSION) must match gradle.properties ($PROJECT_VERSION)." >&2
+            exit 1
+          fi
 
-      # Publish the plugin to JetBrains Marketplace
-      - name: Publish Plugin
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$RELEASE_VERSION"
+          echo "next_version=$MAJOR.$MINOR.$((PATCH + 1))" >> "$GITHUB_OUTPUT"
+
+      - name: Test and verify plugin
+        run: ./gradlew check verifyPlugin
+
+      - name: Build plugin distribution
+        run: ./gradlew buildPlugin
+
+      - name: Create GitHub Release and upload plugin ZIP
         env:
-          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
-          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
-        run: ./gradlew publishPlugin
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}" ./build/distributions/*.zip
+          --verify-tag
+          --generate-notes
+          --title "${{ github.ref_name }}"
 
-      # Upload an artifact as a release asset
-      - name: Upload Release Asset
+      - name: Open pull request for next patch version
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload ${{ github.event.release.tag_name }} ./build/distributions/*
-
-      # Create a pull request
-      - name: Create Pull Request
-        if: ${{ github.event.release.body != '' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          NEXT_VERSION: ${{ steps.version.outputs.next_version }}
+        shell: bash
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          BRANCH="changelog-update-$VERSION"
-          LABEL="release changelog"
+          BRANCH="feature/prepare-next-version-$NEXT_VERSION"
+          sed -i "s/^version = .*/version = $NEXT_VERSION/" gradle.properties
 
-          git config user.email "action@github.com"
-          git config user.name "GitHub Action"
-
-          git checkout -b $BRANCH
-          git commit -am "Changelog update - $VERSION"
-          git push --set-upstream origin $BRANCH
-
-          gh label create "$LABEL" \
-            --description "Pull requests with release changelog update" \
-            --force \
-            || true
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git switch -c "$BRANCH"
+          git add -- gradle.properties
+          git commit -m "Prepare $NEXT_VERSION"
+          git push --set-upstream origin "$BRANCH"
 
           gh pr create \
-            --title "Changelog update - \`$VERSION\`" \
-            --body "Current pull request contains patched \`CHANGELOG.md\` file for the \`$VERSION\` version." \
-            --label "$LABEL" \
-            --head $BRANCH
+            --base main \
+            --head "$BRANCH" \
+            --title "Prepare $NEXT_VERSION" \
+            --body "Bumps the Gradle patch version after releasing ${{ github.ref_name }}."
