@@ -1178,10 +1178,21 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
 
             withheldCards.remove(toolUseId)
-            showError(
-                "Approved $toolName's output (${"%,d".format(TokenCounter.count(text))} tokens) " +
-                    "as the result of that call. Press Continue to send it.",
-            )
+
+            val approvedTokens = TokenCounter.count(text)
+            if (withheldCards.isEmpty()) {
+                showError(
+                    "Approved $toolName's output (${"%,d".format(approvedTokens)} tokens). " +
+                        "All required outputs are approved; continuing automatically.",
+                )
+                continueTurn()
+            } else {
+                val remaining = withheldCards.size
+                showError(
+                    "Approved $toolName's output (${"%,d".format(approvedTokens)} tokens). " +
+                        "$remaining approval${if (remaining == 1) "" else "s"} remaining.",
+                )
+            }
             return true
         }
 
