@@ -38,7 +38,7 @@ tasks.register<JavaExec>("runHelloWorld") {
 dependencies {
     testImplementation("junit:junit:4.13.2")
 
-    implementation("org.commonmark:commonmark:0.29.0")
+    implementation("org.commonmark:commonmark:0.30.0")
 
     implementation("com.knuddels:jtokkit:1.1.0")
 
