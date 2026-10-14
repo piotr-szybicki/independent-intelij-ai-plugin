@@ -6,18 +6,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MatchListingTest {
-
     @Test
     fun `puts every hit in a file under one heading, in line order`() {
-        val listing = MatchListing.format(
-            "3 match(es) for \"settings\"",
-            listOf(
-                Match("src/mcp/McpService.kt", 64, "val text = state.mcpServers"),
-                Match("src/tools/ToolCatalog.kt", 4, "import ...AICodingAgentSettingsState"),
-                Match("src/mcp/McpService.kt", 8, "import ...AICodingAgentSettingsState"),
-            ),
-            truncated = false,
-        )
+        val listing =
+            MatchListing.format(
+                "3 match(es) for \"settings\"",
+                listOf(
+                    Match("src/mcp/McpService.kt", 64, "val text = state.mcpServers"),
+                    Match("src/tools/ToolCatalog.kt", 4, "import ...AICodingAgentSettingsState"),
+                    Match("src/mcp/McpService.kt", 8, "import ...AICodingAgentSettingsState"),
+                ),
+                truncated = false,
+            )
 
         assertEquals(
             """
@@ -35,10 +35,11 @@ class MatchListingTest {
 
     @Test
     fun `prints a line once however many times it was reported`() {
-        val duplicated = listOf(
-            Match("src/mcp/McpService.kt", 8, "import ...State"),
-            Match("src/mcp/McpService.kt", 8, "import ...State"),
-        )
+        val duplicated =
+            listOf(
+                Match("src/mcp/McpService.kt", 8, "import ...State"),
+                Match("src/mcp/McpService.kt", 8, "import ...State"),
+            )
 
         assertEquals(1, MatchListing.count(duplicated))
         assertEquals(

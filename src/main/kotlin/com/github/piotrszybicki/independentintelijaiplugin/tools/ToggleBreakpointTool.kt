@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
@@ -14,34 +15,63 @@ import com.intellij.xdebugger.breakpoints.XBreakpointManager
 import com.intellij.xdebugger.breakpoints.XBreakpointProperties
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
-
+class ToggleBreakpointTool(
+    private val project: Project,
+) : AICodingAgentTool {
     override val name = "toggle_breakpoint"
     override val description =
         "Adds or removes a line breakpoint in a project file. Line numbers are 1-based, as " +
             "read_project_file returns them. Adding requires an executable statement, not a blank " +
             "line, comment or declaration."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("path", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "File path relative to the project root, e.g. src/Main.kt")
-            })
-            add("line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty("description", "1-based line number to put the breakpoint on")
-            })
-            add("action", JsonObject().apply {
-                addProperty("type", "string")
-                add("enum", JsonArray().apply { add("add"); add("remove") })
-                addProperty("description", "Whether to add a breakpoint at the line or remove the one there")
-            })
-        })
-        add("required", JsonArray().apply { add("path"); add("line"); add("action") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "path",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty("description", "File path relative to the project root, e.g. src/Main.kt")
+                        },
+                    )
+                    add(
+                        "line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty("description", "1-based line number to put the breakpoint on")
+                        },
+                    )
+                    add(
+                        "action",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            add(
+                                "enum",
+                                JsonArray().apply {
+                                    add("add")
+                                    add("remove")
+                                },
+                            )
+                            addProperty(
+                                "description",
+                                "Whether to add a breakpoint at the line or remove the one there",
+                            )
+                        },
+                    )
+                },
+            )
+            add(
+                "required",
+                JsonArray().apply {
+                    add("path")
+                    add("line")
+                    add("action")
+                },
+            )
+        }
 
     override fun execute(input: JsonObject): String {
         val path = input.get("path")?.asString ?: return "Error: missing 'path'"
@@ -52,15 +82,22 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
         }
         if (line < 1) return "Error: line must be 1 or greater"
 
-        val vf = PsiTargets.resolveProjectFile(project, path)
-            ?: return "Error: file not found in the project: $path"
+        val vf =
+            PsiTargets.resolveProjectFile(project, path)
+                ?: return "Error: file not found in the project: $path"
         if (vf.isDirectory) return "Error: $path is a directory"
 
         val line0 = line - 1
         val manager = XDebuggerManager.getInstance(project).breakpointManager
         val existing = existingAt(manager, vf, line0)
 
-        return if (action == "add") add(manager, vf, path, line, line0, existing) else remove(manager, path, line, existing)
+        return if (action ==
+            "add"
+        ) {
+            add(manager, vf, path, line, line0, existing)
+        } else {
+            remove(manager, path, line, existing)
+        }
     }
 
     private fun add(
@@ -73,14 +110,15 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
     ): String {
         existing.firstOrNull()?.let { return "A breakpoint is already set at $path:$line (${it.type.title})." }
 
-        val type = try {
-            ReadAction.computeBlocking<XLineBreakpointType<*>?, RuntimeException> {
-                XDebuggerUtil.getInstance().lineBreakpointTypes.firstOrNull { it.canPutAt(vf, line0, project) }
-            }
-        } catch (e: IndexNotReadyException) {
-            return "Error: the IDE is still indexing; try again once it has finished"
-        } ?: return "Error: no breakpoint can be set at $path:$line. Pick a line with an executable " +
-            "statement -- blank lines, comments and declarations have no code to stop on."
+        val type =
+            try {
+                ReadAction.computeBlocking<XLineBreakpointType<*>?, RuntimeException> {
+                    XDebuggerUtil.getInstance().lineBreakpointTypes.firstOrNull { it.canPutAt(vf, line0, project) }
+                }
+            } catch (e: IndexNotReadyException) {
+                return "Error: the IDE is still indexing; try again once it has finished"
+            } ?: return "Error: no breakpoint can be set at $path:$line. Pick a line with an executable " +
+                "statement -- blank lines, comments and declarations have no code to stop on."
 
         var added: XLineBreakpoint<*>? = null
         var failure: Exception? = null
@@ -122,7 +160,11 @@ class ToggleBreakpointTool(private val project: Project) : AICodingAgentTool {
         return "Removed ${existing.size} breakpoint(s) at $path:$line ($what)."
     }
 
-    private fun existingAt(manager: XBreakpointManager, vf: VirtualFile, line0: Int): List<XLineBreakpoint<*>> =
+    private fun existingAt(
+        manager: XBreakpointManager,
+        vf: VirtualFile,
+        line0: Int,
+    ): List<XLineBreakpoint<*>> =
         ReadAction.computeBlocking<List<XLineBreakpoint<*>>, RuntimeException> {
             manager.allBreakpoints
                 .filterIsInstance<XLineBreakpoint<*>>()

@@ -20,18 +20,17 @@ data class ConversationDefaultsConfig(
     val mcpTools: List<String>?,
     val skills: List<String>,
 ) {
-
     val saysNothing: Boolean get() = tools == null && mcpTools == null && skills.isEmpty()
 
-    /* A null array is left out rather than written as [], because the two do not mean the same. */
-    fun toJson(): JsonObject = JsonObject().apply {
-        tools?.let { names -> add(TOOLS, JsonArray().apply { names.forEach { add(it) } }) }
-        mcpTools?.let { names -> add(MCP_TOOLS, JsonArray().apply { names.forEach { add(it) } }) }
-        add(SKILLS, JsonArray().apply { skills.forEach { add(it) } })
-    }
+    // A null array is left out rather than written as [], because the two do not mean the same.
+    fun toJson(): JsonObject =
+        JsonObject().apply {
+            tools?.let { names -> add(TOOLS, JsonArray().apply { names.forEach { add(it) } }) }
+            mcpTools?.let { names -> add(MCP_TOOLS, JsonArray().apply { names.forEach { add(it) } }) }
+            add(SKILLS, JsonArray().apply { skills.forEach { add(it) } })
+        }
 
     companion object {
-
         const val SECTION = "conversation-defaults"
 
         private const val TOOLS = "tools"
@@ -44,11 +43,12 @@ data class ConversationDefaultsConfig(
         fun parse(text: String): ConversationDefaultsConfig {
             if (text.isBlank()) return DEFAULT
 
-            val root = try {
-                JsonParser.parseString(text)
-            } catch (e: Exception) {
-                throw AgentConfigurationException("not valid JSON: ${e.message}")
-            }
+            val root =
+                try {
+                    JsonParser.parseString(text)
+                } catch (e: Exception) {
+                    throw AgentConfigurationException("not valid JSON: ${e.message}")
+                }
             if (root == null || root.isJsonNull || !root.isJsonObject) return DEFAULT
 
             val element = root.asJsonObject.get(SECTION) ?: return DEFAULT
@@ -69,12 +69,14 @@ data class ConversationDefaultsConfig(
             if (!element.isJsonArray) {
                 throw AgentConfigurationException("\"$SECTION\".$field must be an array of names in quotes")
             }
-            return element.asJsonArray.map {
-                if (!it.isJsonPrimitive) {
-                    throw AgentConfigurationException("\"$SECTION\".$field must hold names in quotes")
-                }
-                it.asString.trim()
-            }.filter { it.isNotBlank() }.distinct()
+            return element.asJsonArray
+                .map {
+                    if (!it.isJsonPrimitive) {
+                        throw AgentConfigurationException("\"$SECTION\".$field must hold names in quotes")
+                    }
+                    it.asString.trim()
+                }.filter { it.isNotBlank() }
+                .distinct()
         }
     }
 }

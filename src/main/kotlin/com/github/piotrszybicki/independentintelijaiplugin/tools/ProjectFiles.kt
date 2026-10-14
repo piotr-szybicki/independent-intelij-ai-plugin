@@ -6,10 +6,12 @@ import com.intellij.openapi.roots.ProjectRootManager
 import com.intellij.openapi.vfs.VirtualFile
 
 object ProjectFiles {
-
     private val ALWAYS_SKIP = setOf(".git", ".hg", ".svn", ".idea", "node_modules", "__pycache__")
 
-    fun isSkipped(project: Project, vf: VirtualFile): Boolean {
+    fun isSkipped(
+        project: Project,
+        vf: VirtualFile,
+    ): Boolean {
         if (vf.name in ALWAYS_SKIP) return true
         return ReadAction.computeBlocking<Boolean, RuntimeException> {
             val index = ProjectRootManager.getInstance(project).fileIndex
@@ -35,9 +37,11 @@ object ProjectFiles {
     ): Boolean {
         if (depth > maxDepth) return true
 
-        val children = ReadAction.computeBlocking<List<VirtualFile>, RuntimeException> {
-            dir.children?.toList().orEmpty()
-        }.sortedWith(compareByDescending<VirtualFile> { it.isDirectory }.thenBy { it.name.lowercase() })
+        val children =
+            ReadAction
+                .computeBlocking<List<VirtualFile>, RuntimeException> {
+                    dir.children?.toList().orEmpty()
+                }.sortedWith(compareByDescending<VirtualFile> { it.isDirectory }.thenBy { it.name.lowercase() })
 
         for (child in children) {
             if (isSkipped(project, child)) continue

@@ -14,8 +14,10 @@ import com.intellij.psi.util.PsiTreeUtil
 import java.io.File
 
 object PsiTargets {
-
-    fun resolveProjectPath(project: Project, relativePath: String): File? {
+    fun resolveProjectPath(
+        project: Project,
+        relativePath: String,
+    ): File? {
         val basePath = project.basePath ?: return null
         val baseDir = File(basePath).canonicalFile
         val target = File(baseDir, relativePath).canonicalFile
@@ -25,12 +27,20 @@ object PsiTargets {
         return target
     }
 
-    fun resolveProjectFile(project: Project, relativePath: String): VirtualFile? {
+    fun resolveProjectFile(
+        project: Project,
+        relativePath: String,
+    ): VirtualFile? {
         val target = resolveProjectPath(project, relativePath) ?: return null
         return LocalFileSystem.getInstance().findFileByIoFile(target)
     }
 
-    fun resolveElement(project: Project, relativePath: String, line: Int, symbolName: String): PsiElement? {
+    fun resolveElement(
+        project: Project,
+        relativePath: String,
+        line: Int,
+        symbolName: String,
+    ): PsiElement? {
         return ReadAction.computeBlocking<PsiElement?, RuntimeException> {
             val vf = resolveProjectFile(project, relativePath) ?: return@computeBlocking null
             val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking null
@@ -65,24 +75,33 @@ object PsiTargets {
         line: Int,
         symbolName: String,
         occurrence: Int = 1,
-    ): PsiElement? = ReadAction.computeBlocking<PsiElement?, RuntimeException> {
-        val resolved = occurrenceOffset(project, relativePath, line, symbolName, occurrence)?.let { offset ->
-            val vf = resolveProjectFile(project, relativePath)
-            val psiFile = vf?.let { PsiManager.getInstance(project).findFile(it) }
-            psiFile?.findReferenceAt(offset)?.resolve()
+    ): PsiElement? =
+        ReadAction.computeBlocking<PsiElement?, RuntimeException> {
+            val resolved =
+                occurrenceOffset(project, relativePath, line, symbolName, occurrence)?.let { offset ->
+                    val vf = resolveProjectFile(project, relativePath)
+                    val psiFile = vf?.let { PsiManager.getInstance(project).findFile(it) }
+                    psiFile?.findReferenceAt(offset)?.resolve()
+                }
+            resolved ?: resolveElement(project, relativePath, line, symbolName)
         }
-        resolved ?: resolveElement(project, relativePath, line, symbolName)
-    }
 
-    fun resolvePsiFile(project: Project, relativePath: String): PsiFile? =
+    fun resolvePsiFile(
+        project: Project,
+        relativePath: String,
+    ): PsiFile? =
         ReadAction.computeBlocking<PsiFile?, RuntimeException> {
             val vf = resolveProjectFile(project, relativePath) ?: return@computeBlocking null
             PsiManager.getInstance(project).findFile(vf)
         }
 
-    fun isInProject(project: Project, element: PsiElement): Boolean {
-        val vf = ReadAction.computeBlocking<VirtualFile?, RuntimeException> { element.containingFile?.virtualFile }
-            ?: return false
+    fun isInProject(
+        project: Project,
+        element: PsiElement,
+    ): Boolean {
+        val vf =
+            ReadAction.computeBlocking<VirtualFile?, RuntimeException> { element.containingFile?.virtualFile }
+                ?: return false
         val basePath = project.basePath ?: return false
         return vf.path.startsWith(basePath)
     }
@@ -116,12 +135,18 @@ object PsiTargets {
         }
     }
 
-    private fun isWholeWord(text: String, start: Int, length: Int): Boolean =
-        !isIdentifierChar(text.getOrNull(start - 1)) && !isIdentifierChar(text.getOrNull(start + length))
+    private fun isWholeWord(
+        text: String,
+        start: Int,
+        length: Int,
+    ): Boolean = !isIdentifierChar(text.getOrNull(start - 1)) && !isIdentifierChar(text.getOrNull(start + length))
 
     private fun isIdentifierChar(c: Char?): Boolean = c != null && (c.isLetterOrDigit() || c == '_' || c == '$')
 
-    fun relativePath(project: Project, vf: VirtualFile): String {
+    fun relativePath(
+        project: Project,
+        vf: VirtualFile,
+    ): String {
         val basePath = project.basePath
         return if (basePath != null && vf.path.startsWith(basePath)) {
             vf.path.removePrefix(basePath).trimStart('/', '\\')

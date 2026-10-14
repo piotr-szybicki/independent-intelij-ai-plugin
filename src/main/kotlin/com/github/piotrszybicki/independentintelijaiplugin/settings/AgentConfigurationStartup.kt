@@ -8,12 +8,12 @@ import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.openapi.util.text.StringUtil
 
 class AgentConfigurationStartup : ProjectActivity {
-
     override suspend fun execute(project: Project) {
         val configurations = AgentConfigurations.getInstance(project)
         configurations.unavailableReason?.let { reason ->
             LOG.warn("AICodingAgent is not starting: $reason")
-            NotificationGroupManager.getInstance()
+            NotificationGroupManager
+                .getInstance()
                 .getNotificationGroup(NOTIFICATION_GROUP)
                 .createNotification(
                     "AICodingAgent is not available",
@@ -21,8 +21,7 @@ class AgentConfigurationStartup : ProjectActivity {
                         "<code>${AgentConfiguration.PATH_ENV_VAR}</code> and restart the IDE to use " +
                         "<code>${AgentConfiguration.FILE_NAME}</code> in the project root.",
                     NotificationType.ERROR,
-                )
-                .notify(project)
+                ).notify(project)
             return
         }
         configurations.createIfMissing()

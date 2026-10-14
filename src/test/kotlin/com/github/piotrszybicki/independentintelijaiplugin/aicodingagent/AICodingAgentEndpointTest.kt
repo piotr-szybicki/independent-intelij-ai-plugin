@@ -9,7 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AICodingAgentEndpointTest {
-
     @Test
     fun `sends the version header to the Messages API`() {
         assertTrue(endpoint().headers().containsKey("anthropic-version"))
@@ -17,10 +16,11 @@ class AICodingAgentEndpointTest {
 
     @Test
     fun `omits the version header on the OpenAI protocols`() {
-        val openAi = endpoint(
-            url = "https://example.openai.azure.com/openai/v1/responses",
-            protocol = WireProtocol.OPENAI_RESPONSES,
-        )
+        val openAi =
+            endpoint(
+                url = "https://example.openai.azure.com/openai/v1/responses",
+                protocol = WireProtocol.OPENAI_RESPONSES,
+            )
 
         assertFalse(openAi.headers().containsKey("anthropic-version"))
     }

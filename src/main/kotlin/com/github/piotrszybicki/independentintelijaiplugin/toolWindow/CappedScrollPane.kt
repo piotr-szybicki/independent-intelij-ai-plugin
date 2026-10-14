@@ -9,7 +9,6 @@ internal class CappedScrollPane(
     view: Component,
     private val maxHeight: Int,
 ) : JBScrollPane(view) {
-
     override fun getPreferredSize(): Dimension {
         val preferred = super.getPreferredSize()
         return Dimension(preferred.width, minOf(preferred.height, JBUI.scale(maxHeight)))

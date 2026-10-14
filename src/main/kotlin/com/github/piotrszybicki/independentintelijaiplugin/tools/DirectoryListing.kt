@@ -1,15 +1,23 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
 object DirectoryListing {
+    data class Entry(
+        val path: String,
+        val isDirectory: Boolean,
+    )
 
-    data class Entry(val path: String, val isDirectory: Boolean)
-
-    private class Dir(val name: String) {
+    private class Dir(
+        val name: String,
+    ) {
         val dirs = LinkedHashMap<String, Dir>()
         val files = mutableListOf<String>()
     }
 
-    fun format(shownPath: String, entries: List<Entry>, truncated: Boolean): String {
+    fun format(
+        shownPath: String,
+        entries: List<Entry>,
+        truncated: Boolean,
+    ): String {
         if (entries.isEmpty()) return "$shownPath/ is empty."
 
         val root = Dir("")
@@ -55,7 +63,10 @@ object DirectoryListing {
         return buildString { appendDir(root, indent = 0) }
     }
 
-    private fun StringBuilder.appendDir(dir: Dir, indent: Int) {
+    private fun StringBuilder.appendDir(
+        dir: Dir,
+        indent: Int,
+    ) {
         val pad = " ".repeat(indent)
         if (dir.files.isNotEmpty()) {
             append(pad).append(dir.files.joinToString(", ")).append('\n')

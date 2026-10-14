@@ -25,8 +25,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import javax.swing.Icon
 
-internal class DebuggerPause(private val project: Project) {
-
+internal class DebuggerPause(
+    private val project: Project,
+) {
     companion object {
         private const val CHILDREN_TIMEOUT_MILLIS = 10_000L
 
@@ -84,22 +85,25 @@ internal class DebuggerPause(private val project: Project) {
 
     fun describe(session: XDebugSession): String {
         val position = session.currentPosition
-        val where = if (position == null) {
-            "an unknown location"
-        } else {
-            "${PsiTargets.relativePath(project, position.file)}:${position.line + 1}"
-        }
+        val where =
+            if (position == null) {
+                "an unknown location"
+            } else {
+                "${PsiTargets.relativePath(project, position.file)}:${position.line + 1}"
+            }
 
         val header = "Stopped at $where in debug session \"${session.sessionName}\"."
-        val frame = session.currentStackFrame
-            ?: return "$header\nNo stack frame is available, so no variables could be read."
+        val frame =
+            session.currentStackFrame
+                ?: return "$header\nNo stack frame is available, so no variables could be read."
 
-        val variables = try {
-            readVariables(frame)
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            return "$header\nInterrupted while reading variables."
-        }
+        val variables =
+            try {
+                readVariables(frame)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return "$header\nInterrupted while reading variables."
+            }
 
         return buildString {
             append(header)
@@ -116,33 +120,39 @@ internal class DebuggerPause(private val project: Project) {
         }
     }
 
-
-    fun evaluate(session: XDebugSession, expression: String, timeoutMillis: Long): String {
-        val frame = session.currentStackFrame
-            ?: return "No stack frame is available at this stop, so there is nothing to evaluate against."
-        val evaluator = frame.evaluator
-            ?: return "This debugger cannot evaluate expressions at this stop."
+    fun evaluate(
+        session: XDebugSession,
+        expression: String,
+        timeoutMillis: Long,
+    ): String {
+        val frame =
+            session.currentStackFrame
+                ?: return "No stack frame is available at this stop, so there is nothing to evaluate against."
+        val evaluator =
+            frame.evaluator
+                ?: return "This debugger cannot evaluate expressions at this stop."
 
         val result = AtomicReference<XValue?>()
         val failure = AtomicReference<String?>()
         val done = CountDownLatch(1)
 
-        val callback = object : XDebuggerEvaluator.XEvaluationCallback {
-            override fun evaluated(result1: XValue) {
-                result.set(result1)
-                done.countDown()
-            }
+        val callback =
+            object : XDebuggerEvaluator.XEvaluationCallback {
+                override fun evaluated(result1: XValue) {
+                    result.set(result1)
+                    done.countDown()
+                }
 
-            override fun errorOccurred(errorMessage: String) {
-                failure.set(errorMessage)
-                done.countDown()
-            }
+                override fun errorOccurred(errorMessage: String) {
+                    failure.set(errorMessage)
+                    done.countDown()
+                }
 
-            override fun invalidExpression(error: String) {
-                failure.set(error)
-                done.countDown()
+                override fun invalidExpression(error: String) {
+                    failure.set(error)
+                    done.countDown()
+                }
             }
-        }
 
         try {
             evaluator.evaluate(expression, callback, frame.sourcePosition)
@@ -162,7 +172,6 @@ internal class DebuggerPause(private val project: Project) {
             ?: "$expression = <not rendered in time>"
     }
 
-
     private class Variables(
         val values: List<String>,
         val error: String? = null,
@@ -175,43 +184,50 @@ internal class DebuggerPause(private val project: Project) {
         val truncated = AtomicBoolean(false)
         val listed = CountDownLatch(1)
 
-        frame.computeChildren(object : XCompositeNode {
-            override fun addChildren(children: XValueChildrenList, last: Boolean) {
-                synchronized(named) {
-                    for (i in 0 until children.size()) {
-                        if (named.size >= MAX_VARIABLES) {
-                            truncated.set(true)
-                            break
+        frame.computeChildren(
+            object : XCompositeNode {
+                override fun addChildren(
+                    children: XValueChildrenList,
+                    last: Boolean,
+                ) {
+                    synchronized(named) {
+                        for (i in 0 until children.size()) {
+                            if (named.size >= MAX_VARIABLES) {
+                                truncated.set(true)
+                                break
+                            }
+                            named.add(children.getName(i) to children.getValue(i))
                         }
-                        named.add(children.getName(i) to children.getValue(i))
                     }
+                    if (last) listed.countDown()
                 }
-                if (last) listed.countDown()
-            }
 
-            @Suppress("OVERRIDE_DEPRECATION")
-            override fun tooManyChildren(remaining: Int) {
-                truncated.set(true)
-                listed.countDown()
-            }
+                @Suppress("OVERRIDE_DEPRECATION")
+                override fun tooManyChildren(remaining: Int) {
+                    truncated.set(true)
+                    listed.countDown()
+                }
 
-            override fun setAlreadySorted(alreadySorted: Boolean) = Unit
+                override fun setAlreadySorted(alreadySorted: Boolean) = Unit
 
-            override fun setErrorMessage(errorMessage: String) {
-                error.set(errorMessage)
-                listed.countDown()
-            }
+                override fun setErrorMessage(errorMessage: String) {
+                    error.set(errorMessage)
+                    listed.countDown()
+                }
 
-            override fun setErrorMessage(errorMessage: String, link: XDebuggerTreeNodeHyperlink?) =
-                setErrorMessage(errorMessage)
+                override fun setErrorMessage(
+                    errorMessage: String,
+                    link: XDebuggerTreeNodeHyperlink?,
+                ) = setErrorMessage(errorMessage)
 
-            override fun setMessage(
-                message: String,
-                icon: Icon?,
-                attributes: SimpleTextAttributes,
-                link: XDebuggerTreeNodeHyperlink?,
-            ) = Unit
-        })
+                override fun setMessage(
+                    message: String,
+                    icon: Icon?,
+                    attributes: SimpleTextAttributes,
+                    link: XDebuggerTreeNodeHyperlink?,
+                ) = Unit
+            },
+        )
 
         if (!listed.await(CHILDREN_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) && named.isEmpty()) {
             return Variables(
@@ -235,6 +251,7 @@ internal class DebuggerPause(private val project: Project) {
         values.forEachIndexed { index, (name, value) ->
             val key = "$index:$name"
             val answered = AtomicBoolean(false)
+
             fun answer(text: String) {
                 rendered[key] = text
                 if (answered.compareAndSet(false, true)) remaining.countDown()
@@ -242,8 +259,12 @@ internal class DebuggerPause(private val project: Project) {
 
             value.computePresentation(
                 object : XValueNode {
-                    override fun setPresentation(icon: Icon?, type: String?, value: String, hasChildren: Boolean) =
-                        answer(format(name, type, value, hasChildren, maxValueChars))
+                    override fun setPresentation(
+                        icon: Icon?,
+                        type: String?,
+                        value: String,
+                        hasChildren: Boolean,
+                    ) = answer(format(name, type, value, hasChildren, maxValueChars))
 
                     override fun setPresentation(
                         icon: Icon?,
@@ -283,43 +304,52 @@ internal class DebuggerPause(private val project: Project) {
 
     private fun render(presentation: XValuePresentation): String {
         val text = StringBuilder()
-        presentation.renderValue(object : XValuePresentation.XValueTextRenderer {
-            override fun renderValue(value: String) {
-                text.append(value)
-            }
+        presentation.renderValue(
+            object : XValuePresentation.XValueTextRenderer {
+                override fun renderValue(value: String) {
+                    text.append(value)
+                }
 
-            override fun renderStringValue(value: String) {
-                text.append('"').append(value).append('"')
-            }
+                override fun renderStringValue(value: String) {
+                    text.append('"').append(value).append('"')
+                }
 
-            override fun renderNumericValue(value: String) {
-                text.append(value)
-            }
+                override fun renderNumericValue(value: String) {
+                    text.append(value)
+                }
 
-            override fun renderKeywordValue(value: String) {
-                text.append(value)
-            }
+                override fun renderKeywordValue(value: String) {
+                    text.append(value)
+                }
 
-            override fun renderValue(value: String, key: com.intellij.openapi.editor.colors.TextAttributesKey) {
-                text.append(value)
-            }
+                override fun renderValue(
+                    value: String,
+                    key: com.intellij.openapi.editor.colors.TextAttributesKey,
+                ) {
+                    text.append(value)
+                }
 
-            override fun renderStringValue(value: String, additionalSpecialCharsToHighlight: String?, maxLength: Int) {
-                text.append('"').append(value).append('"')
-            }
+                override fun renderStringValue(
+                    value: String,
+                    additionalSpecialCharsToHighlight: String?,
+                    maxLength: Int,
+                ) {
+                    text.append('"').append(value).append('"')
+                }
 
-            override fun renderComment(comment: String) {
-                text.append(comment)
-            }
+                override fun renderComment(comment: String) {
+                    text.append(comment)
+                }
 
-            override fun renderSpecialSymbol(symbol: String) {
-                text.append(symbol)
-            }
+                override fun renderSpecialSymbol(symbol: String) {
+                    text.append(symbol)
+                }
 
-            override fun renderError(error: String) {
-                text.append("<error: ").append(error).append('>')
-            }
-        })
+                override fun renderError(error: String) {
+                    text.append("<error: ").append(error).append('>')
+                }
+            },
+        )
         return text.toString()
     }
 }

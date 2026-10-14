@@ -1,11 +1,12 @@
 package com.github.piotrszybicki.independentintelijaiplugin.cleanup
 
 object JavadocComments {
+    data class Removal(
+        val start: Int,
+        val end: Int,
+    )
 
-    data class Removal(val start: Int, val end: Int)
-
-    fun isJavadoc(text: String): Boolean =
-        text.length >= 5 && text.startsWith("/**") && text.endsWith("*/")
+    fun isJavadoc(text: String): Boolean = text.length >= 5 && text.startsWith("/**") && text.endsWith("*/")
 
     fun isBlank(text: String): Boolean {
         if (!isJavadoc(text)) return false
@@ -13,14 +14,22 @@ object JavadocComments {
         return inner.lineSequence().all { it.trim().trimStart('*').isBlank() }
     }
 
-    fun isAlone(fileText: String, commentStart: Int, commentEnd: Int): Boolean {
+    fun isAlone(
+        fileText: String,
+        commentStart: Int,
+        commentEnd: Int,
+    ): Boolean {
         val lineStart = fileText.lastIndexOf('\n', commentStart - 1) + 1
         val lineEnd = fileText.indexOf('\n', commentEnd).takeIf { it >= 0 } ?: fileText.length
         return fileText.substring(lineStart, commentStart).isBlank() &&
             fileText.substring(commentEnd, lineEnd).isBlank()
     }
 
-    fun removalFor(fileText: String, commentStart: Int, commentEnd: Int): Removal {
+    fun removalFor(
+        fileText: String,
+        commentStart: Int,
+        commentEnd: Int,
+    ): Removal {
         val lineStart = fileText.lastIndexOf('\n', commentStart - 1) + 1
         val lineEnd = fileText.indexOf('\n', commentEnd).takeIf { it >= 0 } ?: fileText.length
 

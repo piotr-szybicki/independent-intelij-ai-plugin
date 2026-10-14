@@ -7,7 +7,6 @@ data class AgentHandoff(
     val childChatId: String? = null,
     val state: String = DRAFT,
 ) {
-
     val isSettled: Boolean get() = state != DRAFT
 
     companion object {

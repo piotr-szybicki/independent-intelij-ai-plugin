@@ -14,41 +14,47 @@ internal class AgentBanner(
     private val onOpenParent: (String) -> Unit,
     private val onOpenSpec: () -> Unit,
 ) {
-
     private var session: AgentSession? = null
 
-    private val label = JBLabel().apply {
-        font = JBFont.small().asBold()
-        foreground = ChatColors.accent
-    }
+    private val label =
+        JBLabel().apply {
+            font = JBFont.small().asBold()
+            foreground = ChatColors.accent
+        }
 
-    private val parentChat = CardButton(
-        "Back to the chat that started it",
-        "Open the chat this agent was handed off from",
-    ) { session?.parentChatId?.let(onOpenParent) }
+    private val parentChat =
+        CardButton(
+            "Back to the chat that started it",
+            "Open the chat this agent was handed off from",
+        ) { session?.parentChatId?.let(onOpenParent) }
 
     private val spec = CardButton("Spec", "Open the specification this agent was started with", onOpenSpec)
 
-    val component: JComponent = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
-        isOpaque = true
-        background = ChatColors.mix(ChatColors.background, ChatColors.accent, 0.10)
-        border = BorderFactory.createCompoundBorder(
-            JBUI.Borders.customLineBottom(ChatColors.separator),
-            JBUI.Borders.empty(4, 8),
-        )
-        isVisible = false
-        add(label, BorderLayout.CENTER)
-        add(
-            JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply {
-                isOpaque = false
-                add(spec.component)
-                add(parentChat.component)
-            },
-            BorderLayout.EAST,
-        )
-    }
+    val component: JComponent =
+        JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+            isOpaque = true
+            background = ChatColors.mix(ChatColors.background, ChatColors.accent, 0.10)
+            border =
+                BorderFactory.createCompoundBorder(
+                    JBUI.Borders.customLineBottom(ChatColors.separator),
+                    JBUI.Borders.empty(4, 8),
+                )
+            isVisible = false
+            add(label, BorderLayout.CENTER)
+            add(
+                JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply {
+                    isOpaque = false
+                    add(spec.component)
+                    add(parentChat.component)
+                },
+                BorderLayout.EAST,
+            )
+        }
 
-    fun show(session: AgentSession?, tools: String? = null) {
+    fun show(
+        session: AgentSession?,
+        tools: String? = null,
+    ) {
         this.session = session
         if (session == null) {
             component.isVisible = false

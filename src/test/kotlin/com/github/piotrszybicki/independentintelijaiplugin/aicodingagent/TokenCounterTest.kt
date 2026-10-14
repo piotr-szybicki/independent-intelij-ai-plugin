@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TokenCounterTest {
-
     @Test
     fun `loads the encoding rather than falling back to an estimate`() {
         assertTrue("o200k_base did not load; counts are estimates, not tokens", TokenCounter.isExact)

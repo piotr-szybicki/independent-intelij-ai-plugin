@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
@@ -10,10 +11,10 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.search.searches.DefinitionsScopedSearch
 import com.intellij.usageView.UsageViewLongNameLocation
 import com.intellij.usageView.UsageViewTypeLocation
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class FindImplementationsTool(private val project: Project) : AICodingAgentTool {
-
+class FindImplementationsTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_MAX_RESULTS = 100
         private const val MAX_MAX_RESULTS = 500
@@ -24,41 +25,68 @@ class FindImplementationsTool(private val project: Project) : AICodingAgentTool 
         "Finds implementations of a symbol: classes implementing an interface or extending an " +
             "abstract class, methods overriding a method (Go to Implementation). find_usages will " +
             "not find these. Point it at the declaration or any use; returns file:line."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("path", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "File path relative to the project root, at a line where the symbol is declared or used",
-                )
-            })
-            add("line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty("description", "1-based line number of the declaration or the use")
-            })
-            add("symbol", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "The name as it appears on that line -- just the identifier")
-            })
-            add("occurrence", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "Which appearance of the name on that line to use, 1-based. Defaults to 1.",
-                )
-            })
-            add("max_results", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "Stop after this many. Defaults to $DEFAULT_MAX_RESULTS, maximum $MAX_MAX_RESULTS.",
-                )
-            })
-        })
-        add("required", JsonArray().apply { add("path"); add("line"); add("symbol") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "path",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "File path relative to the project root, at a line where the " +
+                                    "symbol is declared or used",
+                            )
+                        },
+                    )
+                    add(
+                        "line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty("description", "1-based line number of the declaration or the use")
+                        },
+                    )
+                    add(
+                        "symbol",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty("description", "The name as it appears on that line -- just the identifier")
+                        },
+                    )
+                    add(
+                        "occurrence",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "Which appearance of the name on that line to use, 1-based. Defaults to 1.",
+                            )
+                        },
+                    )
+                    add(
+                        "max_results",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "Stop after this many. Defaults to $DEFAULT_MAX_RESULTS, maximum $MAX_MAX_RESULTS.",
+                            )
+                        },
+                    )
+                },
+            )
+            add(
+                "required",
+                JsonArray().apply {
+                    add("path")
+                    add("line")
+                    add("symbol")
+                },
+            )
+        }
 
     override fun execute(input: JsonObject): String {
         val path = input.get("path")?.asString ?: return "Error: missing 'path'"
@@ -67,19 +95,22 @@ class FindImplementationsTool(private val project: Project) : AICodingAgentTool 
         val occurrence = input.get("occurrence")?.asInt ?: 1
         if (occurrence < 1) return "Error: occurrence must be 1 or greater"
 
-        val maxResults = (input.get("max_results")?.asInt ?: DEFAULT_MAX_RESULTS)
-            .coerceIn(1, MAX_MAX_RESULTS)
+        val maxResults =
+            (input.get("max_results")?.asInt ?: DEFAULT_MAX_RESULTS)
+                .coerceIn(1, MAX_MAX_RESULTS)
 
-        val target = PsiTargets.resolveTarget(project, path, line, symbol, occurrence)
-            ?: return "Error: could not resolve '$symbol' at $path:$line. The name is matched as a " +
-                "whole word against that line's text -- check it appears there exactly as spelled."
+        val target =
+            PsiTargets.resolveTarget(project, path, line, symbol, occurrence)
+                ?: return "Error: could not resolve '$symbol' at $path:$line. The name is matched as a " +
+                    "whole word against that line's text -- check it appears there exactly as spelled."
 
-        val hits = try {
-            ReadAction.computeBlocking<List<Hit>, RuntimeException> { search(target) }
-        } catch (e: Exception) {
-            return "Error: could not search for implementations of '$symbol': " +
-                (e.message ?: e::class.java.simpleName)
-        }
+        val hits =
+            try {
+                ReadAction.computeBlocking<List<Hit>, RuntimeException> { search(target) }
+            } catch (e: Exception) {
+                return "Error: could not search for implementations of '$symbol': " +
+                    (e.message ?: e::class.java.simpleName)
+            }
 
         if (hits.isEmpty()) {
             return "No implementations found for '$symbol'. Either nothing implements or overrides " +
@@ -118,26 +149,39 @@ class FindImplementationsTool(private val project: Project) : AICodingAgentTool 
     }
 
     private fun describe(element: PsiElement): Hit? {
-        val kind = ElementDescriptionUtil.getElementDescription(element, UsageViewTypeLocation.INSTANCE)
-            .ifBlank { "symbol" }
-        val name = ElementDescriptionUtil.getElementDescription(element, UsageViewLongNameLocation.INSTANCE)
-            .ifBlank { element.text?.lineSequence()?.firstOrNull()?.trim()?.take(80).orEmpty() }
+        val kind =
+            ElementDescriptionUtil
+                .getElementDescription(element, UsageViewTypeLocation.INSTANCE)
+                .ifBlank { "symbol" }
+        val name =
+            ElementDescriptionUtil
+                .getElementDescription(element, UsageViewLongNameLocation.INSTANCE)
+                .ifBlank {
+                    element.text
+                        ?.lineSequence()
+                        ?.firstOrNull()
+                        ?.trim()
+                        ?.take(80)
+                        .orEmpty()
+                }
 
         val file = element.containingFile ?: return null
         val vf = file.virtualFile
         val inProject = vf != null && PsiTargets.isInProject(project, element)
 
-        val lineNumber = vf?.let { virtualFile ->
-            val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return@let null
-            val offset = (element.textRange?.startOffset ?: 0).coerceIn(0, document.textLength)
-            document.getLineNumber(offset) + 1
-        }
+        val lineNumber =
+            vf?.let { virtualFile ->
+                val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return@let null
+                val offset = (element.textRange?.startOffset ?: 0).coerceIn(0, document.textLength)
+                document.getLineNumber(offset) + 1
+            }
 
-        val where = when {
-            vf == null -> file.name
-            inProject -> PsiTargets.relativePath(project, vf)
-            else -> vf.name
-        }
+        val where =
+            when {
+                vf == null -> file.name
+                inProject -> PsiTargets.relativePath(project, vf)
+                else -> vf.name
+            }
         val location = if (lineNumber != null) "$where:$lineNumber" else where
 
         return Hit(location, "$kind $name", inProject, sortKey = "${if (inProject) 0 else 1}$where:$lineNumber")

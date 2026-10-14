@@ -1,14 +1,22 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
 object MatchListing {
+    data class Match(
+        val path: String,
+        val line: Int,
+        val text: String? = null,
+    )
 
-    data class Match(val path: String, val line: Int, val text: String? = null)
-
-    fun format(summary: String, matches: List<Match>, truncated: Boolean): String {
-        val byFile = matches
-            .distinctBy { it.path to it.line }
-            .groupBy { it.path }
-            .toSortedMap()
+    fun format(
+        summary: String,
+        matches: List<Match>,
+        truncated: Boolean,
+    ): String {
+        val byFile =
+            matches
+                .distinctBy { it.path to it.line }
+                .groupBy { it.path }
+                .toSortedMap()
 
         return buildString {
             append(summary)

@@ -16,15 +16,15 @@ data class AICodingAgentEndpoint(
     val configurationName: String = "",
     val tokenEnvVar: String? = null,
 ) {
-
-    fun headers(): Map<String, String> = buildMap {
-        put("content-type", "application/json")
-        if (protocol == WireProtocol.ANTHROPIC_MESSAGES && apiVersion.isNotBlank()) {
-            put("anthropic-version", apiVersion)
+    fun headers(): Map<String, String> =
+        buildMap {
+            put("content-type", "application/json")
+            if (protocol == WireProtocol.ANTHROPIC_MESSAGES && apiVersion.isNotBlank()) {
+                put("anthropic-version", apiVersion)
+            }
+            putAll(extraHeaders)
+            put(authScheme.headerName, authScheme.headerValue(token))
         }
-        putAll(extraHeaders)
-        put(authScheme.headerName, authScheme.headerValue(token))
-    }
 
     fun validate(): String? {
         if (token.isBlank()) {
@@ -40,8 +40,9 @@ data class AICodingAgentEndpoint(
             }
         }
         if (url.isBlank()) return "no endpoint URL is configured"
-        val uri = runCatching { URI(url) }.getOrNull()
-            ?: return "the endpoint URL is not a valid URL: $url"
+        val uri =
+            runCatching { URI(url) }.getOrNull()
+                ?: return "the endpoint URL is not a valid URL: $url"
         if (uri.scheme?.lowercase() !in setOf("http", "https")) {
             return "the endpoint URL must start with http:// or https:// -- got: $url"
         }
@@ -57,17 +58,17 @@ data class AICodingAgentEndpoint(
     }
 
     companion object {
-
-        fun from(configuration: AgentConfiguration): AICodingAgentEndpoint = AICodingAgentEndpoint(
-            url = configuration.url,
-            token = configuration.resolvedToken,
-            authScheme = configuration.authScheme,
-            protocol = configuration.protocol,
-            apiVersion = configuration.apiVersion.trim(),
-            extraHeaders = configuration.extraHeaders,
-            requestTimeoutSeconds = configuration.requestTimeoutSeconds,
-            configurationName = configuration.name,
-            tokenEnvVar = configuration.tokenEnvVar,
-        )
+        fun from(configuration: AgentConfiguration): AICodingAgentEndpoint =
+            AICodingAgentEndpoint(
+                url = configuration.url,
+                token = configuration.resolvedToken,
+                authScheme = configuration.authScheme,
+                protocol = configuration.protocol,
+                apiVersion = configuration.apiVersion.trim(),
+                extraHeaders = configuration.extraHeaders,
+                requestTimeoutSeconds = configuration.requestTimeoutSeconds,
+                configurationName = configuration.name,
+                tokenEnvVar = configuration.tokenEnvVar,
+            )
     }
 }

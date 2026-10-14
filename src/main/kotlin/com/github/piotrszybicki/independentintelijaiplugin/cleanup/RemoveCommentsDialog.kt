@@ -16,8 +16,10 @@ import javax.swing.JComponent
  * one press, so the least it can do is say so first and let the run be narrowed. The report-only box
  * is the way to find out how much would go without finding out the hard way.
  */
-class RemoveCommentsDialog(project: Project, private val selection: List<VirtualFile>) : DialogWrapper(project) {
-
+class RemoveCommentsDialog(
+    project: Project,
+    private val selection: List<VirtualFile>,
+) : DialogWrapper(project) {
     private val javadoc = JBRadioButton("Javadoc comments", true)
     private val blankJavadoc = JBRadioButton("Only empty Javadoc -- a stub with no text in it")
     private val line = JBRadioButton("Line comments (//)")
@@ -30,12 +32,13 @@ class RemoveCommentsDialog(project: Project, private val selection: List<Virtual
 
     /** Read after [showAndGet] returns true. */
     val choice: CommentChoice
-        get() = when {
-            blankJavadoc.isSelected -> CommentChoice.EMPTY_JAVADOC
-            line.isSelected -> CommentChoice.LINE
-            both.isSelected -> CommentChoice.JAVADOC_AND_LINE
-            else -> CommentChoice.JAVADOC
-        }
+        get() =
+            when {
+                blankJavadoc.isSelected -> CommentChoice.EMPTY_JAVADOC
+                line.isSelected -> CommentChoice.LINE
+                both.isSelected -> CommentChoice.JAVADOC_AND_LINE
+                else -> CommentChoice.JAVADOC
+            }
 
     val useSelection: Boolean get() = selectedFiles.isSelected
     val dryRun: Boolean get() = reportOnly.isSelected
@@ -47,37 +50,39 @@ class RemoveCommentsDialog(project: Project, private val selection: List<Virtual
         init()
     }
 
-    override fun createCenterPanel(): JComponent = panel {
-        row {
-            comment(
-                "Javadoc means the form rather than the language -- Javadoc in Java, KDoc in Kotlin, " +
-                    "and the same syntax wherever else the IDE parses it. Plain block comments " +
-                    "(<code>/* ... */</code>) are always left alone.",
-            )
-        }
-        buttonsGroup("Which comments") {
-            row { cell(javadoc) }
-            row { cell(blankJavadoc) }
-            row { cell(line) }
-            row { cell(both) }
-        }
-        if (selection.isNotEmpty()) {
-            buttonsGroup("Where") {
-                row { cell(wholeProject) }
-                row { cell(selectedFiles) }
+    override fun createCenterPanel(): JComponent =
+        panel {
+            row {
+                comment(
+                    "Javadoc means the form rather than the language -- Javadoc in Java, KDoc in Kotlin, " +
+                        "and the same syntax wherever else the IDE parses it. Plain block comments " +
+                        "(<code>/* ... */</code>) are always left alone.",
+                )
+            }
+            buttonsGroup("Which comments") {
+                row { cell(javadoc) }
+                row { cell(blankJavadoc) }
+                row { cell(line) }
+                row { cell(both) }
+            }
+            if (selection.isNotEmpty()) {
+                buttonsGroup("Where") {
+                    row { cell(wholeProject) }
+                    row { cell(selectedFiles) }
+                }
+            }
+            row { cell(reportOnly) }
+            row {
+                comment(
+                    "The whole sweep is one change: Undo in any edited file takes all of it back. The " +
+                        "files it changes are saved when it finishes.",
+                )
             }
         }
-        row { cell(reportOnly) }
-        row {
-            comment(
-                "The whole sweep is one change: Undo in any edited file takes all of it back. The " +
-                    "files it changes are saved when it finishes.",
-            )
-        }
-    }
 
-    private fun selectionLabel(project: Project): String = when (selection.size) {
-        1 -> "Just ${PsiTargets.relativePath(project, selection.first())}"
-        else -> "The ${selection.size} selected files and folders"
-    }
+    private fun selectionLabel(project: Project): String =
+        when (selection.size) {
+            1 -> "Just ${PsiTargets.relativePath(project, selection.first())}"
+            else -> "The ${selection.size} selected files and folders"
+        }
 }

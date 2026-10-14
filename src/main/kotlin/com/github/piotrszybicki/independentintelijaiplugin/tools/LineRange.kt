@@ -1,14 +1,16 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
-class LineRange(val text: String) {
-
+class LineRange(
+    val text: String,
+) {
     val endsWithNewline: Boolean = text.endsWith("\n")
 
-    val lines: List<String> = when {
-        text.isEmpty() -> emptyList()
-        endsWithNewline -> text.split("\n").dropLast(1)
-        else -> text.split("\n")
-    }
+    val lines: List<String> =
+        when {
+            text.isEmpty() -> emptyList()
+            endsWithNewline -> text.split("\n").dropLast(1)
+            else -> text.split("\n")
+        }
 
     val lineCount: Int get() = lines.size
 

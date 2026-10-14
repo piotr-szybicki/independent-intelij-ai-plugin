@@ -26,15 +26,15 @@ internal class ConversationToolsButton(
     private val inherited: () -> ConversationTools,
     private val onChanged: (ConversationTools) -> Unit,
 ) {
-
     var selection: ConversationTools = ConversationTools.INHERIT
         private set
 
-    private val button = JButton().apply {
-        font = JBFont.small()
-        isFocusable = false
-        addActionListener { choose() }
-    }
+    private val button =
+        JButton().apply {
+            font = JBFont.small()
+            isFocusable = false
+            addActionListener { choose() }
+        }
 
     val component: JComponent = button
 
@@ -52,28 +52,31 @@ internal class ConversationToolsButton(
         var entries = emptyList<McpToolSelectionDialog.McpToolEntry>()
         var skills = emptyList<SkillDefinition>()
 
-        val task = object : Task.Modal(project, "Gathering This Chat's Tools", false) {
-            override fun run(indicator: ProgressIndicator) {
-                indicator.isIndeterminate = true
-                entries = runCatching { mcpEntries() }.getOrDefault(emptyList())
-                skills = runCatching { SkillCatalog.enabledIn(SkillCatalog.scan(project).skills) }
-                    .getOrDefault(emptyList())
-            }
+        val task =
+            object : Task.Modal(project, "Gathering This Chat's Tools", false) {
+                override fun run(indicator: ProgressIndicator) {
+                    indicator.isIndeterminate = true
+                    entries = runCatching { mcpEntries() }.getOrDefault(emptyList())
+                    skills =
+                        runCatching { SkillCatalog.enabledIn(SkillCatalog.scan(project).skills) }
+                            .getOrDefault(emptyList())
+                }
 
-            override fun onSuccess() {
-                val dialog = ConversationToolsDialog(
-                    project = project,
-                    mcpEntries = entries,
-                    skills = skills,
-                    initial = selection,
-                    inherited = inherited(),
-                )
-                if (!dialog.showAndGet()) return
-                selection = dialog.selection
-                refresh()
-                onChanged(selection)
+                override fun onSuccess() {
+                    val dialog =
+                        ConversationToolsDialog(
+                            project = project,
+                            mcpEntries = entries,
+                            skills = skills,
+                            initial = selection,
+                            inherited = inherited(),
+                        )
+                    if (!dialog.showAndGet()) return
+                    selection = dialog.selection
+                    refresh()
+                    onChanged(selection)
+                }
             }
-        }
         ProgressManager.getInstance().run(task)
     }
 

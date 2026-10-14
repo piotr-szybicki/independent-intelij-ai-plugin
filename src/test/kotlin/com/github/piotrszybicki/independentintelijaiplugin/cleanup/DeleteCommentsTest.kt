@@ -7,16 +7,22 @@ import org.junit.Test
 
 /** Which comments each choice claims, and what the line looks like once a comment leaves it. */
 class DeleteCommentsTest {
-
     private fun plan(choice: CommentChoice) = DeleteComments(choice)
 
     /** Applies what the plan would do to the single comment spanning [start, end). */
-    private fun cut(source: String, start: Int, end: Int): String {
+    private fun cut(
+        source: String,
+        start: Int,
+        end: Int,
+    ): String {
         val removal = JavadocComments.removalFor(source, start, end)
         return source.removeRange(removal.start, removal.end)
     }
 
-    private fun cutTrailing(source: String, comment: String): String {
+    private fun cutTrailing(
+        source: String,
+        comment: String,
+    ): String {
         val start = source.indexOf(comment)
         return cut(source, start, start + comment.length)
     }
@@ -54,11 +60,12 @@ class DeleteCommentsTest {
 
     @Test
     fun `a line comment with the line to itself takes the line`() {
-        val source = """
+        val source =
+            """
             val a = 1
             // explaining b
             val b = 2
-        """.trimIndent()
+            """.trimIndent()
         assertEquals(
             """
             val a = 1

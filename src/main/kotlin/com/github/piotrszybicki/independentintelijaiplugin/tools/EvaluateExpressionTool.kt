@@ -1,14 +1,15 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.project.Project
 import com.intellij.xdebugger.XDebugSession
 import com.intellij.xdebugger.XDebuggerManager
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class EvaluateExpressionTool(private val project: Project) : AICodingAgentTool {
-
+class EvaluateExpressionTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_TIMEOUT_SECONDS = 20
         private const val MAX_TIMEOUT_SECONDS = 120
@@ -22,34 +23,50 @@ class EvaluateExpressionTool(private val project: Project) : AICodingAgentTool {
             "The session must already be paused; pair with await_breakpoint. Write it in the " +
             "debuggee's language. It runs for real, so prefer reading state over calling methods " +
             "with side effects."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("expression", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "The expression to evaluate, in the debuggee's language, e.g. \"user.orders.size\"",
-                )
-            })
-            add("timeout_seconds", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "How long to wait for the debugger to answer. Defaults to $DEFAULT_TIMEOUT_SECONDS, " +
-                        "maximum $MAX_TIMEOUT_SECONDS.",
-                )
-            })
-        })
-        add("required", JsonArray().apply { add("expression") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "expression",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "The expression to evaluate, in the debuggee's language, e.g. \"user.orders.size\"",
+                            )
+                        },
+                    )
+                    add(
+                        "timeout_seconds",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "How long to wait for the debugger to answer. Defaults to $DEFAULT_TIMEOUT_SECONDS, " +
+                                    "maximum $MAX_TIMEOUT_SECONDS.",
+                            )
+                        },
+                    )
+                },
+            )
+            add("required", JsonArray().apply { add("expression") })
+        }
 
     override fun execute(input: JsonObject): String {
-        val expression = input.get("expression")?.asString?.trim().orEmpty()
+        val expression =
+            input
+                .get("expression")
+                ?.asString
+                ?.trim()
+                .orEmpty()
         if (expression.isEmpty()) return "Error: missing 'expression'"
 
-        val timeoutSeconds = (input.get("timeout_seconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS)
-            .coerceIn(1, MAX_TIMEOUT_SECONDS)
+        val timeoutSeconds =
+            (input.get("timeout_seconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS)
+                .coerceIn(1, MAX_TIMEOUT_SECONDS)
 
         val session = pausedSession() ?: return notPausedMessage()
 

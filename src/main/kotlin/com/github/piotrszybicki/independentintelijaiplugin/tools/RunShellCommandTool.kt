@@ -1,19 +1,20 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.terminal.ui.TerminalWidget
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
-class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
-
+class RunShellCommandTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_TIMEOUT_SECONDS = 120
         private const val MAX_TIMEOUT_SECONDS = 600
@@ -21,11 +22,12 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
         private const val TAB_NAME = "AI"
 
-        fun shellDialect(project: Project): String = when (Shell.of(project)) {
-            Shell.POWERSHELL -> "PowerShell"
-            Shell.CMD -> "cmd.exe"
-            Shell.POSIX -> "a POSIX shell (bash/zsh)"
-        }
+        fun shellDialect(project: Project): String =
+            when (Shell.of(project)) {
+                Shell.POWERSHELL -> "PowerShell"
+                Shell.CMD -> "cmd.exe"
+                Shell.POSIX -> "a POSIX shell (bash/zsh)"
+            }
     }
 
     override val interruptible = false
@@ -34,7 +36,10 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
 
     private var openTab: Tab? = null
 
-    private class Tab(val workDir: File, val widget: TerminalWidget) {
+    private class Tab(
+        val workDir: File,
+        val widget: TerminalWidget,
+    ) {
         @Volatile
         var alive = true
     }
@@ -47,56 +52,76 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
             "watches it run, so send one purposeful command rather than a chain of exploratory " +
             "ones. Use the file tools to read and edit files. Interactive commands hang until the " +
             "user types into the terminal or interrupts."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("command", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "The command line to run, in the syntax of the shell configured for the IDE " +
-                        "terminal. Pipes and redirection are allowed.",
-                )
-            })
-            add("working_dir", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "Directory to run in, relative to the project root. Defaults to the project root.",
-                )
-            })
-            add("timeout_seconds", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "How long to wait for the command to finish before giving up on its output. " +
-                        "The command keeps running in the terminal either way. Defaults to " +
-                        "$DEFAULT_TIMEOUT_SECONDS, maximum $MAX_TIMEOUT_SECONDS.",
-                )
-            })
-        })
-        add("required", JsonArray().apply { add("command") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "command",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "The command line to run, in the syntax of the shell configured for the IDE " +
+                                    "terminal. Pipes and redirection are allowed.",
+                            )
+                        },
+                    )
+                    add(
+                        "working_dir",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Directory to run in, relative to the project root. Defaults to the project root.",
+                            )
+                        },
+                    )
+                    add(
+                        "timeout_seconds",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "How long to wait for the command to finish before giving up on its output. " +
+                                    "The command keeps running in the terminal either way. Defaults to " +
+                                    "$DEFAULT_TIMEOUT_SECONDS, maximum $MAX_TIMEOUT_SECONDS.",
+                            )
+                        },
+                    )
+                },
+            )
+            add("required", JsonArray().apply { add("command") })
+        }
 
     fun forgetApprovals() {
         approveAll.set(false)
     }
 
     override fun execute(input: JsonObject): String {
-        val command = input.get("command")?.asString?.trim().orEmpty()
+        val command =
+            input
+                .get("command")
+                ?.asString
+                ?.trim()
+                .orEmpty()
         if (command.isEmpty()) return "Error: missing 'command'"
 
         val relativeDir = input.get("working_dir")?.asString
-        val workDir = if (relativeDir.isNullOrBlank()) {
-            project.basePath?.let(::File) ?: return "Error: the project has no directory on disk"
-        } else {
-            PsiTargets.resolveProjectPath(project, relativeDir)
-                ?: return "Error: working_dir is outside the project directory: $relativeDir"
-        }
+        val workDir =
+            if (relativeDir.isNullOrBlank()) {
+                project.basePath?.let(::File) ?: return "Error: the project has no directory on disk"
+            } else {
+                PsiTargets.resolveProjectPath(project, relativeDir)
+                    ?: return "Error: working_dir is outside the project directory: $relativeDir"
+            }
         if (!workDir.isDirectory) return "Error: working_dir is not a directory: ${workDir.path}"
 
-        val timeoutSeconds = (input.get("timeout_seconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS)
-            .coerceIn(1, MAX_TIMEOUT_SECONDS)
+        val timeoutSeconds =
+            (input.get("timeout_seconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS)
+                .coerceIn(1, MAX_TIMEOUT_SECONDS)
 
         if (!confirm(command, workDir, timeoutSeconds)) {
             return "The user declined to run this command. Do not run it again; ask what to do instead."
@@ -106,11 +131,12 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         val marker = "CLAUDE_DONE_${System.nanoTime().toString(36)}_"
         val wrapped = command + shell.markerSuffix(marker)
 
-        val widget = try {
-            widgetFor(workDir)
-        } catch (e: Exception) {
-            return "Error: could not open a terminal: ${e.message}"
-        }
+        val widget =
+            try {
+                widgetFor(workDir)
+            } catch (e: Exception) {
+                return "Error: could not open a terminal: ${e.message}"
+            }
 
         val before = textOf(widget)
         ApplicationManager.getApplication().invokeAndWait { widget.sendCommandToExecute(wrapped) }
@@ -148,7 +174,6 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         }
     }
 
-
     private fun widgetFor(workDir: File): TerminalWidget {
         openTab?.let { if (it.alive && it.workDir == workDir) return it.widget }
 
@@ -157,8 +182,10 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         ApplicationManager.getApplication().invokeAndWait {
             try {
                 @Suppress("DEPRECATION")
-                val shellWidget = TerminalToolWindowManager.getInstance(project)
-                    .createShellWidget(workDir.path, TAB_NAME, false, false)
+                val shellWidget =
+                    TerminalToolWindowManager
+                        .getInstance(project)
+                        .createShellWidget(workDir.path, TAB_NAME, false, false)
                 created = shellWidget
             } catch (e: Exception) {
                 failure = e
@@ -173,13 +200,18 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         return widget
     }
 
-    private fun textOf(widget: TerminalWidget): String =
-        runCatching { widget.getText().toString() }.getOrDefault("")
+    private fun textOf(widget: TerminalWidget): String = runCatching { widget.getText().toString() }.getOrDefault("")
 
-    private fun delta(before: String, now: String): String =
-        if (before.isNotEmpty() && now.startsWith(before)) now.substring(before.length) else now
+    private fun delta(
+        before: String,
+        now: String,
+    ): String = if (before.isNotEmpty() && now.startsWith(before)) now.substring(before.length) else now
 
-    private fun trimToOutput(delta: String, marker: String, match: MatchResult?): String {
+    private fun trimToOutput(
+        delta: String,
+        marker: String,
+        match: MatchResult?,
+    ): String {
         val echoed = delta.indexOf(marker)
         val start = if (echoed < 0) 0 else (delta.indexOf('\n', echoed) + 1).coerceAtLeast(0)
         val end = match?.range?.first ?: delta.length
@@ -189,44 +221,52 @@ class RunShellCommandTool(private val project: Project) : AICodingAgentTool {
         return ConsoleDigest.of(body, project.basePath)
     }
 
-
-    private fun confirm(command: String, workDir: File, timeoutSeconds: Int): Boolean {
+    private fun confirm(
+        command: String,
+        workDir: File,
+        timeoutSeconds: Int,
+    ): Boolean {
         if (approveAll.get()) return true
 
         var choice = -1
         ApplicationManager.getApplication().invokeAndWait {
-            choice = Messages.showDialog(
-                project,
-                "The AI wants to run a shell command in the Terminal tool window:\n\n$command\n\n" +
-                    "Directory: ${workDir.path}\nWaits up to ${timeoutSeconds}s for it to finish\n\n" +
-                    "It runs with your account's permissions and is not limited to the project. " +
-                    "You can stop it with Ctrl+C in the terminal.",
-                "Run Shell Command?",
-                arrayOf("Run", "Always Run in This Chat", "Don't Run"),
-                2,
-                Messages.getWarningIcon(),
-            )
+            choice =
+                Messages.showDialog(
+                    project,
+                    "The AI wants to run a shell command in the Terminal tool window:\n\n$command\n\n" +
+                        "Directory: ${workDir.path}\nWaits up to ${timeoutSeconds}s for it to finish\n\n" +
+                        "It runs with your account's permissions and is not limited to the project. " +
+                        "You can stop it with Ctrl+C in the terminal.",
+                    "Run Shell Command?",
+                    arrayOf("Run", "Always Run in This Chat", "Don't Run"),
+                    2,
+                    Messages.getWarningIcon(),
+                )
         }
 
         if (choice == 1) approveAll.set(true)
         return choice == 0 || choice == 1
     }
 
-
     private enum class Shell {
-        POSIX, POWERSHELL, CMD;
+        POSIX,
+        POWERSHELL,
+        CMD,
+        ;
 
-        fun markerSuffix(marker: String): String = when (this) {
-            POSIX -> "; echo \"$marker\$?\""
-            POWERSHELL -> "; \$c=\$LASTEXITCODE; if(\$null -eq \$c){\$c=if(\$?){0}else{1}}; echo \"$marker\$c\""
-            CMD -> "& echo $marker%ERRORLEVEL%"
-        }
+        fun markerSuffix(marker: String): String =
+            when (this) {
+                POSIX -> "; echo \"$marker\$?\""
+                POWERSHELL -> "; \$c=\$LASTEXITCODE; if(\$null -eq \$c){\$c=if(\$?){0}else{1}}; echo \"$marker\$c\""
+                CMD -> "& echo $marker%ERRORLEVEL%"
+            }
 
         companion object {
             fun of(project: Project): Shell {
-                val path = runCatching {
-                    TerminalProjectOptionsProvider.getInstance(project).shellPath
-                }.getOrNull().orEmpty().lowercase()
+                val path =
+                    runCatching {
+                        TerminalProjectOptionsProvider.getInstance(project).shellPath
+                    }.getOrNull().orEmpty().lowercase()
                 return when {
                     path.contains("powershell") || path.contains("pwsh") -> POWERSHELL
                     path.contains("cmd.exe") -> CMD

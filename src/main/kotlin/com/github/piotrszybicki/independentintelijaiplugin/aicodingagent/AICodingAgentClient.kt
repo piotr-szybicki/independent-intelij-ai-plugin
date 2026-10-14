@@ -14,19 +14,30 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 
-data class ChatMessage(val role: String, val content: JsonArray) {
+data class ChatMessage(
+    val role: String,
+    val content: JsonArray,
+) {
     companion object {
-        fun text(role: String, text: String): ChatMessage {
-            val block = JsonObject().apply {
-                addProperty("type", "text")
-                addProperty("text", text)
-            }
+        fun text(
+            role: String,
+            text: String,
+        ): ChatMessage {
+            val block =
+                JsonObject().apply {
+                    addProperty("type", "text")
+                    addProperty("text", text)
+                }
             return ChatMessage(role, JsonArray().apply { add(block) })
         }
     }
 }
 
-data class ToolDefinition(val name: String, val description: String, val input_schema: JsonObject)
+data class ToolDefinition(
+    val name: String,
+    val description: String,
+    val input_schema: JsonObject,
+)
 
 data class AICodingAgentUsage(
     val input_tokens: Int = 0,
@@ -34,7 +45,6 @@ data class AICodingAgentUsage(
     val cache_creation_input_tokens: Int = 0,
     val cache_read_input_tokens: Int = 0,
 ) {
-
     val promptTokens: Int
         get() = input_tokens + cache_creation_input_tokens + cache_read_input_tokens
 }
@@ -46,7 +56,6 @@ data class SessionUsage(
     val cacheReadTokens: Int = 0,
     val requests: Int = 0,
 ) {
-
     val totalInputTokens: Int get() = inputTokens + cacheWriteTokens + cacheReadTokens
 
     val cacheHitRate: Double?
@@ -54,13 +63,14 @@ data class SessionUsage(
 
     val isEmpty: Boolean get() = requests == 0
 
-    operator fun plus(usage: AICodingAgentUsage): SessionUsage = SessionUsage(
-        inputTokens + usage.input_tokens,
-        outputTokens + usage.output_tokens,
-        cacheWriteTokens + usage.cache_creation_input_tokens,
-        cacheReadTokens + usage.cache_read_input_tokens,
-        requests + 1,
-    )
+    operator fun plus(usage: AICodingAgentUsage): SessionUsage =
+        SessionUsage(
+            inputTokens + usage.input_tokens,
+            outputTokens + usage.output_tokens,
+            cacheWriteTokens + usage.cache_creation_input_tokens,
+            cacheReadTokens + usage.cache_read_input_tokens,
+            requests + 1,
+        )
 }
 
 data class AICodingAgentTurn(
@@ -70,7 +80,9 @@ data class AICodingAgentTurn(
     val requestId: String = "",
 )
 
-class AICodingAgentApiException(message: String) : Exception(message)
+class AICodingAgentApiException(
+    message: String,
+) : Exception(message)
 
 private data class AICodingAgentRequest(
     val model: String,
@@ -89,13 +101,14 @@ private data class AICodingAgentResponse(
 )
 
 object AICodingAgentClient {
-
     private val LOG = ModelTrafficLog
 
     private val gson = Gson()
-    private val httpClient: HttpClient = HttpClient.newBuilder()
-        .connectTimeout(Duration.ofSeconds(30))
-        .build()
+    private val httpClient: HttpClient =
+        HttpClient
+            .newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .build()
 
     fun sendMessage(
         endpoint: AICodingAgentEndpoint,
@@ -111,62 +124,84 @@ object AICodingAgentClient {
 
         val repaired = withOrphanedToolUsesAnswered(messages)
 
-        val requestBody = when (endpoint.protocol) {
-            WireProtocol.ANTHROPIC_MESSAGES -> gson.toJson(
-                AICodingAgentRequest(
-                    model,
-                    maxTokens,
-                    systemBlocks(system),
-                    withCacheBreakpoints(repaired),
-                    tools.ifEmpty { null },
-                    reasoning.thinkingJson(model, maxTokens),
-                    reasoning.outputConfigJson(model),
-                )
-            )
+        val requestBody =
+            when (endpoint.protocol) {
+                WireProtocol.ANTHROPIC_MESSAGES ->
+                    gson.toJson(
+                        AICodingAgentRequest(
+                            model,
+                            maxTokens,
+                            systemBlocks(system),
+                            withCacheBreakpoints(repaired),
+                            tools.ifEmpty { null },
+                            reasoning.thinkingJson(model, maxTokens),
+                            reasoning.outputConfigJson(model),
+                        ),
+                    )
 
-            WireProtocol.OPENAI_CHAT_COMPLETIONS ->
-                OpenAiProtocol.chatCompletionsRequest(
-                    model, maxTokens, system, repaired, tools, cacheKey = conversationId,
-                ).toString()
+                WireProtocol.OPENAI_CHAT_COMPLETIONS ->
+                    OpenAiProtocol
+                        .chatCompletionsRequest(
+                            model,
+                            maxTokens,
+                            system,
+                            repaired,
+                            tools,
+                            cacheKey = conversationId,
+                        ).toString()
 
-            WireProtocol.OPENAI_RESPONSES ->
-                OpenAiProtocol.responsesRequest(
-                    model, maxTokens, system, repaired, tools,
-                    cacheKey = conversationId,
-                    reasoning = reasoning.reasoningJson(),
-                ).toString()
-        }
+                WireProtocol.OPENAI_RESPONSES ->
+                    OpenAiProtocol
+                        .responsesRequest(
+                            model,
+                            maxTokens,
+                            system,
+                            repaired,
+                            tools,
+                            cacheKey = conversationId,
+                            reasoning = reasoning.reasoningJson(),
+                        ).toString()
+            }
         LOG.info("${endpoint.protocol.name} request -> ${endpoint.url}: $requestBody")
         val requestId = ModelExchangeLog.newRequestId()
         ModelExchangeLog.recordRequest(conversationId, requestId, requestBody)
         ModelUsageDatabase.recordRequest(
-            conversationId, requestId, endpoint.protocol.name, endpoint.url, model, requestBody,
+            conversationId,
+            requestId,
+            endpoint.protocol.name,
+            endpoint.url,
+            model,
+            requestBody,
         )
 
-        val request = HttpRequest.newBuilder()
-            .uri(URI.create(endpoint.url))
-            .timeout(Duration.ofSeconds(endpoint.requestTimeoutSeconds.toLong()))
-            .apply { endpoint.headers().forEach { (name, value) -> header(name, value) } }
-            .POST(HttpRequest.BodyPublishers.ofString(requestBody))
-            .build()
+        val request =
+            HttpRequest
+                .newBuilder()
+                .uri(URI.create(endpoint.url))
+                .timeout(Duration.ofSeconds(endpoint.requestTimeoutSeconds.toLong()))
+                .apply { endpoint.headers().forEach { (name, value) -> header(name, value) } }
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build()
 
         val startedAt = System.currentTimeMillis()
-        val response = try {
-            httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        } catch (e: Exception) {
-            LOG.info("API request failed: ${e.message}")
-            val elapsed = System.currentTimeMillis() - startedAt
-            ModelExchangeLog.recordFailure(conversationId, requestId, e.toString())
-            ModelUsageDatabase.recordFailure(conversationId, requestId, elapsed, e.toString())
-            throw AICodingAgentApiException("Could not reach ${endpoint.url}: ${e.message}")
-        }
+        val response =
+            try {
+                httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            } catch (e: Exception) {
+                LOG.info("API request failed: ${e.message}")
+                val elapsed = System.currentTimeMillis() - startedAt
+                ModelExchangeLog.recordFailure(conversationId, requestId, e.toString())
+                ModelUsageDatabase.recordFailure(conversationId, requestId, elapsed, e.toString())
+                throw AICodingAgentApiException("Could not reach ${endpoint.url}: ${e.message}")
+            }
 
         LOG.info("${endpoint.protocol.name} response <- ${response.statusCode()}: ${response.body()}")
 
-        val root = runCatching { JsonParser.parseString(response.body()) }
-            .getOrNull()
-            ?.takeIf { it.isJsonObject }
-            ?.asJsonObject
+        val root =
+            runCatching { JsonParser.parseString(response.body()) }
+                .getOrNull()
+                ?.takeIf { it.isJsonObject }
+                ?.asJsonObject
 
         val responseId = providerResponseId(root)
         ModelExchangeLog.recordResponse(conversationId, requestId, response.body())
@@ -184,17 +219,19 @@ object AICodingAgentClient {
         }
         if (root == null) throw AICodingAgentApiException("Empty or unrecognised response from ${endpoint.url}")
 
-        val turn = when (endpoint.protocol) {
-            WireProtocol.ANTHROPIC_MESSAGES -> {
-                val parsed = runCatching { gson.fromJson(root, AICodingAgentResponse::class.java) }.getOrNull()
-                val content = parsed?.content
-                    ?: throw AICodingAgentApiException("Empty or unrecognised response from ${endpoint.url}")
-                AICodingAgentTurn(content, parsed.stop_reason, parsed.usage)
-            }
+        val turn =
+            when (endpoint.protocol) {
+                WireProtocol.ANTHROPIC_MESSAGES -> {
+                    val parsed = runCatching { gson.fromJson(root, AICodingAgentResponse::class.java) }.getOrNull()
+                    val content =
+                        parsed?.content
+                            ?: throw AICodingAgentApiException("Empty or unrecognised response from ${endpoint.url}")
+                    AICodingAgentTurn(content, parsed.stop_reason, parsed.usage)
+                }
 
-            WireProtocol.OPENAI_CHAT_COMPLETIONS -> OpenAiProtocol.parseChatCompletions(root)
-            WireProtocol.OPENAI_RESPONSES -> OpenAiProtocol.parseResponses(root)
-        }
+                WireProtocol.OPENAI_CHAT_COMPLETIONS -> OpenAiProtocol.parseChatCompletions(root)
+                WireProtocol.OPENAI_RESPONSES -> OpenAiProtocol.parseResponses(root)
+            }
 
         turn.usage?.let {
             LOG.info(
@@ -215,18 +252,22 @@ object AICodingAgentClient {
     }
 
     private fun providerResponseId(root: JsonObject?): String =
-        root?.get("id")?.takeIf { it.isJsonPrimitive }?.asString.orEmpty()
+        root
+            ?.get("id")
+            ?.takeIf { it.isJsonPrimitive }
+            ?.asString
+            .orEmpty()
 
     private fun errorMessage(root: JsonObject?): String? {
         val error = root?.get("error") ?: return null
         if (error.isJsonPrimitive) return error.asString.takeIf { it.isNotBlank() }
         if (!error.isJsonObject) return null
-        return error.asJsonObject.get("message")
+        return error.asJsonObject
+            .get("message")
             ?.takeIf { it.isJsonPrimitive }
             ?.asString
             ?.takeIf { it.isNotBlank() }
     }
-
 
     private const val ORPHANED_RESULT =
         "This tool call was interrupted and never ran. Nothing it would have done has happened. " +
@@ -251,11 +292,13 @@ object AICodingAgentClient {
             LOG.info("Answering ${missing.size} unanswered tool_use block(s) in message $i: $missing")
             val content = JsonArray()
             missing.forEach { id ->
-                content.add(JsonObject().apply {
-                    addProperty("type", "tool_result")
-                    addProperty("tool_use_id", id)
-                    addProperty("content", ORPHANED_RESULT)
-                })
+                content.add(
+                    JsonObject().apply {
+                        addProperty("type", "tool_result")
+                        addProperty("tool_use_id", id)
+                        addProperty("content", ORPHANED_RESULT)
+                    },
+                )
             }
 
             if (next != null && next.role == "user") {
@@ -277,7 +320,11 @@ object AICodingAgentClient {
             if (!block.isJsonObject) continue
             val obj = block.asJsonObject
             if (obj.get("type")?.asString != "tool_use") continue
-            obj.get("id")?.asString?.takeIf { it.isNotEmpty() }?.let { ids.add(it) }
+            obj
+                .get("id")
+                ?.asString
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { ids.add(it) }
         }
         return ids
     }
@@ -293,7 +340,6 @@ object AICodingAgentClient {
         return ids
     }
 
-
     private const val LOOKBACK_BLOCKS = 15
 
     private val CACHEABLE_BLOCK_TYPES = setOf("text", "tool_use", "tool_result", "image", "document")
@@ -305,18 +351,20 @@ object AICodingAgentClient {
     private const val LOOKBACK_TTL = ONE_HOUR
     private const val TAIL_TTL = FIVE_MINUTES
 
-    private fun ephemeral(ttl: String): JsonObject = JsonObject().apply {
-        addProperty("type", "ephemeral")
-        addProperty("ttl", ttl)
-    }
+    private fun ephemeral(ttl: String): JsonObject =
+        JsonObject().apply {
+            addProperty("type", "ephemeral")
+            addProperty("ttl", ttl)
+        }
 
     private fun systemBlocks(system: String?): JsonArray? {
         if (system.isNullOrEmpty()) return null
-        val block = JsonObject().apply {
-            addProperty("type", "text")
-            addProperty("text", system)
-            add("cache_control", ephemeral(SYSTEM_TTL))
-        }
+        val block =
+            JsonObject().apply {
+                addProperty("type", "text")
+                addProperty("text", system)
+                add("cache_control", ephemeral(SYSTEM_TTL))
+            }
         return JsonArray().apply { add(block) }
     }
 
@@ -350,7 +398,10 @@ object AICodingAgentClient {
         return -1
     }
 
-    private fun withBreakpoint(message: ChatMessage, ttl: String): ChatMessage {
+    private fun withBreakpoint(
+        message: ChatMessage,
+        ttl: String,
+    ): ChatMessage {
         val at = markableBlock(message)
         if (at < 0) return message
 

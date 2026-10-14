@@ -5,32 +5,33 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class SummarizerConfigTest {
-
-    private fun file(section: String) = """
+    private fun file(section: String) =
+        """
         {
           "summarizer": $section,
           "configurations": [
             {"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t"}
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `reads the provider, the model and the two limits`() {
-        val summarizer = SummarizerConfig.parse(
-            file(
-                """
-                {
-                  "configuration": "Local Ollama",
-                  "model": "qwen3-coder",
-                  "max-tokens": 800,
-                  "min-input-tokens": 250,
-                  "thinking": "on",
-                  "prompt": "Answer in British English."
-                }
-                """.trimIndent(),
-            ),
-        )
+        val summarizer =
+            SummarizerConfig.parse(
+                file(
+                    """
+                    {
+                      "configuration": "Local Ollama",
+                      "model": "qwen3-coder",
+                      "max-tokens": 800,
+                      "min-input-tokens": 250,
+                      "thinking": "on",
+                      "prompt": "Answer in British English."
+                    }
+                    """.trimIndent(),
+                ),
+            )
 
         assertEquals("Local Ollama", summarizer.configurationName)
         assertEquals("qwen3-coder", summarizer.model)
@@ -104,22 +105,24 @@ class SummarizerConfigTest {
 
     @Test
     fun `the section survives the file being rewritten`() {
-        val summarizer = SummarizerConfig(
-            "Anthropic Claude",
-            "claude-haiku-4-5-20251001",
-            900,
-            300,
-            ThinkingMode.ADAPTIVE,
-            "Be terse.",
-        )
+        val summarizer =
+            SummarizerConfig(
+                "Anthropic Claude",
+                "claude-haiku-4-5-20251001",
+                900,
+                300,
+                ThinkingMode.ADAPTIVE,
+                "Be terse.",
+            )
 
-        val rendered = AgentConfiguration.render(
-            AgentConfiguration.STARTER,
-            UsageDatabaseConfig.OFF,
-            FindInFilesConfig.DEFAULT,
-            AgentRosterConfig.EMPTY,
-            summarizer,
-        )
+        val rendered =
+            AgentConfiguration.render(
+                AgentConfiguration.STARTER,
+                UsageDatabaseConfig.OFF,
+                FindInFilesConfig.DEFAULT,
+                AgentRosterConfig.EMPTY,
+                summarizer,
+            )
 
         assertEquals(summarizer, SummarizerConfig.parse(rendered))
         assertEquals(AgentConfiguration.STARTER, AgentConfiguration.parseAll(rendered))

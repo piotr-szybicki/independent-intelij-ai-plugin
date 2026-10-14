@@ -24,26 +24,31 @@ internal class AgentMentionPopup(
     private val input: JTextPane,
     private val onChosen: (AgentDefinition) -> Unit,
 ) {
-
     private var popup: JBPopup? = null
 
     fun install() {
-        input.document.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent) {
-                if (e.length != 1) return
-                val offset = e.offset
-                val typed = runCatching { e.document.getText(offset, 1) }.getOrNull() ?: return
-                if (typed != MENTION) return
-                if (!opensMention(e, offset)) return
-                SwingUtilities.invokeLater { show(offset) }
-            }
+        input.document.addDocumentListener(
+            object : DocumentListener {
+                override fun insertUpdate(e: DocumentEvent) {
+                    if (e.length != 1) return
+                    val offset = e.offset
+                    val typed = runCatching { e.document.getText(offset, 1) }.getOrNull() ?: return
+                    if (typed != MENTION) return
+                    if (!opensMention(e, offset)) return
+                    SwingUtilities.invokeLater { show(offset) }
+                }
 
-            override fun removeUpdate(e: DocumentEvent) = Unit
-            override fun changedUpdate(e: DocumentEvent) = Unit
-        })
+                override fun removeUpdate(e: DocumentEvent) = Unit
+
+                override fun changedUpdate(e: DocumentEvent) = Unit
+            },
+        )
     }
 
-    private fun opensMention(e: DocumentEvent, offset: Int): Boolean {
+    private fun opensMention(
+        e: DocumentEvent,
+        offset: Int,
+    ): Boolean {
         if (offset == 0) return true
         val before = runCatching { e.document.getText(offset - 1, 1) }.getOrNull() ?: return false
         return before.isBlank()
@@ -57,7 +62,8 @@ internal class AgentMentionPopup(
 
         val broken = AgentConfigurations.getInstance(project).agents().error
         if (broken != null) {
-            JBPopupFactory.getInstance()
+            JBPopupFactory
+                .getInstance()
                 .createMessage("$broken -- fix that section before handing work over.")
                 .show(at)
             return
@@ -65,43 +71,46 @@ internal class AgentMentionPopup(
 
         val agents = AgentCatalog.all(project)
         if (agents.isEmpty()) {
-            JBPopupFactory.getInstance()
+            JBPopupFactory
+                .getInstance()
                 .createMessage(
                     "No agents are defined. Write one into the \"${AgentRosterConfig.SECTION}\" section " +
                         "of ${AgentConfiguration.FILE_NAME}, or as .agents/<name>/AGENT.md.",
-                )
-                .show(at)
+                ).show(at)
             return
         }
 
-        val renderer = object : ColoredListCellRenderer<AgentDefinition>() {
-            override fun customizeCellRenderer(
-                list: JList<out AgentDefinition>,
-                value: AgentDefinition,
-                index: Int,
-                selected: Boolean,
-                hasFocus: Boolean,
-            ) {
-                append("@${value.name}", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                append("  ${value.description}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                if (!value.isFromFile) append("  ${value.origin}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
-                toolTipText = "Tools: ${value.tools.describe()}"
+        val renderer =
+            object : ColoredListCellRenderer<AgentDefinition>() {
+                override fun customizeCellRenderer(
+                    list: JList<out AgentDefinition>,
+                    value: AgentDefinition,
+                    index: Int,
+                    selected: Boolean,
+                    hasFocus: Boolean,
+                ) {
+                    append("@${value.name}", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                    append("  ${value.description}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    if (!value.isFromFile) append("  ${value.origin}", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                    toolTipText = "Tools: ${value.tools.describe()}"
+                }
             }
-        }
 
-        val created = JBPopupFactory.getInstance().createPopupChooserBuilder(agents)
-            .setTitle("Hand Over To")
-            .setMovable(false)
-            .setResizable(false)
-            .setRenderer(renderer)
-            .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-            .setNamerForFiltering { "${it.name} ${it.description}" }
-            .setItemChosenCallback { agent ->
-                removeMention(offset)
-                onChosen(agent)
-            }
-            .setAdText("Keep typing to filter, Enter hands over, Escape leaves the @ alone")
-            .createPopup()
+        val created =
+            JBPopupFactory
+                .getInstance()
+                .createPopupChooserBuilder(agents)
+                .setTitle("Hand Over To")
+                .setMovable(false)
+                .setResizable(false)
+                .setRenderer(renderer)
+                .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
+                .setNamerForFiltering { "${it.name} ${it.description}" }
+                .setItemChosenCallback { agent ->
+                    removeMention(offset)
+                    onChosen(agent)
+                }.setAdText("Keep typing to filter, Enter hands over, Escape leaves the @ alone")
+                .createPopup()
 
         popup = created
         created.show(at)

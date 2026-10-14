@@ -18,12 +18,12 @@ class SkillSelectionDialog(
     private val skills: List<SkillDefinition>,
     selected: Set<String>,
 ) : DialogWrapper(project) {
-
     private val allInitially = selected.isEmpty()
 
-    private val boxes: Map<String, JBCheckBox> = skills.associate { skill ->
-        skill.name to JBCheckBox(skill.name, allInitially || skill.name in selected)
-    }
+    private val boxes: Map<String, JBCheckBox> =
+        skills.associate { skill ->
+            skill.name to JBCheckBox(skill.name, allInitially || skill.name in selected)
+        }
 
     private val summary = JBLabel()
 
@@ -39,29 +39,32 @@ class SkillSelectionDialog(
     }
 
     override fun createCenterPanel(): JComponent {
-        val content = panel {
-            row {
-                comment(
-                    "These are the skills a chat may switch on, not what is sent. Every chat " +
-                        "starts with none; one is switched on from the Tools button in the chat " +
-                        "window, or by typing / at the start of a message. A skill left out here " +
-                        "is not offered at all.",
-                )
-            }
-            row {
-                button("Select All") { select(skills.mapTo(mutableSetOf()) { it.name }) }
-                button("Clear") { select(emptySet()) }
-            }
-            for (skill in skills) {
-                val desc = skill.description.trim()
-                val escaped = StringUtil.escapeXmlEntities(
-                    if (desc.length > 200) desc.take(200) + "…" else desc,
-                ).ifBlank { "No description." }
+        val content =
+            panel {
                 row {
-                    cell(boxes.getValue(skill.name))
-                }.rowComment(escaped)
+                    comment(
+                        "These are the skills a chat may switch on, not what is sent. Every chat " +
+                            "starts with none; one is switched on from the Tools button in the chat " +
+                            "window, or by typing / at the start of a message. A skill left out here " +
+                            "is not offered at all.",
+                    )
+                }
+                row {
+                    button("Select All") { select(skills.mapTo(mutableSetOf()) { it.name }) }
+                    button("Clear") { select(emptySet()) }
+                }
+                for (skill in skills) {
+                    val desc = skill.description.trim()
+                    val escaped =
+                        StringUtil
+                            .escapeXmlEntities(
+                                if (desc.length > 200) desc.take(200) + "…" else desc,
+                            ).ifBlank { "No description." }
+                    row {
+                        cell(boxes.getValue(skill.name))
+                    }.rowComment(escaped)
+                }
             }
-        }
 
         return JPanel(BorderLayout()).apply {
             add(JBScrollPane(content).apply { border = JBUI.Borders.empty() }, BorderLayout.CENTER)

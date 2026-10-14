@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AICodingAgentClientCacheTest {
-
     companion object {
         private const val MAX_MESSAGE_BREAKPOINTS = 2
     }
@@ -83,7 +82,12 @@ class AICodingAgentClientCacheTest {
     fun `keeps the tail for the default five minutes`() {
         val marked = AICodingAgentClient.withCacheBreakpoints(listOf(message("user", 1)))
 
-        val control = marked.single().content[0].asJsonObject.getAsJsonObject("cache_control")
+        val control =
+            marked
+                .single()
+                .content[0]
+                .asJsonObject
+                .getAsJsonObject("cache_control")
         assertEquals("ephemeral", control.get("type").asString)
         assertEquals("5m", control.get("ttl").asString)
     }
@@ -106,11 +110,12 @@ class AICodingAgentClientCacheTest {
         }
     }
 
-    private fun rank(ttl: String): Int = when (ttl) {
-        "1h" -> 2
-        "5m" -> 1
-        else -> throw IllegalArgumentException("unrecognised ttl '$ttl'")
-    }
+    private fun rank(ttl: String): Int =
+        when (ttl) {
+            "1h" -> 2
+            "5m" -> 1
+            else -> throw IllegalArgumentException("unrecognised ttl '$ttl'")
+        }
 
     @Test
     fun `passes an empty history through`() {
@@ -119,10 +124,11 @@ class AICodingAgentClientCacheTest {
 
     @Test
     fun `never marks a thinking block`() {
-        val messages = listOf(
-            message("user", 1),
-            ChatMessage("assistant", blocks("thinking" to 1, "text" to 1, "thinking" to 1)),
-        )
+        val messages =
+            listOf(
+                message("user", 1),
+                ChatMessage("assistant", blocks("thinking" to 1, "text" to 1, "thinking" to 1)),
+            )
 
         val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
@@ -134,10 +140,11 @@ class AICodingAgentClientCacheTest {
 
     @Test
     fun `falls back to an older message when the last one cannot be marked`() {
-        val messages = listOf(
-            message("user", 1),
-            ChatMessage("assistant", blocks("thinking" to 1)),
-        )
+        val messages =
+            listOf(
+                message("user", 1),
+                ChatMessage("assistant", blocks("thinking" to 1)),
+            )
 
         val marked = AICodingAgentClient.withCacheBreakpoints(messages)
 
@@ -154,13 +161,13 @@ class AICodingAgentClientCacheTest {
         assertEquals(0, marked.sumOf { it.breakpoints() })
     }
 
-
     @Test
     fun `answers a tool_use the following message left unanswered`() {
-        val messages = listOf(
-            ChatMessage.text("user", "go"),
-            ChatMessage("assistant", toolUse("toolu_1")),
-        )
+        val messages =
+            listOf(
+                ChatMessage.text("user", "go"),
+                ChatMessage("assistant", toolUse("toolu_1")),
+            )
 
         val repaired = AICodingAgentClient.withOrphanedToolUsesAnswered(messages)
 
@@ -171,10 +178,11 @@ class AICodingAgentClientCacheTest {
 
     @Test
     fun `merges into the existing results rather than inserting a message`() {
-        val messages = listOf(
-            ChatMessage("assistant", toolUse("toolu_1", "toolu_2")),
-            ChatMessage("user", toolResult("toolu_2")),
-        )
+        val messages =
+            listOf(
+                ChatMessage("assistant", toolUse("toolu_1", "toolu_2")),
+                ChatMessage("user", toolResult("toolu_2")),
+            )
 
         val repaired = AICodingAgentClient.withOrphanedToolUsesAnswered(messages)
 
@@ -184,11 +192,12 @@ class AICodingAgentClientCacheTest {
 
     @Test
     fun `leaves a well-formed conversation alone`() {
-        val messages = listOf(
-            ChatMessage.text("user", "go"),
-            ChatMessage("assistant", toolUse("toolu_1")),
-            ChatMessage("user", toolResult("toolu_1")),
-        )
+        val messages =
+            listOf(
+                ChatMessage.text("user", "go"),
+                ChatMessage("assistant", toolUse("toolu_1")),
+                ChatMessage("user", toolResult("toolu_1")),
+            )
 
         val repaired = AICodingAgentClient.withOrphanedToolUsesAnswered(messages)
 
@@ -197,10 +206,11 @@ class AICodingAgentClientCacheTest {
 
     @Test
     fun `does not count an unrelated user message as an answer`() {
-        val messages = listOf(
-            ChatMessage("assistant", toolUse("toolu_1")),
-            ChatMessage.text("user", "never mind, do something else"),
-        )
+        val messages =
+            listOf(
+                ChatMessage("assistant", toolUse("toolu_1")),
+                ChatMessage.text("user", "never mind, do something else"),
+            )
 
         val repaired = AICodingAgentClient.withOrphanedToolUsesAnswered(messages)
 
@@ -212,11 +222,13 @@ class AICodingAgentClientCacheTest {
     private fun toolUse(vararg ids: String): JsonArray {
         val content = JsonArray()
         ids.forEach { id ->
-            content.add(JsonObject().apply {
-                addProperty("type", "tool_use")
-                addProperty("id", id)
-                addProperty("name", "read_project_file")
-            })
+            content.add(
+                JsonObject().apply {
+                    addProperty("type", "tool_use")
+                    addProperty("id", id)
+                    addProperty("name", "read_project_file")
+                },
+            )
         }
         return content
     }
@@ -224,11 +236,13 @@ class AICodingAgentClientCacheTest {
     private fun toolResult(vararg ids: String): JsonArray {
         val content = JsonArray()
         ids.forEach { id ->
-            content.add(JsonObject().apply {
-                addProperty("type", "tool_result")
-                addProperty("tool_use_id", id)
-                addProperty("content", "ok")
-            })
+            content.add(
+                JsonObject().apply {
+                    addProperty("type", "tool_result")
+                    addProperty("tool_use_id", id)
+                    addProperty("content", "ok")
+                },
+            )
         }
         return content
     }
@@ -249,13 +263,18 @@ class AICodingAgentClientCacheTest {
         return content
     }
 
-    private fun message(role: String, blocks: Int): ChatMessage {
+    private fun message(
+        role: String,
+        blocks: Int,
+    ): ChatMessage {
         val content = JsonArray()
         repeat(blocks) { i ->
-            content.add(JsonObject().apply {
-                addProperty("type", "text")
-                addProperty("text", "block $i")
-            })
+            content.add(
+                JsonObject().apply {
+                    addProperty("type", "text")
+                    addProperty("text", "block $i")
+                },
+            )
         }
         return ChatMessage(role, content)
     }
@@ -264,6 +283,10 @@ class AICodingAgentClientCacheTest {
         content.count { it.isJsonObject && it.asJsonObject.has("cache_control") }
 
     private fun ChatMessage.ttl(): String =
-        content.first { it.isJsonObject && it.asJsonObject.has("cache_control") }
-            .asJsonObject.getAsJsonObject("cache_control").get("ttl").asString
+        content
+            .first { it.isJsonObject && it.asJsonObject.has("cache_control") }
+            .asJsonObject
+            .getAsJsonObject("cache_control")
+            .get("ttl")
+            .asString
 }

@@ -8,7 +8,6 @@ import org.junit.rules.TemporaryFolder
 import java.nio.file.Paths
 
 class ConfiguredPathTest {
-
     @get:Rule
     val folder = TemporaryFolder()
 
@@ -45,7 +44,11 @@ class ConfiguredPathTest {
 
     @Test
     fun `a path that does not exist still resolves`() {
-        val missing = folder.root.toPath().resolve("not-there").resolve("providers.json")
+        val missing =
+            folder.root
+                .toPath()
+                .resolve("not-there")
+                .resolve("providers.json")
 
         assertEquals(missing, AgentConfiguration.configuredPath(missing.toString()))
     }

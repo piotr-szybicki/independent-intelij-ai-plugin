@@ -18,8 +18,9 @@ import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
-class SummarizeTool(private val project: Project) : AICodingAgentTool {
-
+class SummarizeTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val MAX_INPUT_CHARS = 400_000
         private const val HEAD_CHARS = 260_000
@@ -28,7 +29,8 @@ class SummarizeTool(private val project: Project) : AICodingAgentTool {
 
         private val prettyJson = GsonBuilder().setPrettyPrinting().create()
 
-        private val SYSTEM_PROMPT = """
+        private val SYSTEM_PROMPT =
+            """
             You compress the output of a developer tool. What you write is all another model will
             see of it: the original is not passed on, and it cannot ask you for the rest.
 
@@ -41,7 +43,7 @@ class SummarizeTool(private val project: Project) : AICodingAgentTool {
 
             Never guess at what the output does not say and never propose a fix. If there is nothing
             worth keeping, say so in one line. Plain prose and lists, no preamble.
-        """.trimIndent()
+            """.trimIndent()
     }
 
     override val name = "summarize"
@@ -57,36 +59,55 @@ class SummarizeTool(private val project: Project) : AICodingAgentTool {
 
     override val interruptible = false
 
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("tool", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "Name of the tool to run, such as run_shell_command. It must be one of the " +
-                        "tools you have, and cannot be summarize itself.",
-                )
-            })
-            add("input", JsonObject().apply {
-                addProperty("type", "object")
-                addProperty(
-                    "description",
-                    "The arguments for that tool: the object you would have sent it directly.",
-                )
-            })
-            add("focus", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "What the summary has to answer, in a sentence -- \"which tests failed and " +
-                        "why\", \"the compiler errors and the files they are in\". Everything " +
-                        "else may be dropped, so say what you are after.",
-                )
-            })
-        })
-        add("required", JsonArray().apply { add("tool"); add("input") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "tool",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Name of the tool to run, such as run_shell_command. It must be one of the " +
+                                    "tools you have, and cannot be summarize itself.",
+                            )
+                        },
+                    )
+                    add(
+                        "input",
+                        JsonObject().apply {
+                            addProperty("type", "object")
+                            addProperty(
+                                "description",
+                                "The arguments for that tool: the object you would have sent it directly.",
+                            )
+                        },
+                    )
+                    add(
+                        "focus",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "What the summary has to answer, in a sentence -- \"which tests failed and " +
+                                    "why\", \"the compiler errors and the files they are in\". Everything " +
+                                    "else may be dropped, so say what you are after.",
+                            )
+                        },
+                    )
+                },
+            )
+            add(
+                "required",
+                JsonArray().apply {
+                    add("tool")
+                    add("input")
+                },
+            )
+        }
 
     @Volatile
     private var toolbox: List<AICodingAgentTool> = emptyList()
@@ -97,24 +118,40 @@ class SummarizeTool(private val project: Project) : AICodingAgentTool {
     @Volatile
     private var chatConfiguration: String = ""
 
-    fun bind(tools: List<AICodingAgentTool>, conversationId: String, chatConfiguration: String) {
+    fun bind(
+        tools: List<AICodingAgentTool>,
+        conversationId: String,
+        chatConfiguration: String,
+    ) {
         this.toolbox = tools.filter { it.name != name }
         this.conversationId = conversationId
         this.chatConfiguration = chatConfiguration
     }
 
     override fun execute(input: JsonObject): String {
-        val toolName = input.get("tool")?.asString?.trim().orEmpty()
+        val toolName =
+            input
+                .get("tool")
+                ?.asString
+                ?.trim()
+                .orEmpty()
         if (toolName.isEmpty()) return "Error: missing 'tool' -- name the tool to run and summarize"
         if (toolName == name) return "Error: summarize cannot run itself"
 
-        val delegate = toolbox.firstOrNull { it.name == toolName }
-            ?: return "Error: there is no tool called '$toolName'. Tools you can summarize: " +
-                toolbox.joinToString(", ") { it.name }
+        val delegate =
+            toolbox.firstOrNull { it.name == toolName }
+                ?: return "Error: there is no tool called '$toolName'. Tools you can summarize: " +
+                    toolbox.joinToString(", ") { it.name }
 
-        val arguments = argumentsFor(input)
-            ?: return "Error: 'input' must be an object -- the arguments you would have sent '$toolName'"
-        val focus = input.get("focus")?.asString?.trim().orEmpty()
+        val arguments =
+            argumentsFor(input)
+                ?: return "Error: 'input' must be an object -- the arguments you would have sent '$toolName'"
+        val focus =
+            input
+                .get("focus")
+                ?.asString
+                ?.trim()
+                .orEmpty()
 
         val output = delegate.execute(arguments)
         val tokens = TokenCounter.count(output)
@@ -125,13 +162,14 @@ class SummarizeTool(private val project: Project) : AICodingAgentTool {
                 "${settings.minInputTokens}-token floor for summarising, so here it is as it is.\n\n$output"
         }
 
-        val summary = try {
-            summarize(settings, toolName, arguments, focus, output)
-        } catch (e: Exception) {
-            log.info("Summarising the output of '$toolName' failed: ${e.message}")
-            return "$toolName ran, but the summariser (${settings.describe()}) could not be " +
-                "reached: ${e.message}. Its output follows in full.\n\n$output"
-        }
+        val summary =
+            try {
+                summarize(settings, toolName, arguments, focus, output)
+            } catch (e: Exception) {
+                log.info("Summarising the output of '$toolName' failed: ${e.message}")
+                return "$toolName ran, but the summariser (${settings.describe()}) could not be " +
+                    "reached: ${e.message}. Its output follows in full.\n\n$output"
+            }
 
         if (summary.isBlank()) {
             return "$toolName ran, but the summariser (${settings.describe()}) came back with " +
@@ -144,13 +182,15 @@ class SummarizeTool(private val project: Project) : AICodingAgentTool {
     }
 
     private fun argumentsFor(input: JsonObject): JsonObject? {
-        val given = input.get("input")?.takeIf { !it.isJsonNull }
-            ?: return JsonObject().apply {
-                input.entrySet().filterNot { it.key in OWN_FIELDS }.forEach { add(it.key, it.value) }
-            }
+        val given =
+            input.get("input")?.takeIf { !it.isJsonNull }
+                ?: return JsonObject().apply {
+                    input.entrySet().filterNot { it.key in OWN_FIELDS }.forEach { add(it.key, it.value) }
+                }
         if (given.isJsonObject) return given.asJsonObject
         if (given.isJsonPrimitive) {
-            return runCatching { JsonParser.parseString(given.asString) }.getOrNull()
+            return runCatching { JsonParser.parseString(given.asString) }
+                .getOrNull()
                 ?.takeIf { it.isJsonObject }
                 ?.asJsonObject
         }
@@ -173,37 +213,47 @@ class SummarizeTool(private val project: Project) : AICodingAgentTool {
         val configuration = configurationFor(settings)
         val endpoint = AICodingAgentEndpoint.from(configuration)
 
-        val request = buildString {
-            appendLine("Tool: $toolName")
-            appendLine("Its arguments: ${prettyJson.toJson(arguments)}")
-            if (focus.isNotEmpty()) appendLine("What the summary has to answer: $focus")
-            appendLine()
-            appendLine("Its output follows.")
-            appendLine("----------")
-            append(clipped(output))
-        }
+        val request =
+            buildString {
+                appendLine("Tool: $toolName")
+                appendLine("Its arguments: ${prettyJson.toJson(arguments)}")
+                if (focus.isNotEmpty()) appendLine("What the summary has to answer: $focus")
+                appendLine()
+                appendLine("Its output follows.")
+                appendLine("----------")
+                append(clipped(output))
+            }
 
-        val system = listOf(SYSTEM_PROMPT, settings.prompt)
-            .filter { it.isNotBlank() }
-            .joinToString("\n\n")
+        val system =
+            listOf(SYSTEM_PROMPT, settings.prompt)
+                .filter { it.isNotBlank() }
+                .joinToString("\n\n")
 
-        val turn = AICodingAgentClient.sendMessage(
-            endpoint = endpoint,
-            model = configuration.model,
-            maxTokens = settings.maxTokens,
-            messages = listOf(ChatMessage.text("user", request)),
-            system = system,
-            reasoning = reasoningFor(settings, configuration),
-            conversationId = conversationId,
-        )
+        val turn =
+            AICodingAgentClient.sendMessage(
+                endpoint = endpoint,
+                model = configuration.model,
+                maxTokens = settings.maxTokens,
+                messages = listOf(ChatMessage.text("user", request)),
+                system = system,
+                reasoning = reasoningFor(settings, configuration),
+                conversationId = conversationId,
+            )
 
         return turn.content
             .filter { it.isJsonObject && it.asJsonObject.get("type")?.asString == "text" }
-            .joinToString("\n") { it.asJsonObject.get("text")?.asString.orEmpty() }
-            .trim()
+            .joinToString("\n") {
+                it.asJsonObject
+                    .get("text")
+                    ?.asString
+                    .orEmpty()
+            }.trim()
     }
 
-    private fun reasoningFor(settings: SummarizerConfig, configuration: AgentConfiguration): ReasoningOptions =
+    private fun reasoningFor(
+        settings: SummarizerConfig,
+        configuration: AgentConfiguration,
+    ): ReasoningOptions =
         if (settings.thinking == ThinkingMode.OFF) {
             ReasoningOptions(Effort.PROVIDER_DEFAULT, ThinkingMode.OFF)
         } else {
@@ -213,15 +263,16 @@ class SummarizeTool(private val project: Project) : AICodingAgentTool {
     private fun configurationFor(settings: SummarizerConfig): AgentConfiguration {
         val configurations = AgentConfigurations.getInstance(project)
         val named = settings.configurationName
-        val base = if (named.isBlank()) {
-            configurations.resolve(chatConfiguration, "")
-        } else {
-            configurations.load().configurations.firstOrNull { it.name == named }
-                ?: throw IllegalStateException(
-                    "\"${SummarizerConfig.SECTION}\" names the configuration \"$named\", which is " +
-                        "not in ${AgentConfiguration.FILE_NAME}",
-                )
-        }
+        val base =
+            if (named.isBlank()) {
+                configurations.resolve(chatConfiguration, "")
+            } else {
+                configurations.load().configurations.firstOrNull { it.name == named }
+                    ?: throw IllegalStateException(
+                        "\"${SummarizerConfig.SECTION}\" names the configuration \"$named\", which is " +
+                            "not in ${AgentConfiguration.FILE_NAME}",
+                    )
+            }
         return if (settings.model.isBlank()) base else base.copy(model = settings.model)
     }
 

@@ -7,9 +7,7 @@ data class SkillDefinition(
     val description: String,
     val file: File,
 ) {
-
     companion object {
-
         private const val MAX_DESCRIPTION_CHARS = 1_536
 
         private const val MAX_READ_CHARS = 64 * 1024
@@ -18,13 +16,15 @@ data class SkillDefinition(
             val text = runCatching { head(file) }.getOrNull() ?: return null
             val frontmatter = SkillFrontmatter.parse(text)
 
-            val fallbackName = file.parentFile?.name?.takeIf { it.isNotBlank() }
-                ?: file.nameWithoutExtension
+            val fallbackName =
+                file.parentFile?.name?.takeIf { it.isNotBlank() }
+                    ?: file.nameWithoutExtension
             val name = frontmatter["name"]?.takeIf { it.isNotBlank() } ?: fallbackName
 
-            val described = frontmatter["description"]?.takeIf { it.isNotBlank() }
-                ?: firstParagraph(text)
-                ?: return null
+            val described =
+                frontmatter["description"]?.takeIf { it.isNotBlank() }
+                    ?: firstParagraph(text)
+                    ?: return null
 
             val whenToUse = frontmatter["when_to_use"]?.takeIf { it.isNotBlank() }
             val full = if (whenToUse == null) described else "$described $whenToUse"
@@ -41,7 +41,8 @@ data class SkillDefinition(
 
         private fun firstParagraph(text: String): String? {
             val body = SkillFrontmatter.stripFrontmatter(text)
-            return body.split(Regex("\\r?\\n\\s*\\r?\\n"))
+            return body
+                .split(Regex("\\r?\\n\\s*\\r?\\n"))
                 .map { it.trim() }
                 .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
                 ?.replace(Regex("\\s+"), " ")
@@ -56,7 +57,6 @@ data class SkillDefinition(
 }
 
 object SkillFrontmatter {
-
     private const val FENCE = "---"
 
     fun parse(text: String): Map<String, String> {
@@ -90,11 +90,12 @@ object SkillFrontmatter {
                     body.add(lines[i].trim())
                     i++
                 }
-                fields[key] = if (folded) {
-                    body.filter { it.isNotEmpty() }.joinToString(" ")
-                } else {
-                    body.joinToString("\n").trim()
-                }
+                fields[key] =
+                    if (folded) {
+                        body.filter { it.isNotEmpty() }.joinToString(" ")
+                    } else {
+                        body.joinToString("\n").trim()
+                    }
             } else {
                 fields[key] = unquote(rest)
                 i++
@@ -116,7 +117,10 @@ object SkillFrontmatter {
         return first
     }
 
-    private fun closingFence(lines: List<String>, from: Int): Int? {
+    private fun closingFence(
+        lines: List<String>,
+        from: Int,
+    ): Int? {
         for (i in from until lines.size) {
             val trimmed = lines[i].trim()
             if (trimmed == FENCE || trimmed == "...") return i

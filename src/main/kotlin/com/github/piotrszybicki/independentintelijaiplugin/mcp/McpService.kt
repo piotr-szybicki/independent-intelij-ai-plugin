@@ -1,21 +1,31 @@
 package com.github.piotrszybicki.independentintelijaiplugin.mcp
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import java.io.File
 
 @Service(Service.Level.PROJECT)
-class McpService(private val project: Project) : Disposable {
-
-    data class ServerStatus(val name: String, val target: String, val toolCount: Int, val error: String?)
+class McpService(
+    private val project: Project,
+) : Disposable {
+    data class ServerStatus(
+        val name: String,
+        val target: String,
+        val toolCount: Int,
+        val error: String?,
+    )
 
     private val approvals = McpApprovalGate()
 
-    private class Connection(val client: McpClient?, val tools: List<AICodingAgentTool>, val status: ServerStatus)
+    private class Connection(
+        val client: McpClient?,
+        val tools: List<AICodingAgentTool>,
+        val status: ServerStatus,
+    )
 
     private var connections: List<Connection>? = null
     private var builtFrom: String? = null
@@ -61,14 +71,15 @@ class McpService(private val project: Project) : Disposable {
     }
 
     private fun connect(text: String): List<Connection> {
-        val configs = try {
-            McpServerConfig.parseAll(text)
-        } catch (e: McpConfigException) {
-            LOG.info("MCP configuration is unusable: ${e.message}")
-            return listOf(
-                Connection(null, emptyList(), ServerStatus("(configuration)", "", 0, e.message)),
-            )
-        }
+        val configs =
+            try {
+                McpServerConfig.parseAll(text)
+            } catch (e: McpConfigException) {
+                LOG.info("MCP configuration is unusable: ${e.message}")
+                return listOf(
+                    Connection(null, emptyList(), ServerStatus("(configuration)", "", 0, e.message)),
+                )
+            }
 
         val workingDir = project.basePath?.let(::File)
         val usedNames = mutableSetOf<String>()
@@ -76,9 +87,17 @@ class McpService(private val project: Project) : Disposable {
         return configs.filter { it.enabled }.map { config ->
             val client = McpClient(config, workingDir)
             try {
-                val tools = client.connect().map { descriptor ->
-                    McpTool(project, config, client, descriptor, approvals, uniqueName(usedNames, config, descriptor))
-                }
+                val tools =
+                    client.connect().map { descriptor ->
+                        McpTool(
+                            project,
+                            config,
+                            client,
+                            descriptor,
+                            approvals,
+                            uniqueName(usedNames, config, descriptor),
+                        )
+                    }
                 LOG.info("MCP server '${config.name}' (${client.serverInfo}) offers ${tools.size} tools")
                 Connection(client, tools, ServerStatus(config.name, config.target, tools.size, null))
             } catch (e: Exception) {
@@ -89,7 +108,11 @@ class McpService(private val project: Project) : Disposable {
         }
     }
 
-    private fun uniqueName(used: MutableSet<String>, config: McpServerConfig, tool: McpToolDescriptor): String {
+    private fun uniqueName(
+        used: MutableSet<String>,
+        config: McpServerConfig,
+        tool: McpToolDescriptor,
+    ): String {
         val base = McpTool.qualifiedName(config.name, tool.name)
         var name = base
         var suffix = 2
@@ -104,9 +127,16 @@ class McpService(private val project: Project) : Disposable {
 
         fun getInstance(project: Project): McpService = project.getService(McpService::class.java)
 
-        data class ProbeToolsResult(val serverName: String, val tools: List<McpToolDescriptor>, val error: String?)
+        data class ProbeToolsResult(
+            val serverName: String,
+            val tools: List<McpToolDescriptor>,
+            val error: String?,
+        )
 
-        fun probeTools(project: Project?, configs: List<McpServerConfig>): List<ProbeToolsResult> {
+        fun probeTools(
+            project: Project?,
+            configs: List<McpServerConfig>,
+        ): List<ProbeToolsResult> {
             val workingDir = project?.basePath?.let(::File)
             return configs.filter { it.enabled }.map { config ->
                 val client = McpClient(config, workingDir)
@@ -121,7 +151,10 @@ class McpService(private val project: Project) : Disposable {
             }
         }
 
-        fun probe(project: Project?, configs: List<McpServerConfig>): List<ServerStatus> {
+        fun probe(
+            project: Project?,
+            configs: List<McpServerConfig>,
+        ): List<ServerStatus> {
             val workingDir = project?.basePath?.let(::File)
             return configs.map { config ->
                 if (!config.enabled) return@map ServerStatus(config.name, config.target, 0, "disabled")

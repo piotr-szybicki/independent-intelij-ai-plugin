@@ -9,7 +9,6 @@ data class AgentToolPolicy(
     val denied: Set<String>,
     val takesAll: Boolean = false,
 ) {
-
     val saysNothing: Boolean get() = allowed == null && denied.isEmpty() && !takesAll
 
     fun keeps(name: String): Boolean = (allowed == null || name in allowed) && name !in denied
@@ -17,19 +16,18 @@ data class AgentToolPolicy(
     fun select(
         everything: List<AICodingAgentTool>,
         enabledInSettings: List<AICodingAgentTool>,
-    ): List<AICodingAgentTool> =
-        if (saysNothing) enabledInSettings else everything.filter { keeps(it.name) }
+    ): List<AICodingAgentTool> = if (saysNothing) enabledInSettings else everything.filter { keeps(it.name) }
 
-    fun describe(): String = when {
-        saysNothing -> "whatever the main chat has, from the settings page"
-        allowed != null && denied.isEmpty() -> allowed.sorted().joinToString(", ")
-        allowed != null -> (allowed - denied).sorted().joinToString(", ")
-        denied.isNotEmpty() -> "every tool except ${denied.sorted().joinToString(", ")}"
-        else -> "every tool"
-    }
+    fun describe(): String =
+        when {
+            saysNothing -> "whatever the main chat has, from the settings page"
+            allowed != null && denied.isEmpty() -> allowed.sorted().joinToString(", ")
+            allowed != null -> (allowed - denied).sorted().joinToString(", ")
+            denied.isNotEmpty() -> "every tool except ${denied.sorted().joinToString(", ")}"
+            else -> "every tool"
+        }
 
     companion object {
-
         val INHERIT = AgentToolPolicy(null, emptySet())
 
         fun of(names: Collection<String>): AgentToolPolicy {
@@ -57,8 +55,7 @@ data class AgentDefinition(
     val description: String,
     val prompt: String,
     val tools: AgentToolPolicy = AgentToolPolicy.INHERIT,
-
-    /* Skills switched on in the chats this agent starts; every other chat begins with none. */
+    // Skills switched on in the chats this agent starts; every other chat begins with none.
     val skills: List<String> = emptyList(),
     val configurationName: String? = null,
     val model: String? = null,
@@ -66,11 +63,9 @@ data class AgentDefinition(
     val file: File? = null,
     val origin: String,
 ) {
-
     val isFromFile: Boolean get() = origin == FILE
 
     companion object {
-
         const val FILE = "file"
         const val CONFIGURATION = "settings file"
         const val MISSING = "no longer defined"
@@ -85,9 +80,10 @@ data class AgentDefinition(
             val body = SkillFrontmatter.stripFrontmatter(text).trim()
 
             val name = frontmatter["name"]?.takeIf { it.isNotBlank() } ?: nameOf(file)
-            val description = frontmatter["description"]?.takeIf { it.isNotBlank() }
-                ?: firstParagraph(body)
-                ?: return null
+            val description =
+                frontmatter["description"]?.takeIf { it.isNotBlank() }
+                    ?: firstParagraph(body)
+                    ?: return null
             if (body.isEmpty()) return null
 
             return AgentDefinition(
@@ -105,7 +101,12 @@ data class AgentDefinition(
         }
 
         private fun namesOf(value: String?): List<String> =
-            value.orEmpty().split(',', '\n').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            value
+                .orEmpty()
+                .split(',', '\n')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
 
         private fun nameOf(file: File): String {
             val base = file.nameWithoutExtension
@@ -121,7 +122,8 @@ data class AgentDefinition(
         }
 
         private fun firstParagraph(body: String): String? =
-            body.split(Regex("\\r?\\n\\s*\\r?\\n"))
+            body
+                .split(Regex("\\r?\\n\\s*\\r?\\n"))
                 .map { it.trim() }
                 .firstOrNull { it.isNotEmpty() && !it.startsWith("#") }
                 ?.replace(Regex("\\s+"), " ")

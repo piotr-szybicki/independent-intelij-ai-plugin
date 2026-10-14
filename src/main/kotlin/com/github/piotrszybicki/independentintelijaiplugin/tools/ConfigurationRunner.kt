@@ -15,14 +15,19 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-class ConfigurationRunner(private val project: Project) {
-
+class ConfigurationRunner(
+    private val project: Project,
+) {
     companion object {
         const val DEFAULT_DEBUG_WAIT_SECONDS = 20
         const val MAX_DEBUG_WAIT_SECONDS = 120
     }
 
-    fun debug(settings: RunnerAndConfigurationSettings, label: String, waitSeconds: Int): String {
+    fun debug(
+        settings: RunnerAndConfigurationSettings,
+        label: String,
+        waitSeconds: Int,
+    ): String {
         val executor = DefaultDebugExecutor.getDebugExecutorInstance()
 
         if (ProgramRunner.getRunner(executor.id, settings.configuration) == null) {

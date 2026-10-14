@@ -7,20 +7,20 @@ import org.junit.Test
 import java.io.File
 
 class SkillFrontmatterTest {
-
     @Test
     fun `reads plain and quoted scalars`() {
-        val fields = SkillFrontmatter.parse(
-            """
-            ---
-            name: deploy
-            description: "Ships the app to production"
-            argument-hint: '[environment]'
-            ---
+        val fields =
+            SkillFrontmatter.parse(
+                """
+                ---
+                name: deploy
+                description: "Ships the app to production"
+                argument-hint: '[environment]'
+                ---
 
-            Body text.
-            """.trimIndent(),
-        )
+                Body text.
+                """.trimIndent(),
+            )
 
         assertEquals("deploy", fields["name"])
         assertEquals("Ships the app to production", fields["description"])
@@ -29,18 +29,19 @@ class SkillFrontmatterTest {
 
     @Test
     fun `reads folded and literal block scalars`() {
-        val fields = SkillFrontmatter.parse(
-            """
-            ---
-            description: >
-              Use when the user asks what changed
-              or wants a commit message.
-            notes: |
-              first
-              second
-            ---
-            """.trimIndent(),
-        )
+        val fields =
+            SkillFrontmatter.parse(
+                """
+                ---
+                description: >
+                  Use when the user asks what changed
+                  or wants a commit message.
+                notes: |
+                  first
+                  second
+                ---
+                """.trimIndent(),
+            )
 
         assertEquals("Use when the user asks what changed or wants a commit message.", fields["description"])
         assertEquals("first\nsecond", fields["notes"])
@@ -48,19 +49,20 @@ class SkillFrontmatterTest {
 
     @Test
     fun `ignores nested keys`() {
-        val fields = SkillFrontmatter.parse(
-            """
-            ---
-            name: reviewer
-            metadata:
-              name: not-the-skill-name
-              owner: platform
-            allowed-tools:
-              - Read
-              - Grep
-            ---
-            """.trimIndent(),
-        )
+        val fields =
+            SkillFrontmatter.parse(
+                """
+                ---
+                name: reviewer
+                metadata:
+                  name: not-the-skill-name
+                  owner: platform
+                allowed-tools:
+                  - Read
+                  - Grep
+                ---
+                """.trimIndent(),
+            )
 
         assertEquals("reviewer", fields["name"])
         assertEquals(null, fields["owner"])
@@ -76,15 +78,16 @@ class SkillFrontmatterTest {
 
     @Test
     fun `ignores a horizontal rule that is not frontmatter`() {
-        val fields = SkillFrontmatter.parse(
-            """
-            # A plain document
+        val fields =
+            SkillFrontmatter.parse(
+                """
+                # A plain document
 
-            ---
+                ---
 
-            name: not-a-field
-            """.trimIndent(),
-        )
+                name: not-a-field
+                """.trimIndent(),
+            )
 
         assertTrue(fields.isEmpty())
     }
@@ -112,26 +115,26 @@ class SkillFrontmatterTest {
 }
 
 class SkillDefinitionTest {
-
     @get:org.junit.Rule
     val temp = org.junit.rules.TemporaryFolder()
 
     @Test
     fun `falls back to the directory name and the first paragraph`() {
-        val file = skillFile(
-            "summarize-changes",
-            """
-            ---
-            model: inherit
-            ---
+        val file =
+            skillFile(
+                "summarize-changes",
+                """
+                ---
+                model: inherit
+                ---
 
-            # Heading
+                # Heading
 
-            Summarizes uncommitted changes and flags anything risky.
+                Summarizes uncommitted changes and flags anything risky.
 
-            More detail nobody needs yet.
-            """.trimIndent(),
-        )
+                More detail nobody needs yet.
+                """.trimIndent(),
+            )
 
         val skill = SkillDefinition.read(file)!!
 
@@ -141,10 +144,11 @@ class SkillDefinitionTest {
 
     @Test
     fun `appends when_to_use to the description`() {
-        val file = skillFile(
-            "deploy",
-            "---\ndescription: Deploys the app.\nwhen_to_use: Use when asked to ship or release.\n---\n",
-        )
+        val file =
+            skillFile(
+                "deploy",
+                "---\ndescription: Deploys the app.\nwhen_to_use: Use when asked to ship or release.\n---\n",
+            )
 
         assertEquals("Deploys the app. Use when asked to ship or release.", SkillDefinition.read(file)!!.description)
     }
@@ -154,14 +158,16 @@ class SkillDefinitionTest {
         assertNull(SkillDefinition.read(skillFile("empty", "---\nmodel: inherit\n---\n")))
     }
 
-    private fun skillFile(name: String, content: String): File {
+    private fun skillFile(
+        name: String,
+        content: String,
+    ): File {
         val directory = temp.newFolder(name)
         return File(directory, "SKILL.md").apply { writeText(content) }
     }
 }
 
 class SkillRootTest {
-
     @get:org.junit.Rule
     val temp = org.junit.rules.TemporaryFolder()
 
@@ -181,16 +187,17 @@ class SkillRootTest {
     fun `skips blanks and comments and drops duplicates`() {
         val base = temp.newFolder("project")
 
-        val roots = SkillRoot.parseAll(
-            """
-            # personal first
-            .skills
+        val roots =
+            SkillRoot.parseAll(
+                """
+                # personal first
+                .skills
 
-            .skills
-            ${File(base, ".skills").absolutePath}
-            """.trimIndent(),
-            base,
-        )
+                .skills
+                ${File(base, ".skills").absolutePath}
+                """.trimIndent(),
+                base,
+            )
 
         assertEquals(1, roots.size)
     }

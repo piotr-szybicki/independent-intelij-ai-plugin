@@ -20,7 +20,6 @@ data class ConversationTools(
     val mcpTools: List<String> = emptyList(),
     val skills: List<String> = emptyList(),
 ) {
-
     val toolNames: Set<String> get() = tools.toSet()
 
     val mcpToolNames: Set<String> get() = mcpTools.toSet()
@@ -33,11 +32,9 @@ data class ConversationTools(
     /** Whether anything has been chosen here, and so whether it is worth saving with the chat. */
     val isCustom: Boolean get() = overridden || skills.isNotEmpty()
 
-    fun withSkill(name: String): ConversationTools =
-        if (name in skills) this else copy(skills = skills + name)
+    fun withSkill(name: String): ConversationTools = if (name in skills) this else copy(skills = skills + name)
 
-    fun withoutSkill(name: String): ConversationTools =
-        if (name in skills) copy(skills = skills - name) else this
+    fun withoutSkill(name: String): ConversationTools = if (name in skills) copy(skills = skills - name) else this
 
     fun buttonText(): String {
         val toolPart = if (overridden) "Tools: $toolCount" else "Tools: inherited"
@@ -46,16 +43,18 @@ data class ConversationTools(
     }
 
     fun describe(): String {
-        val toolPart = if (overridden) {
-            "This chat uses its own set: ${tools.size} built-in tool(s) and ${mcpTools.size} MCP tool(s)."
-        } else {
-            "This chat uses whatever the settings page enables, narrowed by the agent's own tool list."
-        }
-        val skillPart = if (skills.isEmpty()) {
-            "No skills are switched on for it."
-        } else {
-            "Skills switched on: ${skills.joinToString(", ")}."
-        }
+        val toolPart =
+            if (overridden) {
+                "This chat uses its own set: ${tools.size} built-in tool(s) and ${mcpTools.size} MCP tool(s)."
+            } else {
+                "This chat uses whatever the settings page enables, narrowed by the agent's own tool list."
+            }
+        val skillPart =
+            if (skills.isEmpty()) {
+                "No skills are switched on for it."
+            } else {
+                "Skills switched on: ${skills.joinToString(", ")}."
+            }
         return "$toolPart $skillPart"
     }
 

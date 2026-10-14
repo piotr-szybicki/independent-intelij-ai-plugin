@@ -8,12 +8,17 @@ import com.intellij.openapi.vcs.ex.LineStatusMarkerPopupRenderer
 import com.intellij.openapi.vcs.ex.SimpleLineStatusTracker
 import com.intellij.openapi.vfs.VirtualFile
 
-class LineStatusTrackerDisplay(private val project: Project) : ChangeDisplay, Disposable {
-
+class LineStatusTrackerDisplay(
+    private val project: Project,
+) : ChangeDisplay,
+    Disposable {
     private val log = Logger.getInstance(LineStatusTrackerDisplay::class.java)
     private val trackers = mutableMapOf<VirtualFile, SimpleLineStatusTracker>()
 
-    override fun show(file: VirtualFile, baseline: String) {
+    override fun show(
+        file: VirtualFile,
+        baseline: String,
+    ) {
         val existing = trackers[file]
         if (existing != null) {
             if (!existing.isReleased) {
@@ -24,13 +29,14 @@ class LineStatusTrackerDisplay(private val project: Project) : ChangeDisplay, Di
         }
 
         val document = FileDocumentManager.getInstance().getDocument(file) ?: return
-        val tracker = try {
-            @Suppress("DEPRECATION")
-            SimpleLineStatusTracker(project, document) { LineStatusMarkerPopupRenderer(it) }
-        } catch (e: Throwable) {
-            log.warn("Could not create a line status tracker for ${file.path}", e)
-            return
-        }
+        val tracker =
+            try {
+                @Suppress("DEPRECATION")
+                SimpleLineStatusTracker(project, document) { LineStatusMarkerPopupRenderer(it) }
+            } catch (e: Throwable) {
+                log.warn("Could not create a line status tracker for ${file.path}", e)
+                return
+            }
 
         tracker.setBaseRevision(baseline)
         trackers[file] = tracker

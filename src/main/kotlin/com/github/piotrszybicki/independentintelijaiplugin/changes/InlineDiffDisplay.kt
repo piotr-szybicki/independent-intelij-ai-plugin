@@ -37,8 +37,8 @@ class InlineDiffDisplay(
     private val project: Project,
     private val onAccept: (VirtualFile, Hunk) -> Unit,
     private val onReject: (VirtualFile, Hunk) -> Unit,
-) : ChangeDisplay, Disposable {
-
+) : ChangeDisplay,
+    Disposable {
     private val log = Logger.getInstance(InlineDiffDisplay::class.java)
     private val markup = mutableMapOf<VirtualFile, FileMarkup>()
 
@@ -66,7 +66,10 @@ class InlineDiffDisplay(
         )
     }
 
-    private fun actionAt(editor: Editor, point: Point): Pair<HunkBandRenderer, HunkBandRenderer.Action>? {
+    private fun actionAt(
+        editor: Editor,
+        point: Point,
+    ): Pair<HunkBandRenderer, HunkBandRenderer.Action>? {
         val inlay = editor.inlayModel.getElementAt(point) ?: return null
         val renderer = inlay.renderer as? HunkBandRenderer ?: return null
         val bounds = inlay.bounds ?: return null
@@ -78,8 +81,9 @@ class InlineDiffDisplay(
         val editor = event.editor as? EditorEx ?: return
         if (editor.project != project) return
 
-        val overButton = event.area == EditorMouseEventArea.EDITING_AREA &&
-            actionAt(editor, event.mouseEvent.point) != null
+        val overButton =
+            event.area == EditorMouseEventArea.EDITING_AREA &&
+                actionAt(editor, event.mouseEvent.point) != null
 
         if (overButton) {
             editor.setCustomCursor(this, Cursor.getDefaultCursor())
@@ -112,19 +116,24 @@ class InlineDiffDisplay(
         }, project.disposed)
     }
 
-    override fun show(file: VirtualFile, baseline: String) {
+    override fun show(
+        file: VirtualFile,
+        baseline: String,
+    ) {
         clear(file)
 
         val document = FileDocumentManager.getInstance().getDocument(file) ?: return
         val current = document.immutableCharSequence
 
-        val fragments = try {
-            ComparisonManager.getInstance()
-                .compareLines(baseline, current, ComparisonPolicy.DEFAULT, DumbProgressIndicator.INSTANCE)
-        } catch (e: Exception) {
-            log.info("Could not diff ${file.path} against its baseline: ${e.message}")
-            return
-        }
+        val fragments =
+            try {
+                ComparisonManager
+                    .getInstance()
+                    .compareLines(baseline, current, ComparisonPolicy.DEFAULT, DumbProgressIndicator.INSTANCE)
+            } catch (e: Exception) {
+                log.info("Could not diff ${file.path} against its baseline: ${e.message}")
+                return
+            }
         if (fragments.isEmpty()) return
 
         val baselineLines = baseline.split("\n")
@@ -146,26 +155,31 @@ class InlineDiffDisplay(
                         document.getLineEndOffset(lastLine),
                         HighlighterLayer.ADDITIONAL_SYNTAX,
                         HighlighterTargetArea.LINES_IN_RANGE,
-                    )
+                    ),
                 )
             }
 
-            val removed = if (hunk.oldStart < hunk.oldEnd && hunk.oldStart < baselineLines.size) {
-                baselineLines.subList(hunk.oldStart, hunk.oldEnd.coerceAtMost(baselineLines.size))
-            } else {
-                emptyList()
-            }
+            val removed =
+                if (hunk.oldStart < hunk.oldEnd && hunk.oldStart < baselineLines.size) {
+                    baselineLines.subList(hunk.oldStart, hunk.oldEnd.coerceAtMost(baselineLines.size))
+                } else {
+                    emptyList()
+                }
 
             val anchorLine = hunk.newStart.coerceIn(0, (document.lineCount - 1).coerceAtLeast(0))
             val anchorOffset = document.getLineStartOffset(anchorLine)
             for (editor in editors) {
-                val inlay = editor.inlayModel.addBlockElement(
-                    anchorOffset,
-                    /* relatesToPrecedingText = */ false,
-                    /* showAbove = */ true,
-                    /* priority = */ 0,
-                    HunkBandRenderer(file, hunk, removed),
-                )
+                val inlay =
+                    editor.inlayModel.addBlockElement(
+                        anchorOffset,
+                        // relatesToPrecedingText =
+                        false,
+                        // showAbove =
+                        true,
+                        // priority =
+                        0,
+                        HunkBandRenderer(file, hunk, removed),
+                    )
                 if (inlay != null) inlays.add(inlay)
             }
         }
@@ -194,17 +208,20 @@ class InlineDiffDisplay(
         val hunk: Hunk,
         private val removedLines: List<String>,
     ) : EditorCustomElementRenderer {
-
         enum class Action { ACCEPT, REJECT }
 
         private var acceptBounds: Rectangle? = null
         private var rejectBounds: Rectangle? = null
 
-        fun hitTest(x: Int, y: Int): Action? = when {
-            acceptBounds?.contains(x, y) == true -> Action.ACCEPT
-            rejectBounds?.contains(x, y) == true -> Action.REJECT
-            else -> null
-        }
+        fun hitTest(
+            x: Int,
+            y: Int,
+        ): Action? =
+            when {
+                acceptBounds?.contains(x, y) == true -> Action.ACCEPT
+                rejectBounds?.contains(x, y) == true -> Action.REJECT
+                else -> null
+            }
 
         override fun calcWidthInPixels(inlay: Inlay<*>): Int {
             val editor = inlay.editor
@@ -216,7 +233,12 @@ class InlineDiffDisplay(
 
         override fun calcHeightInPixels(inlay: Inlay<*>): Int = inlay.editor.lineHeight * (removedLines.size + 1)
 
-        override fun paint(inlay: Inlay<*>, g: Graphics, targetRegion: Rectangle, textAttributes: TextAttributes) {
+        override fun paint(
+            inlay: Inlay<*>,
+            g: Graphics,
+            targetRegion: Rectangle,
+            textAttributes: TextAttributes,
+        ) {
             val editor = inlay.editor
             val scheme = editor.colorsScheme
             val deleted = scheme.getAttributes(DiffColors.DIFF_DELETED)
@@ -241,8 +263,28 @@ class InlineDiffDisplay(
             }
 
             val foreground = scheme.defaultForeground
-            val accept = drawButton(g, metrics, ACCEPT_LABEL, targetRegion.x + PADDING, targetRegion.y, lineHeight, ascent, foreground)
-            val reject = drawButton(g, metrics, REJECT_LABEL, accept.x + accept.width + PADDING, targetRegion.y, lineHeight, ascent, foreground)
+            val accept =
+                drawButton(
+                    g,
+                    metrics,
+                    ACCEPT_LABEL,
+                    targetRegion.x + PADDING,
+                    targetRegion.y,
+                    lineHeight,
+                    ascent,
+                    foreground,
+                )
+            val reject =
+                drawButton(
+                    g,
+                    metrics,
+                    REJECT_LABEL,
+                    accept.x + accept.width + PADDING,
+                    targetRegion.y,
+                    lineHeight,
+                    ascent,
+                    foreground,
+                )
 
             acceptBounds = accept.translated(-targetRegion.x, -targetRegion.y)
             rejectBounds = reject.translated(-targetRegion.x, -targetRegion.y)
@@ -266,9 +308,15 @@ class InlineDiffDisplay(
             return Rectangle(x, y + 1, width, height - 2)
         }
 
-        private fun Rectangle.translated(dx: Int, dy: Int) = Rectangle(this.x + dx, this.y + dy, width, height)
+        private fun Rectangle.translated(
+            dx: Int,
+            dy: Int,
+        ) = Rectangle(this.x + dx, this.y + dy, width, height)
 
-        private fun expandTabs(line: String, editor: Editor): String {
+        private fun expandTabs(
+            line: String,
+            editor: Editor,
+        ): String {
             if (!line.contains('\t')) return line
             val tabSize = editor.settings.getTabSize(editor.project)
             return line.replace("\t", " ".repeat(tabSize.coerceAtLeast(1)))

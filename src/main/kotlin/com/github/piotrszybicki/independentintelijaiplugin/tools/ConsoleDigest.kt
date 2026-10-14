@@ -1,7 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
-class ConsoleDigest(projectPath: String? = null) {
-
+class ConsoleDigest(
+    projectPath: String? = null,
+) {
     companion object {
         private const val MAX_OUTPUT_CHARS = 20_000
         private const val MAX_LINE_CHARS = 2_000
@@ -16,16 +17,19 @@ class ConsoleDigest(projectPath: String? = null) {
 
         private val ANSI = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
 
-        fun of(text: String, projectPath: String? = null): String =
-            ConsoleDigest(projectPath).apply { append(text) }.snapshot()
+        fun of(
+            text: String,
+            projectPath: String? = null,
+        ): String = ConsoleDigest(projectPath).apply { append(text) }.snapshot()
     }
 
-    private val prefixes: List<String> = projectPath
-        ?.replace('\\', '/')
-        ?.trimEnd('/')
-        ?.takeIf { it.isNotEmpty() }
-        ?.let { listOf("file:///$it/", "file://$it/", "$it/", it.replace('/', '\\') + "\\") }
-        .orEmpty()
+    private val prefixes: List<String> =
+        projectPath
+            ?.replace('\\', '/')
+            ?.trimEnd('/')
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { listOf("file:///$it/", "file://$it/", "$it/", it.replace('/', '\\') + "\\") }
+            .orEmpty()
 
     private val lock = Any()
     private val lines = ArrayDeque<String>()
@@ -64,24 +68,25 @@ class ConsoleDigest(projectPath: String? = null) {
         }
     }
 
-    fun snapshot(): String = synchronized(lock) {
-        if (partial.isNotEmpty()) {
-            consume(partial.toString())
-            partial.setLength(0)
-        }
-        flushRun()
+    fun snapshot(): String =
+        synchronized(lock) {
+            if (partial.isNotEmpty()) {
+                consume(partial.toString())
+                partial.setLength(0)
+            }
+            flushRun()
 
-        val body = lines.joinToString("\n").trim()
-        if (body.isEmpty() && droppedLines == 0 && suppressedLines == 0) return ""
+            val body = lines.joinToString("\n").trim()
+            if (body.isEmpty() && droppedLines == 0 && suppressedLines == 0) return ""
 
-        buildString {
-            if (droppedLines > 0) append("[... $droppedLines earlier line(s) omitted ...]\n")
-            append(body)
-            if (suppressedLines > 0) {
-                append("\n\n[... $suppressedLines further repetitive line(s) suppressed ...]")
+            buildString {
+                if (droppedLines > 0) append("[... $droppedLines earlier line(s) omitted ...]\n")
+                append(body)
+                if (suppressedLines > 0) {
+                    append("\n\n[... $suppressedLines further repetitive line(s) suppressed ...]")
+                }
             }
         }
-    }
 
     private fun consume(raw: String) {
         val line = clean(raw)
@@ -188,11 +193,12 @@ class ConsoleDigest(projectPath: String? = null) {
         emit("$prefix\u2026$suffix  [$count lines]")
 
         if (inline) {
-            val more = if (remaining > 0) {
-                ", ... and $remaining more, last: ${middleOf(last, prefix, suffix)}"
-            } else {
-                ""
-            }
+            val more =
+                if (remaining > 0) {
+                    ", ... and $remaining more, last: ${middleOf(last, prefix, suffix)}"
+                } else {
+                    ""
+                }
             emit("  " + middles.joinToString(", ") + more)
             return
         }
@@ -203,11 +209,21 @@ class ConsoleDigest(projectPath: String? = null) {
         }
     }
 
-    private fun middleOf(line: String, prefix: String, suffix: String): String =
-        if (line.length < prefix.length + suffix.length) line
-        else line.substring(prefix.length, line.length - suffix.length)
+    private fun middleOf(
+        line: String,
+        prefix: String,
+        suffix: String,
+    ): String =
+        if (line.length < prefix.length + suffix.length) {
+            line
+        } else {
+            line.substring(prefix.length, line.length - suffix.length)
+        }
 
-    private fun similarity(a: String, b: String): Double {
+    private fun similarity(
+        a: String,
+        b: String,
+    ): Double {
         if (a.isEmpty() || b.isEmpty()) return if (a == b) 1.0 else 0.0
         val prefix = a.commonPrefixWith(b).length
         val suffix = a.substring(prefix).commonSuffixWith(b.substring(prefix)).length

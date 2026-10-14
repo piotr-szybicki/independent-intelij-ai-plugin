@@ -8,7 +8,6 @@ import org.junit.Test
 import java.io.File
 
 class AgentToolPolicyTest {
-
     @Test
     fun `no value inherits what the chat already has`() {
         val policy = AgentToolPolicy.parse(null)
@@ -52,9 +51,10 @@ class AgentToolPolicyTest {
 
     @Test
     fun `a tool list written for an agent is exactly what that agent gets`() {
-        val policy = AgentToolPolicy.of(
-            listOf("read_project_file", "create_file", "edit_file_lines", "run_shell_command"),
-        )
+        val policy =
+            AgentToolPolicy.of(
+                listOf("read_project_file", "create_file", "edit_file_lines", "run_shell_command"),
+            )
 
         assertFalse(policy.saysNothing)
         assertTrue(policy.keeps("create_file"))
@@ -73,25 +73,25 @@ class AgentToolPolicyTest {
 }
 
 class AgentDefinitionTest {
-
     @get:org.junit.Rule
     val temp = org.junit.rules.TemporaryFolder()
 
     @Test
     fun `reads the frontmatter and takes the body as the prompt`() {
-        val file = agentFile(
-            "test-writer",
-            """
-            ---
-            description: Writes the tests for a change that is already made.
-            tools: read_project_file, create_file
-            configuration: anthropic
-            model: claude-sonnet-4-5
-            ---
+        val file =
+            agentFile(
+                "test-writer",
+                """
+                ---
+                description: Writes the tests for a change that is already made.
+                tools: read_project_file, create_file
+                configuration: anthropic
+                model: claude-sonnet-4-5
+                ---
 
-            You write tests, and nothing else.
-            """.trimIndent(),
-        )
+                You write tests, and nothing else.
+                """.trimIndent(),
+            )
 
         val agent = AgentDefinition.read(file)!!
 
@@ -121,7 +121,10 @@ class AgentDefinitionTest {
         assertNull(AgentDefinition.read(agentFile("empty", "---\ndescription: Does nothing.\n---\n")))
     }
 
-    private fun agentFile(name: String, content: String): File {
+    private fun agentFile(
+        name: String,
+        content: String,
+    ): File {
         val directory = temp.newFolder(name)
         return File(directory, "AGENT.md").apply { writeText(content) }
     }

@@ -1,12 +1,13 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonObject
 import com.intellij.openapi.project.Project
 import com.intellij.xdebugger.XDebuggerManager
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class AwaitBreakpointTool(private val project: Project) : AICodingAgentTool {
-
+class AwaitBreakpointTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_TIMEOUT_SECONDS = 60
         private const val MAX_TIMEOUT_SECONDS = 600
@@ -19,26 +20,35 @@ class AwaitBreakpointTool(private val project: Project) : AICodingAgentTool {
         "Waits until the debug session stops at a breakpoint or finishes a step, and returns the " +
             "file, line and variables in scope. Returns immediately if already stopped. Requires " +
             "a running debug session; use debugger_action to move on afterwards."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("timeout_seconds", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "How long to wait for the debugger to stop. Defaults to $DEFAULT_TIMEOUT_SECONDS, " +
-                        "maximum $MAX_TIMEOUT_SECONDS.",
-                )
-            })
-        })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "timeout_seconds",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "How long to wait for the debugger to stop. Defaults to $DEFAULT_TIMEOUT_SECONDS, " +
+                                    "maximum $MAX_TIMEOUT_SECONDS.",
+                            )
+                        },
+                    )
+                },
+            )
+        }
 
     override fun execute(input: JsonObject): String {
-        val timeoutSeconds = (input.get("timeout_seconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS)
-            .coerceIn(1, MAX_TIMEOUT_SECONDS)
+        val timeoutSeconds =
+            (input.get("timeout_seconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS)
+                .coerceIn(1, MAX_TIMEOUT_SECONDS)
 
-        val session = pause.awaitPause(timeoutSeconds * 1000L, acceptAlreadyPaused = true)
-            ?: return timeoutMessage(timeoutSeconds)
+        val session =
+            pause.awaitPause(timeoutSeconds * 1000L, acceptAlreadyPaused = true)
+                ?: return timeoutMessage(timeoutSeconds)
 
         return pause.describe(session) + "\n\nExecution is still paused; use debugger_action to continue."
     }

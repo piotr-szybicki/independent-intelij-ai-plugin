@@ -19,7 +19,6 @@ internal class ChatTranscript(
     onCancel: () -> Unit,
     private val onContinue: () -> Unit = {},
 ) {
-
     private val rows = mutableListOf<ChatRow>()
     private val placeholder = PlaceholderRow()
     private val thinkingRow = ThinkingRow(onCancel)
@@ -41,44 +40,55 @@ internal class ChatTranscript(
 
     private var retryOffered: ErrorRow? = null
 
-    private val content = TranscriptPanel().apply {
-        isOpaque = true
-        background = ChatColors.background
-        border = JBUI.Borders.empty(12, 12, 12, 8)
-        add(placeholder)
-    }
+    private val content =
+        TranscriptPanel().apply {
+            isOpaque = true
+            background = ChatColors.background
+            border = JBUI.Borders.empty(12, 12, 12, 8)
+            add(placeholder)
+        }
 
-    private val scrollPane = JBScrollPane(content).apply {
-        border = JBUI.Borders.empty()
-        viewportBorder = JBUI.Borders.empty()
-        horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
-        verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
-        background = ChatColors.background
-        viewport.background = ChatColors.background
-    }
+    private val scrollPane =
+        JBScrollPane(content).apply {
+            border = JBUI.Borders.empty()
+            viewportBorder = JBUI.Borders.empty()
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+            background = ChatColors.background
+            viewport.background = ChatColors.background
+        }
 
     val component: JComponent get() = scrollPane
 
     init {
-        content.addComponentListener(object : ComponentAdapter() {
-            override fun componentResized(e: ComponentEvent) {
-                val width = contentWidth()
-                if (width <= 0 || width == lastAppliedWidth) return
-                lastAppliedWidth = width
-                rows.forEach { it.applyAvailableWidth(width) }
-                content.revalidate()
-                content.repaint()
-            }
-        })
+        content.addComponentListener(
+            object : ComponentAdapter() {
+                override fun componentResized(e: ComponentEvent) {
+                    val width = contentWidth()
+                    if (width <= 0 || width == lastAppliedWidth) return
+                    lastAppliedWidth = width
+                    rows.forEach { it.applyAvailableWidth(width) }
+                    content.revalidate()
+                    content.repaint()
+                }
+            },
+        )
     }
 
     enum class ToolStatus { RUNNING, DONE, FAILED, CANCELLED }
 
     interface RunningTool {
+        fun finish(
+            details: String,
+            status: ToolStatus,
+        )
 
-        fun finish(details: String, status: ToolStatus)
-
-        fun offerApproval(tokens: Int, limit: Int, onApprove: () -> Boolean, onEdit: (() -> Unit)?)
+        fun offerApproval(
+            tokens: Int,
+            limit: Int,
+            onApprove: () -> Boolean,
+            onEdit: (() -> Unit)?,
+        )
 
         fun closeApproval(label: String)
     }
@@ -104,12 +114,15 @@ internal class ChatTranscript(
         lastToolGroup = null
         addRow(
             AgentHandoffRow(
-                agentName, description, specName, state,
+                agentName,
+                description,
+                specName,
+                state,
                 onOpenSpec = onOpenSpec,
                 onProceed = onProceed,
                 onCancel = onCancel,
                 onOpenChat = onOpenChat,
-            )
+            ),
         )
     }
 
@@ -146,8 +159,12 @@ internal class ChatTranscript(
         status: ToolStatus = ToolStatus.DONE,
     ): RunningTool = ToolRow(name, summary, details, status).also { intoToolGroup(requestId, it) }
 
-    fun startToolCall(requestId: String, name: String, summary: String, details: String): RunningTool =
-        ToolRow(name, summary, details, ToolStatus.RUNNING).also { intoToolGroup(requestId, it) }
+    fun startToolCall(
+        requestId: String,
+        name: String,
+        summary: String,
+        details: String,
+    ): RunningTool = ToolRow(name, summary, details, ToolStatus.RUNNING).also { intoToolGroup(requestId, it) }
 
     fun endAiTurn() {
         currentTurn = null
@@ -161,7 +178,10 @@ internal class ChatTranscript(
         content.repaint()
     }
 
-    fun setTurnCost(text: String?, tooltip: String? = null) {
+    fun setTurnCost(
+        text: String?,
+        tooltip: String? = null,
+    ) {
         val turn = currentTurn
         if (turn == null) {
             pendingCost = text?.let { it to tooltip }
@@ -197,7 +217,7 @@ internal class ChatTranscript(
                     currentTurn = fresh
                     lastTurn = fresh
                     pendingCost?.let { (text, tooltip) -> fresh.setCost(text, tooltip) }
-                }
+                },
             )
             return
         }
@@ -208,7 +228,10 @@ internal class ChatTranscript(
     private var currentGroup: ToolGroupRow? = null
     private var currentGroupRequestId = ""
 
-    private fun intoToolGroup(requestId: String, row: ChatRow) {
+    private fun intoToolGroup(
+        requestId: String,
+        row: ChatRow,
+    ) {
         if (requestId.isEmpty()) {
             intoAiTurn(row)
             return
@@ -302,11 +325,22 @@ internal class ChatTranscript(
     private class TranscriptPanel :
         JPanel(VerticalLayout(ChatMetrics.rowGap, VerticalLayout.FILL)),
         Scrollable {
-
         override fun getPreferredScrollableViewportSize(): Dimension = preferredSize
-        override fun getScrollableUnitIncrement(visibleRect: Rectangle, orientation: Int, direction: Int) = JBUI.scale(16)
-        override fun getScrollableBlockIncrement(visibleRect: Rectangle, orientation: Int, direction: Int) = visibleRect.height
+
+        override fun getScrollableUnitIncrement(
+            visibleRect: Rectangle,
+            orientation: Int,
+            direction: Int,
+        ) = JBUI.scale(16)
+
+        override fun getScrollableBlockIncrement(
+            visibleRect: Rectangle,
+            orientation: Int,
+            direction: Int,
+        ) = visibleRect.height
+
         override fun getScrollableTracksViewportWidth() = true
+
         override fun getScrollableTracksViewportHeight() = false
     }
 }

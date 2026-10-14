@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
@@ -7,10 +8,10 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiDocumentManager
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
-
+class EditFileLinesTool(
+    private val project: Project,
+) : AICodingAgentTool {
     private companion object {
         const val REPLACE = "replace"
         const val INSERT = "insert"
@@ -22,37 +23,76 @@ class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
             "them -- read the file first. mode='replace' swaps start_line..end_line for " +
             "'content'; mode='insert' puts 'content' above start_line (1 to prepend, last+1 to " +
             "append). Do not include line-number prefixes in 'content'."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("path", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "File path relative to the project root, e.g. src/Main.kt")
-            })
-            add("mode", JsonObject().apply {
-                addProperty("type", "string")
-                add("enum", JsonArray().apply { add(REPLACE); add(INSERT) })
-                addProperty("description", "'replace' to overwrite a line range, 'insert' to add lines without removing any")
-            })
-            add("start_line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "For 'replace', the first line to overwrite. For 'insert', the line the new " +
-                        "content is placed above.",
-                )
-            })
-            add("end_line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty("description", "For 'replace', the last line to overwrite (inclusive). Ignored for 'insert'.")
-            })
-            add("content", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "The new lines, without line-number prefixes")
-            })
-        })
-        add("required", JsonArray().apply { add("path"); add("mode"); add("start_line"); add("content") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "path",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty("description", "File path relative to the project root, e.g. src/Main.kt")
+                        },
+                    )
+                    add(
+                        "mode",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            add(
+                                "enum",
+                                JsonArray().apply {
+                                    add(REPLACE)
+                                    add(INSERT)
+                                },
+                            )
+                            addProperty(
+                                "description",
+                                "'replace' to overwrite a line range, 'insert' to add lines without removing any",
+                            )
+                        },
+                    )
+                    add(
+                        "start_line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "For 'replace', the first line to overwrite. For 'insert', the line the new " +
+                                    "content is placed above.",
+                            )
+                        },
+                    )
+                    add(
+                        "end_line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "For 'replace', the last line to overwrite (inclusive). Ignored for 'insert'.",
+                            )
+                        },
+                    )
+                    add(
+                        "content",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty("description", "The new lines, without line-number prefixes")
+                        },
+                    )
+                },
+            )
+            add(
+                "required",
+                JsonArray().apply {
+                    add("path")
+                    add("mode")
+                    add("start_line")
+                    add("content")
+                },
+            )
+        }
 
     override fun execute(input: JsonObject): String {
         val path = input.get("path")?.asString ?: return "Error: missing 'path'"
@@ -69,64 +109,78 @@ class EditFileLinesTool(private val project: Project) : AICodingAgentTool {
 
         val content = rawContent.replace("\r\n", "\n").replace('\r', '\n')
 
-        val vf = PsiTargets.resolveProjectFile(project, path)
-            ?: return "Error: file not found or outside project: $path"
+        val vf =
+            PsiTargets.resolveProjectFile(project, path)
+                ?: return "Error: file not found or outside project: $path"
 
         var result: String? = null
         ApplicationManager.getApplication().invokeAndWait {
-            WriteCommandAction.runWriteCommandAction(project, "Edit Lines", null, Runnable {
-                val document = FileDocumentManager.getInstance().getDocument(vf)
-                if (document == null) {
-                    result = "Error: cannot open document for $path"
-                    return@Runnable
-                }
-                if (!document.isWritable) {
-                    result = "Error: $path is read-only"
-                    return@Runnable
-                }
-
-                val range = LineRange(document.text)
-                val error = validate(mode, startLine, endLine, range, path)
-                if (error != null) {
-                    result = error
-                    return@Runnable
-                }
-
-                val from: Int
-                val to: Int
-                val newText: String
-                if (mode == REPLACE) {
-                    from = range.startOffset(startLine)
-                    to = range.startOffset(endLine + 1)
-                    newText = if (to < range.text.length && !content.endsWith("\n")) "$content\n" else content
-                } else {
-                    from = range.startOffset(startLine)
-                    to = from
-                    newText = when {
-                        from == range.text.length && !range.endsWithNewline && range.text.isNotEmpty() ->
-                            if (content.startsWith("\n")) content else "\n$content"
-                        content.endsWith("\n") -> content
-                        else -> "$content\n"
+            WriteCommandAction.runWriteCommandAction(
+                project,
+                "Edit Lines",
+                null,
+                Runnable {
+                    val document = FileDocumentManager.getInstance().getDocument(vf)
+                    if (document == null) {
+                        result = "Error: cannot open document for $path"
+                        return@Runnable
                     }
-                }
+                    if (!document.isWritable) {
+                        result = "Error: $path is read-only"
+                        return@Runnable
+                    }
 
-                document.replaceString(from, to, newText)
-                PsiDocumentManager.getInstance(project).commitDocument(document)
+                    val range = LineRange(document.text)
+                    val error = validate(mode, startLine, endLine, range, path)
+                    if (error != null) {
+                        result = error
+                        return@Runnable
+                    }
 
-                val added = LineRange(newText).lineCount
-                result = if (mode == REPLACE) {
-                    val removed = endLine - startLine + 1
-                    "Replaced lines $startLine-$endLine of $path ($removed line(s) removed, $added added)."
-                } else {
-                    "Inserted $added line(s) into $path above line $startLine."
-                }
-            })
+                    val from: Int
+                    val to: Int
+                    val newText: String
+                    if (mode == REPLACE) {
+                        from = range.startOffset(startLine)
+                        to = range.startOffset(endLine + 1)
+                        newText = if (to < range.text.length && !content.endsWith("\n")) "$content\n" else content
+                    } else {
+                        from = range.startOffset(startLine)
+                        to = from
+                        newText =
+                            when {
+                                from == range.text.length && !range.endsWithNewline && range.text.isNotEmpty() ->
+                                    if (content.startsWith("\n")) content else "\n$content"
+                                content.endsWith("\n") -> content
+                                else -> "$content\n"
+                            }
+                    }
+
+                    document.replaceString(from, to, newText)
+                    PsiDocumentManager.getInstance(project).commitDocument(document)
+
+                    val added = LineRange(newText).lineCount
+                    result =
+                        if (mode == REPLACE) {
+                            val removed = endLine - startLine + 1
+                            "Replaced lines $startLine-$endLine of $path ($removed line(s) removed, $added added)."
+                        } else {
+                            "Inserted $added line(s) into $path above line $startLine."
+                        }
+                },
+            )
         }
 
         return result ?: "Error: edit did not run"
     }
 
-    private fun validate(mode: String, startLine: Int, endLine: Int, range: LineRange, path: String): String? {
+    private fun validate(
+        mode: String,
+        startLine: Int,
+        endLine: Int,
+        range: LineRange,
+        path: String,
+    ): String? {
         if (startLine < 1) return "Error: start_line must be 1 or greater"
 
         if (mode == INSERT) {

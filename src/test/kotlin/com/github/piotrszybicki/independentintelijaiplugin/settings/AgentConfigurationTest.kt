@@ -7,8 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AgentConfigurationTest {
-
-    private val minimal = """
+    private val minimal =
+        """
         {
           "configurations": [
             {
@@ -19,7 +19,7 @@ class AgentConfigurationTest {
             }
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `reads the four fields a configuration needs`() {
@@ -47,14 +47,16 @@ class AgentConfigurationTest {
 
     @Test
     fun `reads the model list and takes its first entry as the default`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            [{
-              "name": "One", "url": "https://x/v1/messages", "token": "t",
-              "models": ["claude-sonnet-5", "claude-opus-5"]
-            }]
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    [{
+                      "name": "One", "url": "https://x/v1/messages", "token": "t",
+                      "models": ["claude-sonnet-5", "claude-opus-5"]
+                    }]
+                    """.trimIndent(),
+                ).single()
 
         assertEquals("claude-sonnet-5", configuration.model)
         assertEquals(listOf("claude-sonnet-5", "claude-opus-5"), configuration.models)
@@ -62,14 +64,16 @@ class AgentConfigurationTest {
 
     @Test
     fun `keeps a default that is not in the list, at the front of it`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            [{
-              "name": "One", "model": "gpt-5.6-sol", "url": "https://x/v1/responses", "token": "t",
-              "models": ["gpt-5", "gpt-5-mini"]
-            }]
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    [{
+                      "name": "One", "model": "gpt-5.6-sol", "url": "https://x/v1/responses", "token": "t",
+                      "models": ["gpt-5", "gpt-5-mini"]
+                    }]
+                    """.trimIndent(),
+                ).single()
 
         assertEquals("gpt-5.6-sol", configuration.model)
         assertEquals(listOf("gpt-5.6-sol", "gpt-5", "gpt-5-mini"), configuration.models)
@@ -84,14 +88,16 @@ class AgentConfigurationTest {
 
     @Test
     fun `selects a model only when the configuration offers it`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            [{
-              "name": "One", "url": "https://x/v1/messages", "token": "t",
-              "models": ["claude-sonnet-5", "claude-opus-5"]
-            }]
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    [{
+                      "name": "One", "url": "https://x/v1/messages", "token": "t",
+                      "models": ["claude-sonnet-5", "claude-opus-5"]
+                    }]
+                    """.trimIndent(),
+                ).single()
 
         assertEquals("claude-opus-5", configuration.withModel("claude-opus-5").model)
         assertEquals("claude-sonnet-5", configuration.withModel("gpt-5").model)
@@ -111,25 +117,29 @@ class AgentConfigurationTest {
 
     @Test
     fun `defaults thinking to the provider on a protocol that cannot carry it`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            [{"name": "Local", "model": "m", "url": "http://localhost:11434/v1/chat/completions", "token": "t"}]
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    [{"name": "Local", "model": "m", "url": "http://localhost:11434/v1/chat/completions", "token": "t"}]
+                    """.trimIndent(),
+                ).single()
 
         assertEquals(ThinkingMode.PROVIDER_DEFAULT, configuration.thinking)
     }
 
     @Test
     fun `reads the model parameters when they are given`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            [{
-              "name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t",
-              "thinking": "off", "effort": "xhigh", "max-tokens": 32000, "context-window": 0
-            }]
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    [{
+                      "name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t",
+                      "thinking": "off", "effort": "xhigh", "max-tokens": 32000, "context-window": 0
+                    }]
+                    """.trimIndent(),
+                ).single()
 
         assertEquals(ThinkingMode.OFF, configuration.thinking)
         assertEquals(Effort.XHIGH, configuration.effort)
@@ -139,80 +149,89 @@ class AgentConfigurationTest {
 
     @Test
     fun `reads the request timeout when it is given`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            [{
-              "name": "Slow", "model": "m", "url": "https://x/v1/messages", "token": "t",
-              "request-timeout-seconds": 300
-            }]
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    [{
+                      "name": "Slow", "model": "m", "url": "https://x/v1/messages", "token": "t",
+                      "request-timeout-seconds": 300
+                    }]
+                    """.trimIndent(),
+                ).single()
 
         assertEquals(300, configuration.requestTimeoutSeconds)
     }
 
     @Test
     fun `refuses a request timeout below one second`() {
-        val zero = """
+        val zero =
+            """
             [{
               "name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t",
               "request-timeout-seconds": 0
             }]
-        """.trimIndent()
+            """.trimIndent()
 
         assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll(zero) }
     }
 
     @Test
     fun `refuses a reply limit below one`() {
-        val zero = """
+        val zero =
+            """
             [{"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t", "max-tokens": 0}]
-        """.trimIndent()
+            """.trimIndent()
 
         assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll(zero) }
     }
 
     @Test
     fun `refuses a thinking value it does not know`() {
-        val unknown = """
+        val unknown =
+            """
             [{"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t", "thinking": "sometimes"}]
-        """.trimIndent()
+            """.trimIndent()
 
         assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll(unknown) }
     }
 
     @Test
     fun `reads thinking written as a boolean`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            [{"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t", "thinking": false}]
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    [{"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t", "thinking": false}]
+                    """.trimIndent(),
+                ).single()
 
         assertEquals(ThinkingMode.OFF, configuration.thinking)
     }
 
     @Test
     fun `reads the customizations section`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            {
-              "configurations": [
-                {
-                  "name": "Gateway",
-                  "model": "claude-sonnet-5",
-                  "url": "https://gateway.internal/v1/messages",
-                  "token": "plain-text-token",
-                  "header-type": "Authorization",
-                  "additional-customizations": {
-                    "anthropic-version": "2024-01-01",
-                    "extra-headers": { "X-Tenant": "acme" }
-                  }
-                }
-              ]
-            }
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    {
+                      "configurations": [
+                        {
+                          "name": "Gateway",
+                          "model": "claude-sonnet-5",
+                          "url": "https://gateway.internal/v1/messages",
+                          "token": "plain-text-token",
+                          "header-type": "Authorization",
+                          "additional-customizations": {
+                            "anthropic-version": "2024-01-01",
+                            "extra-headers": { "X-Tenant": "acme" }
+                          }
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                ).single()
 
         assertEquals(AuthScheme.BEARER, configuration.authScheme)
         assertEquals("2024-01-01", configuration.apiVersion)
@@ -221,19 +240,21 @@ class AgentConfigurationTest {
 
     @Test
     fun `an empty anthropic-version means the header is not sent`() {
-        val configuration = AgentConfiguration.parseAll(
-            """
-            [
-              {
-                "name": "Gateway",
-                "model": "claude-sonnet-5",
-                "url": "https://gateway.internal/v1/messages",
-                "token": "t",
-                "additional-customizations": { "anthropic-version": "" }
-              }
-            ]
-            """.trimIndent(),
-        ).single()
+        val configuration =
+            AgentConfiguration
+                .parseAll(
+                    """
+                    [
+                      {
+                        "name": "Gateway",
+                        "model": "claude-sonnet-5",
+                        "url": "https://gateway.internal/v1/messages",
+                        "token": "t",
+                        "additional-customizations": { "anthropic-version": "" }
+                      }
+                    ]
+                    """.trimIndent(),
+                ).single()
 
         assertEquals("", configuration.apiVersion)
     }
@@ -269,39 +290,43 @@ class AgentConfigurationTest {
 
     @Test
     fun `reads a bare array as well as the wrapper`() {
-        val bare = """
+        val bare =
+            """
             [{"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t"}]
-        """.trimIndent()
+            """.trimIndent()
 
         assertEquals("One", AgentConfiguration.parseAll(bare).single().name)
     }
 
     @Test
     fun `refuses a configuration with no name`() {
-        val error = assertThrows(AgentConfigurationException::class.java) {
-            AgentConfiguration.parseAll("""[{"model": "m", "url": "https://x/v1/messages"}]""")
-        }
+        val error =
+            assertThrows(AgentConfigurationException::class.java) {
+                AgentConfiguration.parseAll("""[{"model": "m", "url": "https://x/v1/messages"}]""")
+            }
 
         assertTrue(error.message!!.contains("name"))
     }
 
     @Test
     fun `refuses two configurations with the same name`() {
-        val duplicated = """
+        val duplicated =
+            """
             [
               {"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t"},
               {"name": "One", "model": "m", "url": "https://y/v1/messages", "token": "t"}
             ]
-        """.trimIndent()
+            """.trimIndent()
 
         assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll(duplicated) }
     }
 
     @Test
     fun `refuses a header type it does not know`() {
-        val unknown = """
+        val unknown =
+            """
             [{"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t", "header-type": "x-token"}]
-        """.trimIndent()
+            """.trimIndent()
 
         assertThrows(AgentConfigurationException::class.java) { AgentConfiguration.parseAll(unknown) }
     }

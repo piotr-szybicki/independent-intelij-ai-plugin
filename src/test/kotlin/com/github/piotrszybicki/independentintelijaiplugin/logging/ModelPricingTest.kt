@@ -7,9 +7,13 @@ import org.junit.Test
 import java.math.BigDecimal
 
 class ModelPricingTest {
-
-    private fun cost(model: String, input: Int, cacheWrite: Int, cacheRead: Int, output: Int) =
-        ModelPricing.costUsd(model, input, cacheWrite, cacheRead, output)
+    private fun cost(
+        model: String,
+        input: Int,
+        cacheWrite: Int,
+        cacheRead: Int,
+        output: Int,
+    ) = ModelPricing.costUsd(model, input, cacheWrite, cacheRead, output)
 
     @Test
     fun `charges each count at its own rate`() {

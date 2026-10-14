@@ -1,13 +1,14 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
-
+class ReadLibraryClassTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val MAX_CANDIDATES = 20
 
@@ -20,51 +21,72 @@ class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
             "reach. Takes a simple or qualified class name; qualify it if ambiguous. Returns real " +
             "source when a sources jar is present, decompiled bytecode otherwise. For a single " +
             "signature, use get_symbol_info."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("name", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "Class name, e.g. \"RenameProcessor\" or \"com.intellij.refactoring.rename.RenameProcessor\"",
-                )
-            })
-            add("start_line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty("description", "First line to read, 1-based and inclusive. Defaults to 1.")
-            })
-            add("end_line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty("description", "Last line to read, 1-based and inclusive. Defaults to the end.")
-            })
-        })
-        add("required", JsonArray().apply { add("name") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "name",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Class name, e.g. \"RenameProcessor\" or " +
+                                    "\"com.intellij.refactoring.rename.RenameProcessor\"",
+                            )
+                        },
+                    )
+                    add(
+                        "start_line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty("description", "First line to read, 1-based and inclusive. Defaults to 1.")
+                        },
+                    )
+                    add(
+                        "end_line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty("description", "Last line to read, 1-based and inclusive. Defaults to the end.")
+                        },
+                    )
+                },
+            )
+            add("required", JsonArray().apply { add("name") })
+        }
 
     override fun execute(input: JsonObject): String {
-        val name = input.get("name")?.asString?.trim().orEmpty()
+        val name =
+            input
+                .get("name")
+                ?.asString
+                ?.trim()
+                .orEmpty()
         if (name.isEmpty()) return "Error: missing 'name'"
 
-        val resolution = try {
-            LibraryClasses.resolve(project, name, MAX_CANDIDATES)
-        } catch (e: Exception) {
-            return "Error: could not look up \"$name\": ${e.message ?: e::class.java.simpleName}"
-        }
+        val resolution =
+            try {
+                LibraryClasses.resolve(project, name, MAX_CANDIDATES)
+            } catch (e: Exception) {
+                return "Error: could not look up \"$name\": ${e.message ?: e::class.java.simpleName}"
+            }
 
-        val candidate = when (resolution) {
-            is LibraryClasses.Resolution.NotFound ->
-                return "No class named \"$name\" is visible to this project. Check the spelling, and " +
-                    "note this searches the project's libraries and SDK -- a class from a dependency " +
-                    "that is not on the classpath will not be found."
+        val candidate =
+            when (resolution) {
+                is LibraryClasses.Resolution.NotFound ->
+                    return "No class named \"$name\" is visible to this project. Check the spelling, and " +
+                        "note this searches the project's libraries and SDK -- a class from a dependency " +
+                        "that is not on the classpath will not be found."
 
-            is LibraryClasses.Resolution.Ambiguous ->
-                return "\"$name\" is ambiguous — ${resolution.candidates.size} classes match:\n" +
-                    resolution.candidates.joinToString("\n") { "  ${it.qualifiedName}" } +
-                    "\n\nCall again with the fully qualified name."
+                is LibraryClasses.Resolution.Ambiguous ->
+                    return "\"$name\" is ambiguous — ${resolution.candidates.size} classes match:\n" +
+                        resolution.candidates.joinToString("\n") { "  ${it.qualifiedName}" } +
+                        "\n\nCall again with the fully qualified name."
 
-            is LibraryClasses.Resolution.Found -> resolution.candidate
-        }
+                is LibraryClasses.Resolution.Found -> resolution.candidate
+            }
 
         if (candidate.inProject) {
             val path = PsiTargets.relativePath(project, candidate.virtualFile)
@@ -73,14 +95,15 @@ class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
                 "made this session that this tool would not."
         }
 
-        val text = try {
-            ReadAction.computeBlocking<String, RuntimeException> { candidate.file.text.orEmpty() }
-        } catch (e: Exception) {
-            return "Error: could not read ${candidate.qualifiedName}: " +
-                (e.message ?: e::class.java.simpleName) +
-                ". A compiled class needs the Java Bytecode Decompiler plugin to be readable; if it " +
-                "is disabled, only the signature is available through get_symbol_info."
-        }
+        val text =
+            try {
+                ReadAction.computeBlocking<String, RuntimeException> { candidate.file.text.orEmpty() }
+            } catch (e: Exception) {
+                return "Error: could not read ${candidate.qualifiedName}: " +
+                    (e.message ?: e::class.java.simpleName) +
+                    ". A compiled class needs the Java Bytecode Decompiler plugin to be readable; if it " +
+                    "is disabled, only the signature is available through get_symbol_info."
+            }
 
         val range = LineRange(text)
         if (range.lineCount == 0) return "${candidate.qualifiedName} has no readable source."
@@ -96,12 +119,14 @@ class ReadLibraryClassTool(private val project: Project) : AICodingAgentTool {
 
         val lastLine = end.coerceAtMost(range.lineCount)
         val width = lastLine.toString().length
-        val body = (start..lastLine).joinToString("\n") { line ->
-            "%${width}d  %s".format(line, range.lines[line - 1])
-        }
+        val body =
+            (start..lastLine).joinToString("\n") { line ->
+                "%${width}d  %s".format(line, range.lines[line - 1])
+            }
 
-        val header = "${candidate.qualifiedName} — ${candidate.virtualFile.name}, " +
-            "lines $start-$lastLine of ${range.lineCount}" + provenance(candidate)
+        val header =
+            "${candidate.qualifiedName} — ${candidate.virtualFile.name}, " +
+                "lines $start-$lastLine of ${range.lineCount}" + provenance(candidate)
         if (body.length <= MAX_CHARS) return "$header\n$body"
 
         val shown = body.take(MAX_CHARS).substringBeforeLast("\n")

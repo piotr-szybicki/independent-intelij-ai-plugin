@@ -7,21 +7,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConversationDefaultsConfigTest {
-
     @Test
     fun `reads all three arrays`() {
-        val defaults = ConversationDefaultsConfig.parse(
-            """
-            {
-              "conversation-defaults": {
-                "tools": ["read_project_file", "find_in_files"],
-                "mcp-tools": ["mcp__github__search_issues"],
-                "skills": ["write-tests"]
-              },
-              "configurations": []
-            }
-            """.trimIndent(),
-        )
+        val defaults =
+            ConversationDefaultsConfig.parse(
+                """
+                {
+                  "conversation-defaults": {
+                    "tools": ["read_project_file", "find_in_files"],
+                    "mcp-tools": ["mcp__github__search_issues"],
+                    "skills": ["write-tests"]
+                  },
+                  "configurations": []
+                }
+                """.trimIndent(),
+            )
 
         assertEquals(listOf("read_project_file", "find_in_files"), defaults.tools)
         assertEquals(listOf("mcp__github__search_issues"), defaults.mcpTools)
@@ -34,9 +34,10 @@ class ConversationDefaultsConfigTest {
         assertNull("no tools key means the settings page decides", missing.tools)
         assertNull(missing.mcpTools)
 
-        val empty = ConversationDefaultsConfig.parse(
-            """{"conversation-defaults": {"tools": [], "mcp-tools": []}}""",
-        )
+        val empty =
+            ConversationDefaultsConfig.parse(
+                """{"conversation-defaults": {"tools": [], "mcp-tools": []}}""",
+            )
         assertEquals("an empty array means none of them", emptyList<String>(), empty.tools)
         assertEquals(emptyList<String>(), empty.mcpTools)
     }
@@ -63,16 +64,18 @@ class ConversationDefaultsConfigTest {
 
     @Test
     fun `what it renders is what it reads back`() {
-        val defaults = ConversationDefaultsConfig(
-            tools = listOf("read_project_file"),
-            mcpTools = null,
-            skills = listOf("write-tests"),
-        )
+        val defaults =
+            ConversationDefaultsConfig(
+                tools = listOf("read_project_file"),
+                mcpTools = null,
+                skills = listOf("write-tests"),
+            )
 
-        val rendered = AgentConfiguration.render(
-            configurations = listOf(AgentConfiguration.DEFAULT),
-            conversationDefaults = defaults,
-        )
+        val rendered =
+            AgentConfiguration.render(
+                configurations = listOf(AgentConfiguration.DEFAULT),
+                conversationDefaults = defaults,
+            )
 
         assertEquals(defaults, ConversationDefaultsConfig.parse(rendered))
     }

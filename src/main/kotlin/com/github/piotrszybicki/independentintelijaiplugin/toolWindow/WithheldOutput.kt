@@ -13,14 +13,17 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 internal object WithheldOutput {
-
     private const val DIRECTORY = ".cache"
 
     private val LOG = Logger.getInstance(WithheldOutput::class.java)
 
     private val FILE_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
 
-    fun save(project: Project, toolName: String, output: String): Path? {
+    fun save(
+        project: Project,
+        toolName: String,
+        output: String,
+    ): Path? {
         val root = project.basePath ?: return null
         val name = "${sanitize(toolName)}-${FILE_STAMP.format(LocalDateTime.now())}.txt"
         val path = Path.of(root, DIRECTORY, name)
@@ -35,7 +38,10 @@ internal object WithheldOutput {
         return path
     }
 
-    fun open(project: Project, path: Path): Boolean {
+    fun open(
+        project: Project,
+        path: Path,
+    ): Boolean {
         val file = findFile(path)
         if (file == null) {
             LOG.warn("Wrote the withheld output to $path but could not find it in the VFS")
@@ -69,7 +75,8 @@ internal object WithheldOutput {
     }
 
     private fun sanitize(toolName: String): String =
-        toolName.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+        toolName
+            .filter { it.isLetterOrDigit() || it == '-' || it == '_' }
             .ifEmpty { "tool" }
             .take(60)
 }
