@@ -36,21 +36,22 @@ class ConversationToolsDialog(
     initial: ConversationTools,
     private val inherited: ConversationTools,
 ) : DialogWrapper(project) {
-
     private val start = if (initial.overridden) initial else inherited
 
     private val customBox = JBCheckBox("Use a tool set chosen for this chat only", initial.overridden)
 
-    private val toolBoxes: Map<String, JBCheckBox> = ToolCatalog.entries.associate { entry ->
-        entry.name to JBCheckBox(entry.name, entry.name in start.toolNames)
-    }
+    private val toolBoxes: Map<String, JBCheckBox> =
+        ToolCatalog.entries.associate { entry ->
+            entry.name to JBCheckBox(entry.name, entry.name in start.toolNames)
+        }
 
     private val categoryMasters: Map<ToolCategory, JBCheckBox> =
         ToolCategory.entries.associateWith { JBCheckBox(it.displayName) }
 
-    private val mcpBoxes: Map<String, JBCheckBox> = mcpEntries.associate { entry ->
-        entry.qualifiedName to JBCheckBox(entry.toolName, entry.qualifiedName in start.mcpToolNames)
-    }
+    private val mcpBoxes: Map<String, JBCheckBox> =
+        mcpEntries.associate { entry ->
+            entry.qualifiedName to JBCheckBox(entry.toolName, entry.qualifiedName in start.mcpToolNames)
+        }
 
     private val servers = mcpEntries.map { it.serverName }.distinct()
 
@@ -58,22 +59,27 @@ class ConversationToolsDialog(
 
     private val activeSkills = initial.activeSkills
 
-    private val skillBoxes: Map<String, JBCheckBox> = skills.associate { skill ->
-        skill.name to JBCheckBox(skill.name, skill.name in activeSkills)
-    }
+    private val skillBoxes: Map<String, JBCheckBox> =
+        skills.associate { skill ->
+            skill.name to JBCheckBox(skill.name, skill.name in activeSkills)
+        }
 
     private val tabs = JBTabbedPane()
 
     private val summary = JBLabel().apply { font = JBFont.small() }
 
     val selection: ConversationTools
-        get() = ConversationTools(
-            overridden = customBox.isSelected,
-            tools = ToolCatalog.entries.map { it.name }.filter { toolBoxes.getValue(it).isSelected },
-            mcpTools = mcpEntries.map { it.qualifiedName }.distinct()
-                .filter { mcpBoxes.getValue(it).isSelected },
-            skills = skills.map { it.name }.filter { skillBoxes.getValue(it).isSelected },
-        )
+        get() =
+            ConversationTools(
+                overridden = customBox.isSelected,
+                tools = ToolCatalog.entries.map { it.name }.filter { toolBoxes.getValue(it).isSelected },
+                mcpTools =
+                    mcpEntries
+                        .map { it.qualifiedName }
+                        .distinct()
+                        .filter { mcpBoxes.getValue(it).isSelected },
+                skills = skills.map { it.name }.filter { skillBoxes.getValue(it).isSelected },
+            )
 
     init {
         title = "Tools for This Chat"
@@ -89,17 +95,18 @@ class ConversationToolsDialog(
         tabs.addTab("MCP tools", scrolled(mcpTab()))
         tabs.addTab("Skills", scrolled(skillsTab()))
 
-        val top = panel {
-            row { cell(customBox) }
-            row {
-                comment(
-                    "Off, this chat takes whatever tools the settings page enables, narrowed by " +
-                        "the agent's own tool list. On, the Tools and MCP tools tabs are the whole " +
-                        "of what this chat may call. Other chats are unaffected, and the choice is " +
-                        "saved with this one. Skills are separate -- see that tab.",
-                )
+        val top =
+            panel {
+                row { cell(customBox) }
+                row {
+                    comment(
+                        "Off, this chat takes whatever tools the settings page enables, narrowed by " +
+                            "the agent's own tool list. On, the Tools and MCP tools tabs are the whole " +
+                            "of what this chat may call. Other chats are unaffected, and the choice is " +
+                            "saved with this one. Skills are separate -- see that tab.",
+                    )
+                }
             }
-        }
 
         return JPanel(BorderLayout(0, JBUI.scale(6))).apply {
             border = JBUI.Borders.emptyBottom(4)
@@ -113,84 +120,91 @@ class ConversationToolsDialog(
     private fun scrolled(content: JComponent): JComponent =
         JBScrollPane(content).apply { border = JBUI.Borders.empty() }
 
-    private fun toolsTab(): JComponent = panel {
-        row {
-            button("Read-Only Defaults") { selectTools(ToolCatalog.parse(ToolCatalog.DEFAULT_ENABLED)) }
-            button("Select All") { selectTools(ToolCatalog.entries.mapTo(mutableSetOf()) { it.name }) }
-            button("Clear") { selectTools(emptySet()) }
-        }
-        for (category in ToolCategory.entries) {
-            group {
-                row { cell(categoryMasters.getValue(category)) }
-                indent {
-                    for (entry in ToolCatalog.entries.filter { it.category == category }) {
-                        row { cell(toolBoxes.getValue(entry.name)) }
+    private fun toolsTab(): JComponent =
+        panel {
+            row {
+                button("Read-Only Defaults") { selectTools(ToolCatalog.parse(ToolCatalog.DEFAULT_ENABLED)) }
+                button("Select All") { selectTools(ToolCatalog.entries.mapTo(mutableSetOf()) { it.name }) }
+                button("Clear") { selectTools(emptySet()) }
+            }
+            for (category in ToolCategory.entries) {
+                group {
+                    row { cell(categoryMasters.getValue(category)) }
+                    indent {
+                        for (entry in ToolCatalog.entries.filter { it.category == category }) {
+                            row { cell(toolBoxes.getValue(entry.name)) }
+                        }
                     }
                 }
             }
         }
-    }
 
-    private fun mcpTab(): JComponent = panel {
-        if (mcpEntries.isEmpty()) {
-            row {
-                comment(
-                    "No MCP server is connected, so there is nothing to choose here. Servers are " +
-                        "configured on the settings page.",
-                )
+    private fun mcpTab(): JComponent =
+        panel {
+            if (mcpEntries.isEmpty()) {
+                row {
+                    comment(
+                        "No MCP server is connected, so there is nothing to choose here. Servers are " +
+                            "configured on the settings page.",
+                    )
+                }
+                return@panel
             }
-            return@panel
-        }
-        row {
-            button("Select All") { selectMcp(mcpEntries.mapTo(mutableSetOf()) { it.qualifiedName }) }
-            button("Clear") { selectMcp(emptySet()) }
-        }
-        for (server in servers) {
-            group {
-                row { cell(serverMasters.getValue(server)) }
-                indent {
-                    for (entry in mcpEntries.filter { it.serverName == server }) {
-                        row { cell(mcpBoxes.getValue(entry.qualifiedName)) }
-                            .rowComment(shortened(entry.description, "No description provided."))
+            row {
+                button("Select All") { selectMcp(mcpEntries.mapTo(mutableSetOf()) { it.qualifiedName }) }
+                button("Clear") { selectMcp(emptySet()) }
+            }
+            for (server in servers) {
+                group {
+                    row { cell(serverMasters.getValue(server)) }
+                    indent {
+                        for (entry in mcpEntries.filter { it.serverName == server }) {
+                            row { cell(mcpBoxes.getValue(entry.qualifiedName)) }
+                                .rowComment(shortened(entry.description, "No description provided."))
+                        }
                     }
                 }
             }
         }
-    }
 
-    private fun skillsTab(): JComponent = panel {
-        row {
-            comment(
-                "Every chat starts with no skills, whatever the settings page lists. Tick one to " +
-                    "let this chat see it -- the same thing typing / at the start of a message " +
-                    "does. Only a ticked skill's name and description are sent with each message, " +
-                    "and only then can the assistant read and follow it.",
-            )
-        }
-        if (skills.isEmpty()) {
+    private fun skillsTab(): JComponent =
+        panel {
             row {
                 comment(
-                    "No skills were found in the directories on the settings page, so there is " +
-                        "nothing to switch on here.",
+                    "Every chat starts with no skills, whatever the settings page lists. Tick one to " +
+                        "let this chat see it -- the same thing typing / at the start of a message " +
+                        "does. Only a ticked skill's name and description are sent with each message, " +
+                        "and only then can the assistant read and follow it.",
                 )
             }
-            return@panel
+            if (skills.isEmpty()) {
+                row {
+                    comment(
+                        "No skills were found in the directories on the settings page, so there is " +
+                            "nothing to switch on here.",
+                    )
+                }
+                return@panel
+            }
+            row {
+                button("Select All") { selectSkills(skills.mapTo(mutableSetOf()) { it.name }) }
+                button("Clear") { selectSkills(emptySet()) }
+            }
+            for (skill in skills) {
+                row { cell(skillBoxes.getValue(skill.name)) }
+                    .rowComment(shortened(skill.description, "No description."))
+            }
         }
-        row {
-            button("Select All") { selectSkills(skills.mapTo(mutableSetOf()) { it.name }) }
-            button("Clear") { selectSkills(emptySet()) }
-        }
-        for (skill in skills) {
-            row { cell(skillBoxes.getValue(skill.name)) }
-                .rowComment(shortened(skill.description, "No description."))
-        }
-    }
 
-    private fun shortened(description: String, ifBlank: String): String {
+    private fun shortened(
+        description: String,
+        ifBlank: String,
+    ): String {
         val trimmed = description.trim()
-        return StringUtil.escapeXmlEntities(
-            if (trimmed.length > 200) trimmed.take(200) + "…" else trimmed,
-        ).ifBlank { ifBlank }
+        return StringUtil
+            .escapeXmlEntities(
+                if (trimmed.length > 200) trimmed.take(200) + "…" else trimmed,
+            ).ifBlank { ifBlank }
     }
 
     private fun wireListeners() {
@@ -218,7 +232,7 @@ class ConversationToolsDialog(
         }
     }
 
-    /* Any change to the tool boxes is this chat asking for its own set, so it stops inheriting. */
+    // Any change to the tool boxes is this chat asking for its own set, so it stops inheriting.
     private fun toolEdited() {
         customBox.isSelected = true
         syncMasters()
@@ -264,11 +278,12 @@ class ConversationToolsDialog(
     private fun refreshSummary() {
         val chosen = selection
         val tools = "${chosen.tools.size}/${toolBoxes.size} tools, ${chosen.mcpTools.size}/${mcpBoxes.size} MCP tools"
-        summary.text = if (customBox.isSelected) {
-            "This chat only: $tools. Skills on: ${chosen.skills.size}/${skillBoxes.size}."
-        } else {
-            "Inheriting: $tools. Skills on: ${chosen.skills.size}/${skillBoxes.size}."
-        }
+        summary.text =
+            if (customBox.isSelected) {
+                "This chat only: $tools. Skills on: ${chosen.skills.size}/${skillBoxes.size}."
+            } else {
+                "Inheriting: $tools. Skills on: ${chosen.skills.size}/${skillBoxes.size}."
+            }
         if (tabs.tabCount == 3) {
             tabs.setTitleAt(0, "Tools (${chosen.tools.size})")
             tabs.setTitleAt(1, "MCP tools (${chosen.mcpTools.size})")

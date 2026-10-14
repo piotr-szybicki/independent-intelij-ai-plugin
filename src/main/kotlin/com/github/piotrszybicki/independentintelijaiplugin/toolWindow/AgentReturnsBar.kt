@@ -25,35 +25,37 @@ internal class AgentReturnsBar(
     private val onOpen: (Path) -> Unit,
     private val onRevalidate: () -> Unit,
 ) {
-
     private val pending = mutableListOf<AgentReturn>()
 
-    private val heading = JBLabel().apply {
-        font = JBFont.small().asBold()
-        foreground = ChatColors.accent
-    }
+    private val heading =
+        JBLabel().apply {
+            font = JBFont.small().asBold()
+            foreground = ChatColors.accent
+        }
 
     private val list = JPanel(GridLayout(0, 1, 0, JBUI.scale(3))).apply { isOpaque = false }
 
-    private val scroll = CappedScrollPane(list, 96).apply {
-        border = JBUI.Borders.emptyTop(JBUI.scale(4))
-        isOpaque = false
-        viewport.isOpaque = false
-        horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
-        verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
-    }
+    private val scroll =
+        CappedScrollPane(list, 96).apply {
+            border = JBUI.Borders.emptyTop(JBUI.scale(4))
+            isOpaque = false
+            viewport.isOpaque = false
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+        }
 
-    val component: JComponent = RoundedPanel(
-        BorderLayout(),
-        arc = { ChatMetrics.smallArc },
-        fill = { ChatColors.userBubble },
-        stroke = { ChatColors.userBubbleBorder },
-    ).apply {
-        isVisible = false
-        border = JBUI.Borders.empty(JBUI.scale(5), JBUI.scale(9))
-        add(heading, BorderLayout.NORTH)
-        add(scroll, BorderLayout.CENTER)
-    }
+    val component: JComponent =
+        RoundedPanel(
+            BorderLayout(),
+            arc = { ChatMetrics.smallArc },
+            fill = { ChatColors.userBubble },
+            stroke = { ChatColors.userBubbleBorder },
+        ).apply {
+            isVisible = false
+            border = JBUI.Borders.empty(JBUI.scale(5), JBUI.scale(9))
+            add(heading, BorderLayout.NORTH)
+            add(scroll, BorderLayout.CENTER)
+        }
 
     fun returns(): List<AgentReturn> = pending.toList()
 
@@ -85,31 +87,34 @@ internal class AgentReturnsBar(
         val path = Path.of(returned.path)
         val name = AgentFiles.displayPath(project, path)
 
-        val chip = RoundedPanel(
-            BorderLayout(JBUI.scale(6), 0),
-            arc = { ChatMetrics.smallArc },
-            fill = { ChatColors.card },
-            stroke = { ChatColors.separator },
-        ).apply {
-            border = JBUI.Borders.empty(JBUI.scale(3), JBUI.scale(7))
-            add(
-                JBLabel("📥 @${returned.agentName}  $name").apply {
-                    font = JBFont.small()
-                    foreground = ChatColors.foreground
-                    toolTipText = "Returned ${DateFormatUtil.formatPrettyDateTime(returned.createdAt)} — " +
-                        "click to open it; the file as it stands is what the next message sends"
-                    cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-                    addMouseListener(object : MouseAdapter() {
-                        override fun mouseClicked(e: MouseEvent) = onOpen(path)
-                    })
-                },
-                BorderLayout.CENTER,
-            )
-            add(
-                InplaceButton("Drop this summary", AllIcons.Actions.Close) { remove(returned) },
-                BorderLayout.EAST,
-            )
-        }
+        val chip =
+            RoundedPanel(
+                BorderLayout(JBUI.scale(6), 0),
+                arc = { ChatMetrics.smallArc },
+                fill = { ChatColors.card },
+                stroke = { ChatColors.separator },
+            ).apply {
+                border = JBUI.Borders.empty(JBUI.scale(3), JBUI.scale(7))
+                add(
+                    JBLabel("📥 @${returned.agentName}  $name").apply {
+                        font = JBFont.small()
+                        foreground = ChatColors.foreground
+                        toolTipText = "Returned ${DateFormatUtil.formatPrettyDateTime(returned.createdAt)} — " +
+                            "click to open it; the file as it stands is what the next message sends"
+                        cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
+                        addMouseListener(
+                            object : MouseAdapter() {
+                                override fun mouseClicked(e: MouseEvent) = onOpen(path)
+                            },
+                        )
+                    },
+                    BorderLayout.CENTER,
+                )
+                add(
+                    InplaceButton("Drop this summary", AllIcons.Actions.Close) { remove(returned) },
+                    BorderLayout.EAST,
+                )
+            }
 
         return JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
             isOpaque = false

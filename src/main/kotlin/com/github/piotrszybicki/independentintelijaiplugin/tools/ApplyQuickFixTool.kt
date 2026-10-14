@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
@@ -19,10 +20,10 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiManager
 import com.intellij.util.Processor
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
-
+class ApplyQuickFixTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val ANALYSIS_TIMEOUT_MILLIS = 10_000L
         private const val POLL_INTERVAL_MILLIS = 100L
@@ -38,43 +39,69 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
             "reference, since the IDE knows the qualified name and adds the right import. Call it " +
             "without 'fix' to list what is available at that line, then again with a name " +
             "(case-insensitive, full or unique fragment). Opens the file in an editor."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("path", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "File path relative to the project root, e.g. src/Main.kt")
-            })
-            add("line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "1-based line to act on, as reported by get_file_problems or read_project_file",
-                )
-            })
-            add("fix", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "The fix to apply, exactly as listed by a previous call, or a unique fragment " +
-                        "of it. Omit to list what is available instead of applying anything.",
-                )
-            })
-        })
-        add("required", JsonArray().apply { add("path"); add("line") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "path",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty("description", "File path relative to the project root, e.g. src/Main.kt")
+                        },
+                    )
+                    add(
+                        "line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "1-based line to act on, as reported by get_file_problems or read_project_file",
+                            )
+                        },
+                    )
+                    add(
+                        "fix",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "The fix to apply, exactly as listed by a previous call, or a unique fragment " +
+                                    "of it. Omit to list what is available instead of applying anything.",
+                            )
+                        },
+                    )
+                },
+            )
+            add(
+                "required",
+                JsonArray().apply {
+                    add("path")
+                    add("line")
+                },
+            )
+        }
 
     override fun execute(input: JsonObject): String {
         val path = input.get("path")?.asString ?: return "Error: missing 'path'"
         val line = input.get("line")?.asInt ?: return "Error: missing 'line'"
-        val requested = input.get("fix")?.asString?.trim()?.takeIf { it.isNotEmpty() }
+        val requested =
+            input
+                .get("fix")
+                ?.asString
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
 
-        val vf = PsiTargets.resolveProjectFile(project, path)
-            ?: return "Error: path is outside the project directory or does not exist: $path"
+        val vf =
+            PsiTargets.resolveProjectFile(project, path)
+                ?: return "Error: path is outside the project directory or does not exist: $path"
         if (vf.isDirectory) return "Error: not a file: $path"
 
-        val editor = openEditor(vf, line)
-            ?: return "Error: could not open $path in an editor, so its quick fixes cannot be reached."
+        val editor =
+            openEditor(vf, line)
+                ?: return "Error: could not open $path in an editor, so its quick fixes cannot be reached."
 
         awaitAnalysis(vf)
 
@@ -107,16 +134,25 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
         return apply(vf, editor, matches.single(), path, line)
     }
 
-    private class Fix(val label: String, val descriptor: HighlightInfo.IntentionActionDescriptor)
+    private class Fix(
+        val label: String,
+        val descriptor: HighlightInfo.IntentionActionDescriptor,
+    )
 
-    private fun match(fixes: List<Fix>, requested: String): List<Fix> {
+    private fun match(
+        fixes: List<Fix>,
+        requested: String,
+    ): List<Fix> {
         val wanted = requested.lowercase()
         val exact = fixes.filter { it.label.equals(requested, ignoreCase = true) }
         if (exact.isNotEmpty()) return exact
         return fixes.filter { it.label.lowercase().contains(wanted) }
     }
 
-    private fun openEditor(vf: VirtualFile, line: Int): Editor? {
+    private fun openEditor(
+        vf: VirtualFile,
+        line: Int,
+    ): Editor? {
         var editor: Editor? = null
         ApplicationManager.getApplication().invokeAndWait {
             val descriptor = OpenFileDescriptor(project, vf, (line - 1).coerceAtLeast(0), 0)
@@ -128,16 +164,21 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
     private fun awaitAnalysis(vf: VirtualFile) {
         val deadline = System.currentTimeMillis() + ANALYSIS_TIMEOUT_MILLIS
         while (System.currentTimeMillis() < deadline) {
-            val finished = ReadAction.computeBlocking<Boolean, RuntimeException> {
-                val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking true
-                DaemonCodeAnalyzerEx.getInstanceEx(project).isErrorAnalyzingFinished(psiFile)
-            }
+            val finished =
+                ReadAction.computeBlocking<Boolean, RuntimeException> {
+                    val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking true
+                    DaemonCodeAnalyzerEx.getInstanceEx(project).isErrorAnalyzingFinished(psiFile)
+                }
             if (finished) return
             Thread.sleep(POLL_INTERVAL_MILLIS)
         }
     }
 
-    private fun collect(vf: VirtualFile, editor: Editor, line: Int): List<Fix> {
+    private fun collect(
+        vf: VirtualFile,
+        editor: Editor,
+        line: Int,
+    ): List<Fix> {
         var result: List<Fix> = emptyList()
         ApplicationManager.getApplication().invokeAndWait {
             result = ReadAction.computeBlocking<List<Fix>, RuntimeException> { gather(vf, editor, line) }
@@ -145,7 +186,11 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
         return result
     }
 
-    private fun gather(vf: VirtualFile, editor: Editor, line: Int): List<Fix> {
+    private fun gather(
+        vf: VirtualFile,
+        editor: Editor,
+        line: Int,
+    ): List<Fix> {
         val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return emptyList()
         val document = FileDocumentManager.getInstance().getDocument(vf) ?: return emptyList()
 
@@ -169,11 +214,12 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
 
         val byLabel = LinkedHashMap<String, Fix>()
         for (offset in offsets) {
-            val available = try {
-                ShowIntentionsPass.getAvailableFixes(editor, psiFile, ALL_PASSES, offset)
-            } catch (e: Exception) {
-                continue
-            }
+            val available =
+                try {
+                    ShowIntentionsPass.getAvailableFixes(editor, psiFile, ALL_PASSES, offset)
+                } catch (e: Exception) {
+                    continue
+                }
             for (descriptor in available) {
                 val action = descriptor.action
                 if (!action.isAvailable(project, editor, psiFile)) continue
@@ -185,7 +231,13 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
         return byLabel.values.toList()
     }
 
-    private fun apply(vf: VirtualFile, editor: Editor, fix: Fix, path: String, line: Int): String {
+    private fun apply(
+        vf: VirtualFile,
+        editor: Editor,
+        fix: Fix,
+        path: String,
+        line: Int,
+    ): String {
         val action = fix.descriptor.action
         var error: String? = null
 
@@ -199,9 +251,14 @@ class ApplyQuickFixTool(private val project: Project) : AICodingAgentTool {
 
             try {
                 if (action.startInWriteAction()) {
-                    WriteCommandAction.runWriteCommandAction(project, fix.label, null, Runnable {
-                        action.invoke(project, editor, psiFile)
-                    })
+                    WriteCommandAction.runWriteCommandAction(
+                        project,
+                        fix.label,
+                        null,
+                        Runnable {
+                            action.invoke(project, editor, psiFile)
+                        },
+                    )
                 } else {
                     CommandProcessor.getInstance().executeCommand(
                         project,

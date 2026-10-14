@@ -5,7 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ProviderProfileTest {
-
     @Test
     fun `reads Anthropic's own endpoint`() {
         val profile = ProviderProfile.detect("https://api.anthropic.com/v1/messages")!!

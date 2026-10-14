@@ -1,25 +1,5 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
-import com.google.gson.JsonObject
-import com.intellij.icons.AllIcons
-import com.intellij.openapi.Disposable
-import com.intellij.openapi.actionSystem.AnActionEvent
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.options.ShowSettingsUtil
-import com.intellij.openapi.project.DumbAwareAction
-import com.intellij.openapi.project.Project
-import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.util.text.StringUtil
-import com.intellij.openapi.wm.ToolWindow
-import com.intellij.openapi.wm.ToolWindowFactory
-import com.intellij.ui.InplaceButton
-import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.JBScrollPane
-import com.intellij.ui.content.ContentFactory
-import com.intellij.util.ui.JBFont
-import com.intellij.util.ui.JBUI
-import com.intellij.util.ui.UIUtil
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentDefinition
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentFiles
@@ -55,6 +35,26 @@ import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironm
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunShellCommandTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.SummarizeTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
+import com.google.gson.JsonObject
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.Disposable
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.options.ShowSettingsUtil
+import com.intellij.openapi.project.DumbAwareAction
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.util.text.StringUtil
+import com.intellij.openapi.wm.ToolWindow
+import com.intellij.openapi.wm.ToolWindowFactory
+import com.intellij.ui.InplaceButton
+import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.content.ContentFactory
+import com.intellij.util.ui.JBFont
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.event.FocusAdapter
@@ -73,15 +73,22 @@ import javax.swing.SwingConstants
 import kotlin.math.roundToInt
 
 class ChatToolWindowFactory : ToolWindowFactory {
-
     companion object {
         private const val TOOL_WINDOW_ID = "AICodingAgent"
 
         private val panels = java.util.WeakHashMap<Project, ChatPanel>()
 
-        fun openSideChat(project: Project, code: String, displayPath: String, extension: String, lineRange: String) {
-            val toolWindow = com.intellij.openapi.wm.ToolWindowManager.getInstance(project)
-                .getToolWindow(TOOL_WINDOW_ID) ?: return
+        fun openSideChat(
+            project: Project,
+            code: String,
+            displayPath: String,
+            extension: String,
+            lineRange: String,
+        ) {
+            val toolWindow =
+                com.intellij.openapi.wm.ToolWindowManager
+                    .getInstance(project)
+                    .getToolWindow(TOOL_WINDOW_ID) ?: return
             toolWindow.show {
                 val panel = panels[project] ?: return@show
                 panel.startSideChat(code, displayPath, extension, lineRange)
@@ -103,7 +110,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
         internal fun isOpened(project: Project) = project in openedProjects
     }
 
-    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+    override fun createToolWindowContent(
+        project: Project,
+        toolWindow: ToolWindow,
+    ) {
         AgentConfigurations.getInstance(project).unavailableReason?.let { reason ->
             val content = ContentFactory.getInstance().createContent(unavailablePanel(reason), null, false)
             toolWindow.contentManager.addContent(content)
@@ -120,30 +130,35 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 DumbAwareAction.create("New Chat", AllIcons.General.Add) { chatPanel.startNewChat() },
                 DumbAwareAction.create("Chat History", AllIcons.Vcs.History) { e -> chatPanel.showHistory(e) },
                 DumbAwareAction.create("Settings", AllIcons.General.Settings) {
-                    ShowSettingsUtil.getInstance().showSettingsDialog(project, AICodingAgentSettingsConfigurable::class.java)
+                    ShowSettingsUtil.getInstance().showSettingsDialog(
+                        project,
+                        AICodingAgentSettingsConfigurable::class.java,
+                    )
                 },
-            )
+            ),
         )
     }
 
     override fun shouldBeAvailable(project: Project) = true
 
-    private fun unavailablePanel(reason: String): JComponent = JPanel(BorderLayout()).apply {
-        border = JBUI.Borders.empty(16)
-        add(
-            JBLabel(
-                "<html><b>AICodingAgent is not available.</b><br/><br/>" +
-                    StringUtil.escapeXmlEntities(reason) + "<br/><br/>" +
-                    "Create the file at that path, or unset <code>${AgentConfiguration.PATH_ENV_VAR}</code> " +
-                    "and restart the IDE to use <code>${AgentConfiguration.FILE_NAME}</code> in the " +
-                    "project root.</html>"
-            ).apply { verticalAlignment = SwingConstants.TOP },
-            BorderLayout.CENTER,
-        )
-    }
+    private fun unavailablePanel(reason: String): JComponent =
+        JPanel(BorderLayout()).apply {
+            border = JBUI.Borders.empty(16)
+            add(
+                JBLabel(
+                    "<html><b>AICodingAgent is not available.</b><br/><br/>" +
+                        StringUtil.escapeXmlEntities(reason) + "<br/><br/>" +
+                        "Create the file at that path, or unset <code>${AgentConfiguration.PATH_ENV_VAR}</code> " +
+                        "and restart the IDE to use <code>${AgentConfiguration.FILE_NAME}</code> in the " +
+                        "project root.</html>",
+                ).apply { verticalAlignment = SwingConstants.TOP },
+                BorderLayout.CENTER,
+            )
+        }
 
-    private class ChatPanel(private val project: Project) : Disposable {
-
+    private class ChatPanel(
+        private val project: Project,
+    ) : Disposable {
         private val history = mutableListOf<ChatMessage>()
         private val rows = mutableListOf<StoredRow>()
         private var runningTool: ChatTranscript.RunningTool? = null
@@ -168,21 +183,22 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private var activeAgent: AgentDefinition? = null
         private var agentSession: AgentSession? = null
 
-        /* What this one chat may call, when it has been given a set of its own. */
+        // What this one chat may call, when it has been given a set of its own.
         private var conversationTools = ConversationTools.INHERIT
 
-        /* Skills the user invoked with / and that the next message has still to carry. */
+        // Skills the user invoked with / and that the next message has still to carry.
         private val invokedSkills = mutableListOf<SkillDefinition>()
 
         private fun agentTools(): List<AICodingAgentTool> {
-            val selected = if (conversationTools.overridden) {
-                val wanted = conversationTools.toolNames + conversationTools.mcpToolNames
-                (builtInTools + mcp.allTools()).filter { it.name in wanted }
-            } else {
-                val defaults = defaultTools()
-                (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
-                    .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
-            }
+            val selected =
+                if (conversationTools.overridden) {
+                    val wanted = conversationTools.toolNames + conversationTools.mcpToolNames
+                    (builtInTools + mcp.allTools()).filter { it.name in wanted }
+                } else {
+                    val defaults = defaultTools()
+                    (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
+                        .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
+                }
             return ChangeTrackingTool.wrapAll(selected, session)
         }
 
@@ -200,19 +216,27 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun defaultTools(): DefaultTools {
             val defaults = AgentConfigurations.getInstance(project).conversationDefaults().defaults
             val mcpTools = if (defaults.mcpTools == null) mcp.tools() else mcp.allTools()
-            val enabledBuiltIn = defaults.tools?.toSet()
-                ?.let { names -> builtInTools.filter { it.name in names } }
-                ?: ToolCatalog.enabledIn(builtInTools)
-            val enabledMcp = defaults.mcpTools?.toSet()
-                ?.let { names -> mcpTools.filter { it.name in names } }
-                ?: mcpTools
+            val enabledBuiltIn =
+                defaults.tools
+                    ?.toSet()
+                    ?.let { names -> builtInTools.filter { it.name in names } }
+                    ?: ToolCatalog.enabledIn(builtInTools)
+            val enabledMcp =
+                defaults.mcpTools
+                    ?.toSet()
+                    ?.let { names -> mcpTools.filter { it.name in names } }
+                    ?: mcpTools
             return DefaultTools(builtInTools + mcpTools, enabledBuiltIn + enabledMcp)
         }
 
-        /* The skills every new chat in this project starts with, which is none unless the file says. */
+        // The skills every new chat in this project starts with, which is none unless the file says.
         private fun defaultConversationTools(): ConversationTools =
             ConversationTools(
-                skills = AgentConfigurations.getInstance(project).conversationDefaults().defaults.skills,
+                skills =
+                    AgentConfigurations
+                        .getInstance(project)
+                        .conversationDefaults()
+                        .defaults.skills,
             )
 
         /*
@@ -223,9 +247,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private fun inheritedTools(): ConversationTools {
             val defaults = defaultTools()
-            val selected = (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
-                .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
-                .map { it.name }
+            val selected =
+                (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
+                    .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
+                    .map { it.name }
             val builtInNames = builtInTools.mapTo(mutableSetOf()) { it.name }
             return ConversationTools(
                 tools = selected.filter { it in builtInNames },
@@ -233,12 +258,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
         }
 
-        private val toolsButton = ConversationToolsButton(
-            project = project,
-            mcpTools = { mcp.allTools() },
-            inherited = { inheritedTools() },
-            onChanged = { chosen -> conversationToolsChosen(chosen) },
-        )
+        private val toolsButton =
+            ConversationToolsButton(
+                project = project,
+                mcpTools = { mcp.allTools() },
+                inherited = { inheritedTools() },
+                onChanged = { chosen -> conversationToolsChosen(chosen) },
+            )
 
         private fun conversationToolsChosen(chosen: ConversationTools) {
             applyConversationTools(chosen)
@@ -264,175 +290,197 @@ class ChatToolWindowFactory : ToolWindowFactory {
             agentBanner.show(agentSession, toolsDescription())
         }
 
-        /* What is actually in force: this chat's own set when it has one, the agent's list otherwise. */
+        // What is actually in force: this chat's own set when it has one, the agent's list otherwise.
         private fun toolsDescription(): String? =
             if (conversationTools.isCustom) conversationTools.describe() else activeAgent?.tools?.describe()
 
-        private val agent = AICodingAgent(
-            tools = { agentTools() },
-            environment = { ProjectEnvironment.describe(project) },
-            skills = { SkillCatalog.describe(project, conversationTools.activeSkills) },
-        )
+        private val agent =
+            AICodingAgent(
+                tools = { agentTools() },
+                environment = { ProjectEnvironment.describe(project) },
+                skills = { SkillCatalog.describe(project, conversationTools.activeSkills) },
+            )
 
-        private val transcript = ChatTranscript(
-            project,
-            onCancel = { cancelTurn() },
-            onContinue = { continueTurn() },
-        )
+        private val transcript =
+            ChatTranscript(
+                project,
+                onCancel = { cancelTurn() },
+                onContinue = { continueTurn() },
+            )
 
         private val cancelled = AtomicBoolean(false)
         private var turn: Future<*>? = null
 
         private val input = ChatInputPane("Ask AI about this project…")
 
-        private val sendButton = JButton("Send").apply {
-            toolTipText = "Send message (Enter; Shift+Enter for a new line)"
-        }
+        private val sendButton =
+            JButton("Send").apply {
+                toolTipText = "Send message (Enter; Shift+Enter for a new line)"
+            }
 
-        private val attachButton = InplaceButton(
-            "Attach the editor selection, or the whole file when nothing is selected " +
-                "(press again with another file open to attach several)",
-            AllIcons.Actions.AddFile,
-        ) { chatAttachments.attachFromEditor() }
+        private val attachButton =
+            InplaceButton(
+                "Attach the editor selection, or the whole file when nothing is selected " +
+                    "(press again with another file open to attach several)",
+                AllIcons.Actions.AddFile,
+            ) { chatAttachments.attachFromEditor() }
 
-        private val statusLabel = JBLabel(" ").apply {
-            font = JBFont.small()
-            foreground = ChatColors.muted
-        }
+        private val statusLabel =
+            JBLabel(" ").apply {
+                font = JBFont.small()
+                foreground = ChatColors.muted
+            }
 
-        private val usageLabel = JBLabel().apply {
-            font = JBFont.small()
-            foreground = ChatColors.muted
-        }
+        private val usageLabel =
+            JBLabel().apply {
+                font = JBFont.small()
+                foreground = ChatColors.muted
+            }
 
-        private val contextLabel = JBLabel().apply {
-            font = JBFont.small()
-            foreground = ChatColors.muted
-        }
-
+        private val contextLabel =
+            JBLabel().apply {
+                font = JBFont.small()
+                foreground = ChatColors.muted
+            }
 
         private val providerBar = ProviderBar(project, { statusLabel.text = it }, toolsButton.component)
 
-        private val agentBanner = AgentBanner(
-            onOpenParent = { openChat(it) },
-            onOpenSpec = { openAgentFile() },
-        )
+        private val agentBanner =
+            AgentBanner(
+                onOpenParent = { openChat(it) },
+                onOpenSpec = { openAgentFile() },
+            )
 
-        private val changesBarPanel = ChangesBar(project, session, { statusLabel.text = it }) {
-            composer.revalidate()
-            composer.repaint()
-        }
+        private val changesBarPanel =
+            ChangesBar(project, session, { statusLabel.text = it }) {
+                composer.revalidate()
+                composer.repaint()
+            }
 
-        private val chatAttachments = ChatAttachments(project, { statusLabel.text = it }) {
-            composer.revalidate()
-            composer.repaint()
-        }
+        private val chatAttachments =
+            ChatAttachments(project, { statusLabel.text = it }) {
+                composer.revalidate()
+                composer.repaint()
+            }
 
-        private val agentReturns = AgentReturnsBar(project, { openAgentFile(it) }) {
-            composer.revalidate()
-            composer.repaint()
-        }
+        private val agentReturns =
+            AgentReturnsBar(project, { openAgentFile(it) }) {
+                composer.revalidate()
+                composer.repaint()
+            }
 
         private val turnCostTracker = TurnCostTracker()
 
         private val sessionListener = ChangeSessionService.Listener { count -> changesBarPanel.update(count) }
 
+        private val meterRow =
+            JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(10), 0)).apply {
+                isOpaque = false
+                add(contextLabel)
+                add(usageLabel)
+            }
 
-        private val meterRow = JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(10), 0)).apply {
-            isOpaque = false
-            add(contextLabel)
-            add(usageLabel)
-        }
+        private val statusRow =
+            JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+                isOpaque = false
+                add(statusLabel, BorderLayout.CENTER)
+                add(meterRow, BorderLayout.EAST)
+            }
 
-        private val statusRow = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
-            isOpaque = false
-            add(statusLabel, BorderLayout.CENTER)
-            add(meterRow, BorderLayout.EAST)
-        }
+        private val inputCard =
+            RoundedPanel(
+                BorderLayout(0, JBUI.scale(4)),
+                fill = { UIUtil.getTextFieldBackground() },
+                stroke = { if (input.hasFocus()) ChatColors.accent else ChatColors.separator },
+            ).apply {
+                border = JBUI.Borders.empty(JBUI.scale(7), JBUI.scale(8))
+                add(
+                    JBScrollPane(input).apply {
+                        border = JBUI.Borders.empty()
+                        viewportBorder = JBUI.Borders.empty()
+                        background = UIUtil.getTextFieldBackground()
+                        viewport.background = UIUtil.getTextFieldBackground()
+                        horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+                        verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+                    },
+                    BorderLayout.CENTER,
+                )
+                add(
+                    JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0)).apply {
+                        isOpaque = false
+                        add(attachButton)
+                        add(sendButton)
+                    },
+                    BorderLayout.SOUTH,
+                )
+            }
 
-        private val inputCard = RoundedPanel(
-            BorderLayout(0, JBUI.scale(4)),
-            fill = { UIUtil.getTextFieldBackground() },
-            stroke = { if (input.hasFocus()) ChatColors.accent else ChatColors.separator },
-        ).apply {
-            border = JBUI.Borders.empty(JBUI.scale(7), JBUI.scale(8))
-            add(
-                JBScrollPane(input).apply {
-                    border = JBUI.Borders.empty()
-                    viewportBorder = JBUI.Borders.empty()
-                    background = UIUtil.getTextFieldBackground()
-                    viewport.background = UIUtil.getTextFieldBackground()
-                    horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
-                    verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
-                },
-                BorderLayout.CENTER,
-            )
-            add(
-                JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(8), 0)).apply {
-                    isOpaque = false
-                    add(attachButton)
-                    add(sendButton)
-                },
-                BorderLayout.SOUTH,
-            )
-        }
+        private val composerTop: JPanel =
+            JPanel(BorderLayout(0, JBUI.scale(5))).apply {
+                isOpaque = false
+                add(
+                    JPanel(BorderLayout(0, JBUI.scale(5))).apply {
+                        isOpaque = false
+                        add(changesBarPanel.component, BorderLayout.NORTH)
+                        add(agentReturns.component, BorderLayout.SOUTH)
+                    },
+                    BorderLayout.NORTH,
+                )
+                add(chatAttachments.component, BorderLayout.CENTER)
+            }
 
-        private val composerTop: JPanel = JPanel(BorderLayout(0, JBUI.scale(5))).apply {
-            isOpaque = false
-            add(
-                JPanel(BorderLayout(0, JBUI.scale(5))).apply {
-                    isOpaque = false
-                    add(changesBarPanel.component, BorderLayout.NORTH)
-                    add(agentReturns.component, BorderLayout.SOUTH)
-                },
-                BorderLayout.NORTH,
-            )
-            add(chatAttachments.component, BorderLayout.CENTER)
-        }
+        private val composer: JPanel =
+            JPanel(BorderLayout(0, JBUI.scale(5))).apply {
+                isOpaque = false
+                border =
+                    BorderFactory.createCompoundBorder(
+                        JBUI.Borders.customLineTop(ChatColors.separator),
+                        JBUI.Borders.empty(9, 12, 10, 12),
+                    )
+                add(composerTop, BorderLayout.NORTH)
+                add(inputCard, BorderLayout.CENTER)
+                add(statusRow, BorderLayout.SOUTH)
+            }
 
-        private val composer: JPanel = JPanel(BorderLayout(0, JBUI.scale(5))).apply {
-            isOpaque = false
-            border = BorderFactory.createCompoundBorder(
-                JBUI.Borders.customLineTop(ChatColors.separator),
-                JBUI.Borders.empty(9, 12, 10, 12),
-            )
-            add(composerTop, BorderLayout.NORTH)
-            add(inputCard, BorderLayout.CENTER)
-            add(statusRow, BorderLayout.SOUTH)
-        }
+        private val header: JPanel =
+            JPanel(BorderLayout()).apply {
+                isOpaque = false
+                add(providerBar.component, BorderLayout.NORTH)
+                add(agentBanner.component, BorderLayout.SOUTH)
+            }
 
-        private val header: JPanel = JPanel(BorderLayout()).apply {
-            isOpaque = false
-            add(providerBar.component, BorderLayout.NORTH)
-            add(agentBanner.component, BorderLayout.SOUTH)
-        }
-
-        val component: JComponent = JPanel(BorderLayout()).apply {
-            isOpaque = true
-            background = ChatColors.background
-            add(header, BorderLayout.NORTH)
-            add(transcript.component, BorderLayout.CENTER)
-            add(composer, BorderLayout.SOUTH)
-        }
+        val component: JComponent =
+            JPanel(BorderLayout()).apply {
+                isOpaque = true
+                background = ChatColors.background
+                add(header, BorderLayout.NORTH)
+                add(transcript.component, BorderLayout.CENTER)
+                add(composer, BorderLayout.SOUTH)
+            }
 
         init {
             sendButton.addActionListener { send() }
-            input.addKeyListener(object : KeyAdapter() {
-                override fun keyPressed(e: KeyEvent) {
-                    if (e.keyCode != KeyEvent.VK_ENTER) return
-                    if (e.isShiftDown) {
-                        e.consume()
-                        input.replaceSelection("\n")
-                    } else {
-                        e.consume()
-                        send()
+            input.addKeyListener(
+                object : KeyAdapter() {
+                    override fun keyPressed(e: KeyEvent) {
+                        if (e.keyCode != KeyEvent.VK_ENTER) return
+                        if (e.isShiftDown) {
+                            e.consume()
+                            input.replaceSelection("\n")
+                        } else {
+                            e.consume()
+                            send()
+                        }
                     }
-                }
-            })
-            input.addFocusListener(object : FocusAdapter() {
-                override fun focusGained(e: FocusEvent) = inputCard.repaint()
-                override fun focusLost(e: FocusEvent) = inputCard.repaint()
-            })
+                },
+            )
+            input.addFocusListener(
+                object : FocusAdapter() {
+                    override fun focusGained(e: FocusEvent) = inputCard.repaint()
+
+                    override fun focusLost(e: FocusEvent) = inputCard.repaint()
+                },
+            )
 
             AgentMentionPopup(project, input) { beginHandoff(it) }.install()
             SkillMentionPopup(project, input, { conversationTools.activeSkills }) { addSkill(it) }.install()
@@ -451,7 +499,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             session.removeListener(sessionListener)
             saveCurrentChat(active = true, background = false)
         }
-
 
         private fun restoreLastChat() {
             if (isOpened(project)) restoreLastChatNow()
@@ -522,11 +569,15 @@ class ChatToolWindowFactory : ToolWindowFactory {
             ApplicationManager.getApplication().executeOnPooledThread { chatHistory.setActiveId(chat.id) }
         }
 
-        private fun applyAgent(session: AgentSession?, known: AgentDefinition? = null) {
+        private fun applyAgent(
+            session: AgentSession?,
+            known: AgentDefinition? = null,
+        ) {
             agentSession = session
-            activeAgent = session?.let {
-                known ?: AgentCatalog.find(project, it.agentName) ?: AgentCatalog.placeholderFor(it.agentName)
-            }
+            activeAgent =
+                session?.let {
+                    known ?: AgentCatalog.find(project, it.agentName) ?: AgentCatalog.placeholderFor(it.agentName)
+                }
             agentBanner.show(session, toolsDescription())
             transcript.onReturnSummary = if (session?.parentChatId == null) null else ::returnSummary
         }
@@ -578,22 +629,27 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private fun contextWindowTokens(): Int =
-            AgentConfigurations.getInstance(project)
-                .resolve(providerBar.configurationName, providerBar.modelName).contextWindowTokens
+            AgentConfigurations
+                .getInstance(project)
+                .resolve(providerBar.configurationName, providerBar.modelName)
+                .contextWindowTokens
 
-        private fun saveCurrentChat(active: Boolean, background: Boolean = true) {
+        private fun saveCurrentChat(
+            active: Boolean,
+            background: Boolean = true,
+        ) {
             val chat = runCatching { snapshot() }.getOrNull()
             val leaving = chatId
 
-            val write = Runnable {
-                when {
-                    chat != null -> chatHistory.save(chat, active)
-                    !active && chatHistory.activeId() == leaving -> chatHistory.setActiveId(null)
+            val write =
+                Runnable {
+                    when {
+                        chat != null -> chatHistory.save(chat, active)
+                        !active && chatHistory.activeId() == leaving -> chatHistory.setActiveId(null)
+                    }
                 }
-            }
             if (background) ApplicationManager.getApplication().executeOnPooledThread(write) else write.run()
         }
-
 
         private fun showUserMessage(markdown: String) {
             rows += StoredRow(StoredRow.USER, text = markdown)
@@ -612,40 +668,50 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private fun headlineOf(summary: String): String {
-            val line = summary.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }.orEmpty()
+            val line =
+                summary
+                    .lineSequence()
+                    .map { it.trim() }
+                    .firstOrNull { it.isNotEmpty() }
+                    .orEmpty()
             return if (line.length <= 90) line else line.take(89).trimEnd() + "…"
         }
 
         private fun showCompaction(result: HistoryCompaction.Result) {
-            val what = buildList {
-                if (result.evicted > 0) add("${result.evicted} old tool result(s)")
-                if (result.summarized) add("${result.summarizedMessages} earlier message(s)")
-            }.joinToString(" and ")
+            val what =
+                buildList {
+                    if (result.evicted > 0) add("${result.evicted} old tool result(s)")
+                    if (result.summarized) add("${result.summarizedMessages} earlier message(s)")
+                }.joinToString(" and ")
             val summary = "freed ~${formatTokens(result.freedTokens)} tokens from $what"
-            val details = buildString {
-                append("The conversation had grown to roughly ${"%,d".format(result.beforeTokens)} tokens, ")
-                if (result.evicted > 0) {
-                    append("so the output of the ${result.evicted} oldest tool call(s) was replaced with a note ")
-                    append("saying what had been there")
+            val details =
+                buildString {
+                    append("The conversation had grown to roughly ${"%,d".format(result.beforeTokens)} tokens, ")
+                    if (result.evicted > 0) {
+                        append("so the output of the ${result.evicted} oldest tool call(s) was replaced with a note ")
+                        append("saying what had been there")
+                    }
+                    if (result.summarized) {
+                        if (result.evicted > 0) {
+                            append(", and that was not enough on its own, so ")
+                        } else {
+                            append("and none of it was old tool output that could simply be dropped, so ")
+                        }
+                        append("the model was asked to summarise the ${result.summarizedMessages} oldest ")
+                        append("message(s) and the summary was put in their place")
+                    }
+                    append(", bringing it to about ${"%,d".format(result.afterTokens)}.\n\n")
+                    if (result.summarized) {
+                        append("Summarising cost an extra request, and it is lossy: exact file contents, ")
+                        append("line numbers and wording from the early part of the conversation are no longer ")
+                        append("available to the model, only the summary's description of them. ")
+                    } else {
+                        append("Only tool output was dropped, and only from the older part of the conversation -- ")
+                        append("nothing you or the model wrote, and nothing from the last few calls. ")
+                    }
+                    append("This chat still shows all of it; it is the copy sent with each request that shrank.\n\n")
+                    append("The threshold is the context window on the settings page.")
                 }
-                if (result.summarized) {
-                    if (result.evicted > 0) append(", and that was not enough on its own, so ")
-                    else append("and none of it was old tool output that could simply be dropped, so ")
-                    append("the model was asked to summarise the ${result.summarizedMessages} oldest ")
-                    append("message(s) and the summary was put in their place")
-                }
-                append(", bringing it to about ${"%,d".format(result.afterTokens)}.\n\n")
-                if (result.summarized) {
-                    append("Summarising cost an extra request, and it is lossy: exact file contents, ")
-                    append("line numbers and wording from the early part of the conversation are no longer ")
-                    append("available to the model, only the summary's description of them. ")
-                } else {
-                    append("Only tool output was dropped, and only from the older part of the conversation -- ")
-                    append("nothing you or the model wrote, and nothing from the last few calls. ")
-                }
-                append("This chat still shows all of it; it is the copy sent with each request that shrank.\n\n")
-                append("The threshold is the context window on the settings page.")
-            }
             rows += StoredRow(StoredRow.TOOL, name = "compact_context", summary = summary, details = details)
             transcript.addToolCall("", "compact_context", summary, details, ChatTranscript.ToolStatus.DONE)
         }
@@ -657,25 +723,32 @@ class ChatToolWindowFactory : ToolWindowFactory {
             details: String,
             status: ChatTranscript.ToolStatus,
         ): ChatTranscript.RunningTool {
-            rows += StoredRow(
-                StoredRow.TOOL,
-                name = name,
-                summary = summary,
-                details = details,
-                status = stored(status),
-                requestId = requestId,
-            )
+            rows +=
+                StoredRow(
+                    StoredRow.TOOL,
+                    name = name,
+                    summary = summary,
+                    details = details,
+                    status = stored(status),
+                    requestId = requestId,
+                )
             return transcript.addToolCall(requestId, name, summary, details, status)
         }
 
-        private fun startToolCall(requestId: String, name: String, summary: String, details: String) {
-            rows += StoredRow(
-                StoredRow.TOOL,
-                name = name,
-                summary = summary,
-                details = details,
-                requestId = requestId,
-            )
+        private fun startToolCall(
+            requestId: String,
+            name: String,
+            summary: String,
+            details: String,
+        ) {
+            rows +=
+                StoredRow(
+                    StoredRow.TOOL,
+                    name = name,
+                    summary = summary,
+                    details = details,
+                    requestId = requestId,
+                )
             runningToolIndex = rows.lastIndex
             runningTool = transcript.startToolCall(requestId, name, summary, details)
         }
@@ -694,44 +767,53 @@ class ChatToolWindowFactory : ToolWindowFactory {
             return row
         }
 
-        private fun stored(status: ChatTranscript.ToolStatus): String? = when (status) {
-            ChatTranscript.ToolStatus.FAILED -> StoredRow.FAILED
-            ChatTranscript.ToolStatus.CANCELLED -> StoredRow.CANCELLED
-            else -> null
-        }
+        private fun stored(status: ChatTranscript.ToolStatus): String? =
+            when (status) {
+                ChatTranscript.ToolStatus.FAILED -> StoredRow.FAILED
+                ChatTranscript.ToolStatus.CANCELLED -> StoredRow.CANCELLED
+                else -> null
+            }
 
-        private fun toolStatus(saved: String?): ChatTranscript.ToolStatus = when (saved) {
-            StoredRow.FAILED -> ChatTranscript.ToolStatus.FAILED
-            StoredRow.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
-            else -> ChatTranscript.ToolStatus.DONE
-        }
+        private fun toolStatus(saved: String?): ChatTranscript.ToolStatus =
+            when (saved) {
+                StoredRow.FAILED -> ChatTranscript.ToolStatus.FAILED
+                StoredRow.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
+                else -> ChatTranscript.ToolStatus.DONE
+            }
 
         private fun showError(message: String) {
             rows += StoredRow(StoredRow.ERROR, text = message)
             transcript.addError(message)
         }
 
-        private fun render(index: Int, row: StoredRow) {
+        private fun render(
+            index: Int,
+            row: StoredRow,
+        ) {
             when (row.kind) {
                 StoredRow.HANDOFF -> row.handoff?.let { showHandoff(index, it, row.summary) }
                 StoredRow.USER -> transcript.addUserMessage(row.text)
                 StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
                 StoredRow.TOOL ->
                     transcript.addToolCall(
-                        row.requestId.orEmpty(), row.name, row.summary, row.details, toolStatus(row.status),
+                        row.requestId.orEmpty(),
+                        row.name,
+                        row.summary,
+                        row.details,
+                        toolStatus(row.status),
                     )
                 StoredRow.THINKING ->
                     transcript.addToolCall("", "thinking", row.summary, row.details, ChatTranscript.ToolStatus.DONE)
-                StoredRow.COST -> row.text.toBigDecimalOrNull()?.let {
-                    transcript.setTurnCost(
-                        TurnCostTracker.label(it),
-                        TurnCostTracker.tooltip(row.name, row.summary.toIntOrNull() ?: 1),
-                    )
-                }
+                StoredRow.COST ->
+                    row.text.toBigDecimalOrNull()?.let {
+                        transcript.setTurnCost(
+                            TurnCostTracker.label(it),
+                            TurnCostTracker.tooltip(row.name, row.summary.toIntOrNull() ?: 1),
+                        )
+                    }
                 else -> transcript.addError(row.text)
             }
         }
-
 
         private fun beginHandoff(definition: AgentDefinition) {
             if (!sendButton.isEnabled) {
@@ -748,24 +830,30 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             val handoff = AgentHandoff(definition.name, path.toString(), chatId)
             val index = rows.size
-            rows += StoredRow(
-                StoredRow.HANDOFF,
-                name = definition.name,
-                summary = definition.description,
-                text = AgentFiles.displayPath(project, path),
-                handoff = handoff,
-            )
+            rows +=
+                StoredRow(
+                    StoredRow.HANDOFF,
+                    name = definition.name,
+                    summary = definition.description,
+                    text = AgentFiles.displayPath(project, path),
+                    handoff = handoff,
+                )
             showHandoff(index, handoff, definition.description)
             AgentFiles.open(project, path)
             saveCurrentChat(active = true)
-            statusLabel.text = if (reply.isBlank()) {
-                "There was no closing reply to draft from, so the spec starts from @${definition.name}'s template."
-            } else {
-                "Edit the spec, then press Proceed to start @${definition.name}."
-            }
+            statusLabel.text =
+                if (reply.isBlank()) {
+                    "There was no closing reply to draft from, so the spec starts from @${definition.name}'s template."
+                } else {
+                    "Edit the spec, then press Proceed to start @${definition.name}."
+                }
         }
 
-        private fun showHandoff(index: Int, handoff: AgentHandoff, description: String) {
+        private fun showHandoff(
+            index: Int,
+            handoff: AgentHandoff,
+            description: String,
+        ) {
             val path = Path.of(handoff.specPath)
             transcript.addHandoff(
                 agentName = handoff.agentName,
@@ -775,7 +863,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 onOpenSpec = { openAgentFile(path) },
                 onProceed = { proceedWithHandoff(index) },
                 onCancel = { cancelHandoff(index) },
-                onOpenChat = { rows.getOrNull(index)?.handoff?.childChatId?.let { openChat(it) } },
+                onOpenChat = {
+                    rows
+                        .getOrNull(index)
+                        ?.handoff
+                        ?.childChatId
+                        ?.let { openChat(it) }
+                },
             )
         }
 
@@ -805,9 +899,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             val childId = ChatHistoryService.newChatId()
             val session = AgentSession(definition.name, chatId, handoff.specPath)
-            rows[index] = stored.copy(
-                handoff = handoff.copy(childChatId = childId, state = AgentHandoff.PROCEEDED),
-            )
+            rows[index] =
+                stored.copy(
+                    handoff = handoff.copy(childChatId = childId, state = AgentHandoff.PROCEEDED),
+                )
             saveCurrentChat(active = false)
             startAgentChat(childId, definition, session, spec, path)
             return true
@@ -868,7 +963,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             AgentFiles.open(project, path)
             statusLabel.text =
                 "Returned to the chat that started this agent — edit ${AgentFiles.displayPath(project, path)} " +
-                    "there before sending it."
+                "there before sending it."
             return true
         }
 
@@ -877,19 +972,24 @@ class ChatToolWindowFactory : ToolWindowFactory {
          * procedure is, so this says where to find it rather than repeating any of it, and it goes
          * ahead of the user's text so the model reads the skill before deciding anything.
          */
-        private fun invokedSkillBlocks(): List<PrependedBlock> = invokedSkills.map { skill ->
-            val path = SkillCatalog.displayPath(project, skill.file)
-            PrependedBlock(
-                marker = "🧭 `/${skill.name}`",
-                body = "The user invoked the skill \"${skill.name}\" for this message by typing " +
-                    "/${skill.name}. Its instructions are in `$path`: read that file first and " +
-                    "follow it for this request, rather than working from the description of it " +
-                    "you were given. If it turns out not to fit what is being asked, say so " +
-                    "instead of quietly ignoring it.",
-            )
-        }
+        private fun invokedSkillBlocks(): List<PrependedBlock> =
+            invokedSkills.map { skill ->
+                val path = SkillCatalog.displayPath(project, skill.file)
+                PrependedBlock(
+                    marker = "🧭 `/${skill.name}`",
+                    body =
+                        "The user invoked the skill \"${skill.name}\" for this message by typing " +
+                            "/${skill.name}. Its instructions are in `$path`: read that file first and " +
+                            "follow it for this request, rather than working from the description of it " +
+                            "you were given. If it turns out not to fit what is being asked, say so " +
+                            "instead of quietly ignoring it.",
+                )
+            }
 
-        private data class PrependedBlock(val marker: String, val body: String)
+        private data class PrependedBlock(
+            val marker: String,
+            val body: String,
+        )
 
         private fun returnedBlocks(): List<PrependedBlock> {
             val pending = agentReturns.returns()
@@ -905,10 +1005,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     unreadable += name
                     continue
                 }
-                blocks += PrependedBlock(
-                    marker = "📥 `@${returned.agentName} — $name`",
-                    body = "A summary returned by @${returned.agentName}, from the chat that ran it:\n\n$text",
-                )
+                blocks +=
+                    PrependedBlock(
+                        marker = "📥 `@${returned.agentName} — $name`",
+                        body = "A summary returned by @${returned.agentName}, from the chat that ran it:\n\n$text",
+                    )
             }
             if (unreadable.isNotEmpty()) {
                 showError("Nothing could be read from ${unreadable.joinToString(", ")}.")
@@ -920,27 +1021,31 @@ class ChatToolWindowFactory : ToolWindowFactory {
             if (!sendButton.isEnabled) return
             val text = input.text.trim()
             val attachments = chatAttachments.attachments()
-            val prepended = returnedBlocks() + invokedSkillBlocks() +
-                attachments.map { PrependedBlock("📎 `${it.summary}`", it.body) }
+            val prepended =
+                returnedBlocks() + invokedSkillBlocks() +
+                    attachments.map { PrependedBlock("📎 `${it.summary}`", it.body) }
             if (text.isEmpty() && prepended.isEmpty()) return
 
             val attached = prepended.joinToString("\n\n") { it.body }
-            val messageText = when {
-                prepended.isEmpty() -> text
-                text.isEmpty() -> attached
-                else -> "$attached\n\n$text"
-            }
+            val messageText =
+                when {
+                    prepended.isEmpty() -> text
+                    text.isEmpty() -> attached
+                    else -> "$attached\n\n$text"
+                }
 
-            val markers = if (prepended.size == 1) {
-                prepended.first().marker
-            } else {
-                prepended.joinToString("\n") { "- ${it.marker}" }
-            }
-            val displayText = when {
-                prepended.isEmpty() -> text
-                text.isEmpty() -> markers
-                else -> "$markers\n\n$text"
-            }
+            val markers =
+                if (prepended.size == 1) {
+                    prepended.first().marker
+                } else {
+                    prepended.joinToString("\n") { "- ${it.marker}" }
+                }
+            val displayText =
+                when {
+                    prepended.isEmpty() -> text
+                    text.isEmpty() -> markers
+                    else -> "$markers\n\n$text"
+                }
 
             val sizeBeforeTurn = history.size
             history.add(ChatMessage.text("user", messageText))
@@ -958,8 +1063,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
             transcript.clearRequestFailure()
             settleApprovals()
 
-            val configuration = AgentConfigurations.getInstance(project)
-                .resolve(providerBar.configurationName, providerBar.modelName)
+            val configuration =
+                AgentConfigurations
+                    .getInstance(project)
+                    .resolve(providerBar.configurationName, providerBar.modelName)
             val model = configuration.model
             val maxTokens = maxOf(configuration.maxTokens, raisedMaxTokens)
             val maxIterations = AICodingAgentSettingsState.getInstance().state.maxIterations
@@ -973,151 +1080,197 @@ class ChatToolWindowFactory : ToolWindowFactory {
             cancelled.set(false)
             beginTurnCost()
 
-            turn = ApplicationManager.getApplication().executeOnPooledThread {
-                val endpoint = AICodingAgentEndpoint.from(configuration)
-                if (endpoint.token.isBlank()) {
-                    ApplicationManager.getApplication().invokeLater {
-                        val dropped = history.drop(sizeBeforeTurn)
-                        rollbackHistoryTo(sizeBeforeTurn)
-                        setBusy(false)
-                        offerRetry(sizeBeforeTurn, dropped)
-                        ChatDialogs.promptForMissingApiKey(project, configuration)
+            turn =
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    val endpoint = AICodingAgentEndpoint.from(configuration)
+                    if (endpoint.token.isBlank()) {
+                        ApplicationManager.getApplication().invokeLater {
+                            val dropped = history.drop(sizeBeforeTurn)
+                            rollbackHistoryTo(sizeBeforeTurn)
+                            setBusy(false)
+                            offerRetry(sizeBeforeTurn, dropped)
+                            ChatDialogs.promptForMissingApiKey(project, configuration)
+                        }
+                        return@executeOnPooledThread
                     }
-                    return@executeOnPooledThread
-                }
 
-                try {
-                    val reasoning = ReasoningOptions.from(configuration)
-                    agent.run(endpoint, model, maxTokens, maxIterations, contextWindow, history, object : AICodingAgent.Listener {
-                        override fun onAssistantText(text: String) {
-                            if (text.isBlank()) return
-                            ApplicationManager.getApplication().invokeLater { showAssistantMessage(text) }
-                        }
-
-                        override fun onThinking(summary: String) {
-                            ApplicationManager.getApplication().invokeLater { showThinking(summary) }
-                        }
-
-                        override fun onUsage(usage: AICodingAgentUsage) {
-                            ApplicationManager.getApplication().invokeLater {
-                                addUsage(usage)
-                                addTurnCost(model, usage)
-                            }
-                        }
-
-                        override fun onCompacted(result: HistoryCompaction.Result) {
-                            ApplicationManager.getApplication().invokeLater { showCompaction(result) }
-                        }
-
-                        override fun onContext(usedTokens: Int, windowTokens: Int) {
-                            ApplicationManager.getApplication().invokeLater {
-                                setContext(usedTokens, windowTokens)
-                            }
-                        }
-
-                        override fun onToolStarted(
-                            call: AICodingAgent.ToolCallId,
-                            name: String,
-                            input: JsonObject,
-                            interruptible: Boolean,
-                        ) {
-                            ApplicationManager.getApplication().invokeLater {
-                                transcript.setCancellable(interruptible)
-                                startToolCall(
-                                    call.requestId, name,
-                                    ToolSummary.summarize(input), ToolSummary.details(input, ""),
-                                )
-                            }
-                        }
-
-                        override fun onToolCall(
-                            call: AICodingAgent.ToolCallId,
-                            name: String,
-                            input: JsonObject,
-                            result: String,
-                            outcome: AICodingAgent.ToolOutcome,
-                        ) {
-                            ApplicationManager.getApplication().invokeLater {
-                                transcript.setCancellable(true)
-                                val status = when (outcome) {
-                                    AICodingAgent.ToolOutcome.OK -> ChatTranscript.ToolStatus.DONE
-                                    AICodingAgent.ToolOutcome.FAILED -> ChatTranscript.ToolStatus.FAILED
-                                    AICodingAgent.ToolOutcome.CANCELLED -> ChatTranscript.ToolStatus.CANCELLED
-                                    AICodingAgent.ToolOutcome.TOO_LARGE -> ChatTranscript.ToolStatus.FAILED
+                    try {
+                        val reasoning = ReasoningOptions.from(configuration)
+                        agent.run(
+                            endpoint,
+                            model,
+                            maxTokens,
+                            maxIterations,
+                            contextWindow,
+                            history,
+                            object : AICodingAgent.Listener {
+                                override fun onAssistantText(text: String) {
+                                    if (text.isBlank()) return
+                                    ApplicationManager.getApplication().invokeLater {
+                                        showAssistantMessage(text)
+                                    }
                                 }
-                                val details = ToolSummary.details(input, result)
-                                val card = if (runningTool != null) {
-                                    finishToolCall(details, status)
-                                } else {
-                                    showToolCall(call.requestId, name, ToolSummary.summarize(input), details, status)
-                                }
-                                if (outcome == AICodingAgent.ToolOutcome.TOO_LARGE && card != null) {
-                                    withheldCards[call.toolUseId] = card
-                                }
-                            }
-                        }
 
-                        override fun onMaxTokens(limit: Int, suggested: Int): Int? {
-                            var next: Int? = null
-                            ApplicationManager.getApplication().invokeAndWait {
-                                next = askToContinue(limit, suggested)
-                            }
-                            return next
-                        }
-
-                        override fun onMaxIterations(used: Int): Boolean {
-                            if (cancelled.get()) return false
-                            var extend = false
-                            ApplicationManager.getApplication().invokeAndWait {
-                                extend = askToExtendIterations(used)
-                            }
-                            return extend
-                        }
-
-                        override fun onToolOutputTooLarge(
-                            name: String,
-                            toolUseId: String,
-                            output: String,
-                            tokens: Int,
-                            limit: Int,
-                        ) {
-                            ApplicationManager.getApplication().invokeLater {
-                                offerApproval(name, toolUseId, output, tokens, limit)
-                            }
-                        }
-                    }, isCancelled = cancelled::get, reasoning = reasoning, conversationId = conversationId,
-                        maxToolOutputTokens = maxToolOutputTokens, meter = contextMeter,
-                        agentPrompt = agentPrompt)
-                    ApplicationManager.getApplication().invokeLater { endTurn() }
-                } catch (e: Throwable) {
-                    log.warn("The turn failed", e)
-                    val message = if (cancelled.get()) null else e.message ?: "The request failed."
-                    ApplicationManager.getApplication().invokeLater {
-                        if (message != null) {
-                            runCatching {
-                                val dropped = if (history.size <= sizeBeforeTurn + 1) {
-                                    history.drop(sizeBeforeTurn).also { rollbackHistoryTo(sizeBeforeTurn) }
-                                } else {
-                                    emptyList()
+                                override fun onThinking(summary: String) {
+                                    ApplicationManager.getApplication().invokeLater {
+                                        showThinking(summary)
+                                    }
                                 }
-                                showError(
-                                    if (dropped.isEmpty()) "Sending the last round of tool results failed: $message"
-                                    else message,
-                                )
-                                offerRetry(sizeBeforeTurn, dropped)
-                            }.onFailure { log.warn("Could not report the failure in the transcript", it) }
+
+                                override fun onUsage(usage: AICodingAgentUsage) {
+                                    ApplicationManager.getApplication().invokeLater {
+                                        addUsage(usage)
+                                        addTurnCost(model, usage)
+                                    }
+                                }
+
+                                override fun onCompacted(result: HistoryCompaction.Result) {
+                                    ApplicationManager.getApplication().invokeLater {
+                                        showCompaction(result)
+                                    }
+                                }
+
+                                override fun onContext(
+                                    usedTokens: Int,
+                                    windowTokens: Int,
+                                ) {
+                                    ApplicationManager.getApplication().invokeLater {
+                                        setContext(usedTokens, windowTokens)
+                                    }
+                                }
+
+                                override fun onToolStarted(
+                                    call: AICodingAgent.ToolCallId,
+                                    name: String,
+                                    input: JsonObject,
+                                    interruptible: Boolean,
+                                ) {
+                                    ApplicationManager.getApplication().invokeLater {
+                                        transcript.setCancellable(interruptible)
+                                        startToolCall(
+                                            call.requestId,
+                                            name,
+                                            ToolSummary.summarize(input),
+                                            ToolSummary.details(input, ""),
+                                        )
+                                    }
+                                }
+
+                                override fun onToolCall(
+                                    call: AICodingAgent.ToolCallId,
+                                    name: String,
+                                    input: JsonObject,
+                                    result: String,
+                                    outcome: AICodingAgent.ToolOutcome,
+                                ) {
+                                    ApplicationManager.getApplication().invokeLater {
+                                        transcript.setCancellable(true)
+                                        val status =
+                                            when (outcome) {
+                                                AICodingAgent.ToolOutcome.OK -> ChatTranscript.ToolStatus.DONE
+                                                AICodingAgent.ToolOutcome.FAILED -> ChatTranscript.ToolStatus.FAILED
+                                                AICodingAgent.ToolOutcome.CANCELLED ->
+                                                    ChatTranscript.ToolStatus.CANCELLED
+                                                AICodingAgent.ToolOutcome.TOO_LARGE -> ChatTranscript.ToolStatus.FAILED
+                                            }
+                                        val details = ToolSummary.details(input, result)
+                                        val card =
+                                            if (runningTool != null) {
+                                                finishToolCall(details, status)
+                                            } else {
+                                                showToolCall(
+                                                    call.requestId,
+                                                    name,
+                                                    ToolSummary.summarize(input),
+                                                    details,
+                                                    status,
+                                                )
+                                            }
+                                        if (outcome == AICodingAgent.ToolOutcome.TOO_LARGE && card != null) {
+                                            withheldCards[call.toolUseId] = card
+                                        }
+                                    }
+                                }
+
+                                override fun onMaxTokens(
+                                    limit: Int,
+                                    suggested: Int,
+                                ): Int? {
+                                    var next: Int? = null
+                                    ApplicationManager.getApplication().invokeAndWait {
+                                        next = askToContinue(limit, suggested)
+                                    }
+                                    return next
+                                }
+
+                                override fun onMaxIterations(used: Int): Boolean {
+                                    if (cancelled.get()) return false
+                                    var extend = false
+                                    ApplicationManager.getApplication().invokeAndWait {
+                                        extend = askToExtendIterations(used)
+                                    }
+                                    return extend
+                                }
+
+                                override fun onToolOutputTooLarge(
+                                    name: String,
+                                    toolUseId: String,
+                                    output: String,
+                                    tokens: Int,
+                                    limit: Int,
+                                ) {
+                                    ApplicationManager.getApplication().invokeLater {
+                                        offerApproval(name, toolUseId, output, tokens, limit)
+                                    }
+                                }
+                            },
+                            isCancelled = cancelled::get,
+                            reasoning = reasoning,
+                            conversationId = conversationId,
+                            maxToolOutputTokens = maxToolOutputTokens,
+                            meter = contextMeter,
+                            agentPrompt = agentPrompt,
+                        )
+                        ApplicationManager.getApplication().invokeLater { endTurn() }
+                    } catch (e: Throwable) {
+                        log.warn("The turn failed", e)
+                        val message = if (cancelled.get()) null else e.message ?: "The request failed."
+                        ApplicationManager.getApplication().invokeLater {
+                            if (message != null) {
+                                runCatching {
+                                    val dropped =
+                                        if (history.size <= sizeBeforeTurn + 1) {
+                                            history.drop(sizeBeforeTurn).also { rollbackHistoryTo(sizeBeforeTurn) }
+                                        } else {
+                                            emptyList()
+                                        }
+                                    showError(
+                                        if (dropped.isEmpty()) {
+                                            "Sending the last round of tool results failed: $message"
+                                        } else {
+                                            message
+                                        },
+                                    )
+                                    offerRetry(sizeBeforeTurn, dropped)
+                                }.onFailure { log.warn("Could not report the failure in the transcript", it) }
+                            }
+                            endTurn()
                         }
-                        endTurn()
                     }
                 }
-            }
         }
 
-        private fun offerRetry(sizeBeforeTurn: Int, dropped: List<ChatMessage>) {
+        private fun offerRetry(
+            sizeBeforeTurn: Int,
+            dropped: List<ChatMessage>,
+        ) {
             transcript.markRequestFailed { retryTurn(sizeBeforeTurn, dropped) }
         }
 
-        private fun retryTurn(sizeBeforeTurn: Int, dropped: List<ChatMessage>) {
+        private fun retryTurn(
+            sizeBeforeTurn: Int,
+            dropped: List<ChatMessage>,
+        ) {
             if (!sendButton.isEnabled) return
 
             if (dropped.isNotEmpty() && history.size == sizeBeforeTurn) {
@@ -1137,7 +1290,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
             setBusy(false)
         }
 
-        private fun offerApproval(toolName: String, toolUseId: String, output: String, tokens: Int, limit: Int) {
+        private fun offerApproval(
+            toolName: String,
+            toolUseId: String,
+            output: String,
+            tokens: Int,
+            limit: Int,
+        ) {
             showError(
                 "Stopped: $toolName returned ${"%,d".format(tokens)} tokens, over the " +
                     "${"%,d".format(limit)}-token limit, so it was not sent to the model.",
@@ -1216,25 +1375,28 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun endTurn() {
             finishToolCall(rows.getOrNull(runningToolIndex)?.details.orEmpty(), ChatTranscript.ToolStatus.FAILED)
             turnCostTracker.take()?.let { snapshot ->
-                rows += StoredRow(
-                    StoredRow.COST,
-                    text = snapshot.cost.toPlainString(),
-                    name = snapshot.model,
-                    summary = snapshot.requests.toString(),
-                )
+                rows +=
+                    StoredRow(
+                        StoredRow.COST,
+                        text = snapshot.cost.toPlainString(),
+                        name = snapshot.model,
+                        summary = snapshot.requests.toString(),
+                    )
             }
             transcript.endAiTurn()
             setBusy(false)
             saveCurrentChat(active = true)
         }
 
-
         private fun beginTurnCost() {
             turnCostTracker.begin()
             transcript.setTurnCost(null)
         }
 
-        private fun addTurnCost(model: String, reported: AICodingAgentUsage) {
+        private fun addTurnCost(
+            model: String,
+            reported: AICodingAgentUsage,
+        ) {
             val total = turnCostTracker.add(model, reported) ?: return
             transcript.setTurnCost(
                 TurnCostTracker.label(total),
@@ -1242,27 +1404,39 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
         }
 
-
         private fun addUsage(reported: AICodingAgentUsage) = setUsage(usage + reported)
 
         private fun setUsage(total: SessionUsage) {
             usage = total
-            usageLabel.text = if (total.isEmpty) "" else buildString {
-                append("↑ ${formatTokens(total.totalInputTokens)}   ↓ ${formatTokens(total.outputTokens)}")
-                total.cacheHitRate?.let { append("   ⚡ ${(it * 100).roundToInt()}%") }
-            }
-            usageLabel.toolTipText = if (total.isEmpty) null else buildString {
-                append("<html>Tokens used in this chat, over ${total.requests} request(s):<br><br>")
-                append("Input, billed in full: ${"%,d".format(total.inputTokens)}<br>")
-                append("Written to the cache: ${"%,d".format(total.cacheWriteTokens)}<br>")
-                append("Read from the cache: ${"%,d".format(total.cacheReadTokens)}<br>")
-                append("Input in total: ${"%,d".format(total.totalInputTokens)}<br>")
-                append("Output: ${"%,d".format(total.outputTokens)}<br><br>")
-                append("A request that failed is not counted.</html>")
-            }
+            usageLabel.text =
+                if (total.isEmpty) {
+                    ""
+                } else {
+                    buildString {
+                        append("↑ ${formatTokens(total.totalInputTokens)}   ↓ ${formatTokens(total.outputTokens)}")
+                        total.cacheHitRate?.let { append("   ⚡ ${(it * 100).roundToInt()}%") }
+                    }
+                }
+            usageLabel.toolTipText =
+                if (total.isEmpty) {
+                    null
+                } else {
+                    buildString {
+                        append("<html>Tokens used in this chat, over ${total.requests} request(s):<br><br>")
+                        append("Input, billed in full: ${"%,d".format(total.inputTokens)}<br>")
+                        append("Written to the cache: ${"%,d".format(total.cacheWriteTokens)}<br>")
+                        append("Read from the cache: ${"%,d".format(total.cacheReadTokens)}<br>")
+                        append("Input in total: ${"%,d".format(total.totalInputTokens)}<br>")
+                        append("Output: ${"%,d".format(total.outputTokens)}<br><br>")
+                        append("A request that failed is not counted.</html>")
+                    }
+                }
         }
 
-        private fun setContext(used: Int, window: Int) {
+        private fun setContext(
+            used: Int,
+            window: Int,
+        ) {
             if (used <= 0) {
                 contextLabel.text = ""
                 contextLabel.toolTipText = null
@@ -1270,50 +1444,59 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
 
             val share = if (window > 0) used.toDouble() / window else null
-            contextLabel.text = buildString {
-                append("◱ ${formatTokens(used)}")
-                if (window > 0) append(" / ${formatTokens(window)}")
-                share?.let { append("  ${(it * 100).roundToInt()}%") }
-            }
-            contextLabel.foreground = when {
-                share == null -> ChatColors.muted
-                share >= CONTEXT_FULL -> ChatColors.error
-                share >= HistoryCompaction.COMPACT_ABOVE -> ChatColors.warning
-                else -> ChatColors.muted
-            }
-            contextLabel.toolTipText = buildString {
-                append("<html>Context in use: ${"%,d".format(used)} tokens")
-                if (window > 0) append(" of ${"%,d".format(window)}")
-                append(".<br><br>")
-                append("What the next request would send: the system prompt, the tool ")
-                append("descriptions and the whole conversation. Unlike the token counts beside ")
-                append("it, this is not a running total -- it falls when the history is ")
-                append("compacted.<br><br>")
-                if (contextMeter.anchor > 0) {
-                    append("Measured from what the provider counted for the last request, plus an ")
-                    append("estimate of what has been added since.")
-                } else {
-                    append("Estimated: no request has been counted for this conversation yet.")
+            contextLabel.text =
+                buildString {
+                    append("◱ ${formatTokens(used)}")
+                    if (window > 0) append(" / ${formatTokens(window)}")
+                    share?.let { append("  ${(it * 100).roundToInt()}%") }
                 }
-                if (window > 0) {
-                    val at = (HistoryCompaction.COMPACT_ABOVE * 100).roundToInt()
-                    append("<br><br>Older tool output starts being dropped above $at%.")
+            contextLabel.foreground =
+                when {
+                    share == null -> ChatColors.muted
+                    share >= CONTEXT_FULL -> ChatColors.error
+                    share >= HistoryCompaction.COMPACT_ABOVE -> ChatColors.warning
+                    else -> ChatColors.muted
                 }
-                append("</html>")
-            }
+            contextLabel.toolTipText =
+                buildString {
+                    append("<html>Context in use: ${"%,d".format(used)} tokens")
+                    if (window > 0) append(" of ${"%,d".format(window)}")
+                    append(".<br><br>")
+                    append("What the next request would send: the system prompt, the tool ")
+                    append("descriptions and the whole conversation. Unlike the token counts beside ")
+                    append("it, this is not a running total -- it falls when the history is ")
+                    append("compacted.<br><br>")
+                    if (contextMeter.anchor > 0) {
+                        append("Measured from what the provider counted for the last request, plus an ")
+                        append("estimate of what has been added since.")
+                    } else {
+                        append("Estimated: no request has been counted for this conversation yet.")
+                    }
+                    if (window > 0) {
+                        val at = (HistoryCompaction.COMPACT_ABOVE * 100).roundToInt()
+                        append("<br><br>Older tool output starts being dropped above $at%.")
+                    }
+                    append("</html>")
+                }
         }
 
-
-        private fun askToContinue(limit: Int, suggested: Int): Int? {
-            val next = if (suggested > limit) ChatDialogs.confirmContinue(project, limit, suggested)
-                       else ChatDialogs.askForMaxTokens(project, limit)
+        private fun askToContinue(
+            limit: Int,
+            suggested: Int,
+        ): Int? {
+            val next =
+                if (suggested > limit) {
+                    ChatDialogs.confirmContinue(project, limit, suggested)
+                } else {
+                    ChatDialogs.askForMaxTokens(project, limit)
+                }
             if (next != null) raisedMaxTokens = next
             showError(
                 when {
                     next == null -> "Response hit the max_tokens limit and is incomplete."
                     next != limit -> "Response hit the $limit-token limit — continuing at $next."
                     else -> "Response hit the max_tokens limit — continuing."
-                }
+                },
             )
             return next
         }
@@ -1321,19 +1504,25 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun askToExtendIterations(used: Int): Boolean {
             val extend = ChatDialogs.confirmExtendIterations(project, used)
             showError(
-                if (extend) "Tool-call limit reached — continuing."
-                else "Stopped after $used rounds of tool calls. The reply is incomplete."
+                if (extend) {
+                    "Tool-call limit reached — continuing."
+                } else {
+                    "Stopped after $used rounds of tool calls. The reply is incomplete."
+                },
             )
             return extend
         }
 
-
-        fun startSideChat(code: String, displayPath: String, extension: String, lineRange: String) {
+        fun startSideChat(
+            code: String,
+            displayPath: String,
+            extension: String,
+            lineRange: String,
+        ) {
             startNewChat()
             chatAttachments.startSideChat(code, displayPath, extension, lineRange)
             input.requestFocusInWindow()
         }
-
 
         private fun rollbackHistoryTo(size: Int) {
             while (history.size > size) history.removeAt(history.lastIndex)
@@ -1342,11 +1531,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private companion object {
             private const val CONTEXT_FULL = 0.85
 
-            fun formatTokens(count: Int): String = when {
-                count < 1_000 -> count.toString()
-                count < 1_000_000 -> "%.1fk".format(count / 1_000.0)
-                else -> "%.2fM".format(count / 1_000_000.0)
-            }
+            fun formatTokens(count: Int): String =
+                when {
+                    count < 1_000 -> count.toString()
+                    count < 1_000_000 -> "%.1fk".format(count / 1_000.0)
+                    else -> "%.2fM".format(count / 1_000_000.0)
+                }
         }
     }
 }

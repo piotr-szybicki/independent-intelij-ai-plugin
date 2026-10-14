@@ -5,26 +5,21 @@ import com.google.gson.JsonParser
 
 data class SummarizerConfig(
     val configurationName: String,
-
     val model: String,
-
     val maxTokens: Int,
-
     val minInputTokens: Int,
-
     val thinking: ThinkingMode,
-
     val prompt: String,
 ) {
-
-    fun toJson(): JsonObject = JsonObject().apply {
-        addProperty(CONFIGURATION, configurationName)
-        addProperty(MODEL, model)
-        addProperty(MAX_TOKENS, maxTokens)
-        addProperty(MIN_INPUT_TOKENS, minInputTokens)
-        addProperty(THINKING, thinking.fileName)
-        addProperty(PROMPT, prompt)
-    }
+    fun toJson(): JsonObject =
+        JsonObject().apply {
+            addProperty(CONFIGURATION, configurationName)
+            addProperty(MODEL, model)
+            addProperty(MAX_TOKENS, maxTokens)
+            addProperty(MIN_INPUT_TOKENS, minInputTokens)
+            addProperty(THINKING, thinking.fileName)
+            addProperty(PROMPT, prompt)
+        }
 
     fun describe(): String {
         val where = configurationName.takeIf { it.isNotBlank() } ?: "the provider this chat is on"
@@ -33,7 +28,6 @@ data class SummarizerConfig(
     }
 
     companion object {
-
         const val SECTION = "summarizer"
 
         private const val CONFIGURATION = "configuration"
@@ -49,23 +43,25 @@ data class SummarizerConfig(
 
         val DEFAULT_THINKING = ThinkingMode.OFF
 
-        val DEFAULT = SummarizerConfig(
-            configurationName = "",
-            model = "",
-            maxTokens = DEFAULT_MAX_TOKENS,
-            minInputTokens = DEFAULT_MIN_INPUT_TOKENS,
-            thinking = DEFAULT_THINKING,
-            prompt = "",
-        )
+        val DEFAULT =
+            SummarizerConfig(
+                configurationName = "",
+                model = "",
+                maxTokens = DEFAULT_MAX_TOKENS,
+                minInputTokens = DEFAULT_MIN_INPUT_TOKENS,
+                thinking = DEFAULT_THINKING,
+                prompt = "",
+            )
 
         fun parse(text: String): SummarizerConfig {
             if (text.isBlank()) return DEFAULT
 
-            val root = try {
-                JsonParser.parseString(text)
-            } catch (e: Exception) {
-                throw AgentConfigurationException("not valid JSON: ${e.message}")
-            }
+            val root =
+                try {
+                    JsonParser.parseString(text)
+                } catch (e: Exception) {
+                    throw AgentConfigurationException("not valid JSON: ${e.message}")
+                }
             if (root == null || root.isJsonNull || !root.isJsonObject) return DEFAULT
 
             val section = root.asJsonObject.get(SECTION) ?: return DEFAULT
@@ -102,10 +98,19 @@ data class SummarizerConfig(
                 )
         }
 
-        private fun JsonObject.int(field: String, fallback: Int, minimum: Int): Int {
+        private fun JsonObject.int(
+            field: String,
+            fallback: Int,
+            minimum: Int,
+        ): Int {
             val element = get(field) ?: return fallback
-            val value = element.takeIf { it.isJsonPrimitive }?.asString?.trim()?.toIntOrNull()
-                ?: throw AgentConfigurationException("\"$SECTION\".$field must be a whole number")
+            val value =
+                element
+                    .takeIf { it.isJsonPrimitive }
+                    ?.asString
+                    ?.trim()
+                    ?.toIntOrNull()
+                    ?: throw AgentConfigurationException("\"$SECTION\".$field must be a whole number")
             if (value < minimum) {
                 throw AgentConfigurationException("\"$SECTION\".$field must be at least $minimum")
             }

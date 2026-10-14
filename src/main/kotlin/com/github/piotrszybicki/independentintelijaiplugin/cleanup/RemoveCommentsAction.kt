@@ -17,7 +17,6 @@ import com.intellij.openapi.vfs.VirtualFile
  * change, and offers to count without touching anything.
  */
 class RemoveCommentsAction : AnAction() {
-
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
@@ -52,12 +51,13 @@ class RemoveCommentsAction : AnAction() {
         SweepRunner.launch(project, title, sweep) { report -> notifyResult(project, report, what, dryRun) }
     }
 
-    private fun describe(choice: CommentChoice): String = when (choice) {
-        CommentChoice.JAVADOC -> "Javadoc comments"
-        CommentChoice.EMPTY_JAVADOC -> "empty Javadoc comments"
-        CommentChoice.LINE -> "line comments"
-        CommentChoice.JAVADOC_AND_LINE -> "comments"
-    }
+    private fun describe(choice: CommentChoice): String =
+        when (choice) {
+            CommentChoice.JAVADOC -> "Javadoc comments"
+            CommentChoice.EMPTY_JAVADOC -> "empty Javadoc comments"
+            CommentChoice.LINE -> "line comments"
+            CommentChoice.JAVADOC_AND_LINE -> "comments"
+        }
 
     private fun notifyResult(
         project: Project,
@@ -99,8 +99,11 @@ class RemoveCommentsAction : AnAction() {
 
 /** Where a sweep runs: the selection when the dialog offered it and the user took it, else the project. */
 internal object SweepScope {
-
-    fun roots(project: Project, selection: List<VirtualFile>, useSelection: Boolean): List<VirtualFile> =
+    fun roots(
+        project: Project,
+        selection: List<VirtualFile>,
+        useSelection: Boolean,
+    ): List<VirtualFile> =
         if (useSelection && selection.isNotEmpty()) {
             selection
         } else {

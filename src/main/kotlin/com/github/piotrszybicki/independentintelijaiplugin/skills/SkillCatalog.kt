@@ -1,15 +1,22 @@
 package com.github.piotrszybicki.independentintelijaiplugin.skills
 
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import java.io.File
 
 object SkillCatalog {
+    data class RootStatus(
+        val configured: String,
+        val resolved: String,
+        val skillCount: Int,
+        val error: String?,
+    )
 
-    data class RootStatus(val configured: String, val resolved: String, val skillCount: Int, val error: String?)
-
-    data class Scan(val skills: List<SkillDefinition>, val statuses: List<RootStatus>)
+    data class Scan(
+        val skills: List<SkillDefinition>,
+        val statuses: List<RootStatus>,
+    )
 
     private const val MAX_SKILLS = 200
 
@@ -63,9 +70,10 @@ object SkillCatalog {
     private fun skillFilesIn(directory: File): List<File> {
         val children = directory.listFiles()?.sortedBy { it.name.lowercase() }.orEmpty()
         val own = children.filter { it.isFile && it.name.equals(SKILL_FILE, ignoreCase = true) }
-        val nested = children.filter { it.isDirectory && !it.isHidden }.mapNotNull { child ->
-            child.listFiles()?.firstOrNull { it.isFile && it.name.equals(SKILL_FILE, ignoreCase = true) }
-        }
+        val nested =
+            children.filter { it.isDirectory && !it.isHidden }.mapNotNull { child ->
+                child.listFiles()?.firstOrNull { it.isFile && it.name.equals(SKILL_FILE, ignoreCase = true) }
+            }
         return own + nested
     }
 
@@ -85,12 +93,16 @@ object SkillCatalog {
      * nothing outside it is described to the model. An empty set means no skills at all, which is
      * where every chat starts.
      */
-    fun describe(project: Project, active: Set<String>): String {
+    fun describe(
+        project: Project,
+        active: Set<String>,
+    ): String {
         if (active.isEmpty()) return ""
-        val allSkills = runCatching { scan(project).skills }.getOrElse {
-            LOG.info("Could not scan for skills: ${it.message}")
-            return ""
-        }
+        val allSkills =
+            runCatching { scan(project).skills }.getOrElse {
+                LOG.info("Could not scan for skills: ${it.message}")
+                return ""
+            }
         val skills = allSkills.filter { it.name in active }
         if (skills.isEmpty()) return ""
 
@@ -117,9 +129,15 @@ object SkillCatalog {
     }
 
     /** How a skill's file is named to the model: project-relative where it can be, absolute otherwise. */
-    fun displayPath(project: Project, file: File): String = displayPath(project.basePath?.let(::File), file)
+    fun displayPath(
+        project: Project,
+        file: File,
+    ): String = displayPath(project.basePath?.let(::File), file)
 
-    private fun displayPath(base: File?, file: File): String {
+    private fun displayPath(
+        base: File?,
+        file: File,
+    ): String {
         if (base == null) return file.path
         val root = runCatching { base.canonicalFile }.getOrDefault(base.absoluteFile)
         val prefix = root.path + File.separator

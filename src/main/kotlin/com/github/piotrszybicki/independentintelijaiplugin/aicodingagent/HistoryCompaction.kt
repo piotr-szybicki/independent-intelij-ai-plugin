@@ -5,7 +5,6 @@ import com.google.gson.JsonObject
 import java.util.Locale
 
 object HistoryCompaction {
-
     internal const val COMPACT_ABOVE = 0.60
 
     private const val COMPACT_DOWN_TO = 0.40
@@ -19,13 +18,15 @@ object HistoryCompaction {
     private const val ELIDED_PREFIX = "[older tool output removed"
     private const val MIN_SUMMARISABLE_MESSAGES = 4
 
-    const val SUMMARY_PREFIX = "[The earlier part of this conversation was removed to save context. " +
-        "What follows is a summary of it, not a transcript -- treat it as a report of what happened, " +
-        "and re-read anything you need the exact contents of.]"
+    const val SUMMARY_PREFIX =
+        "[The earlier part of this conversation was removed to save context. " +
+            "What follows is a summary of it, not a transcript -- treat it as a report of what happened, " +
+            "and re-read anything you need the exact contents of.]"
 
     private const val SUMMARY_ACK = "Understood. I will continue from that summary and the messages after it."
 
-    val SUMMARY_REQUEST: String = """
+    val SUMMARY_REQUEST: String =
+        """
         Summarise this conversation so it can replace the messages above and be worked from directly.
         You are writing for yourself: everything not in the summary is gone from your context.
 
@@ -39,12 +40,11 @@ object HistoryCompaction {
 
         Do not reproduce file contents, command output or diffs -- describe them. Do not address the
         user, open with a preamble, or call any tool: reply with the summary and nothing else.
-    """.trimIndent()
+        """.trimIndent()
 
     fun interface Summarizer {
         fun summarize(messages: List<ChatMessage>): String?
     }
-
 
     data class Result(
         val evicted: Int,
@@ -92,18 +92,24 @@ object HistoryCompaction {
         return Result(evicted, before, tokensIn(chars, tokensPerChar), summarized)
     }
 
-    private fun tokensIn(chars: Int, tokensPerChar: Double): Int =
-        (chars.coerceAtLeast(0) * tokensPerChar).toInt()
+    private fun tokensIn(
+        chars: Int,
+        tokensPerChar: Double,
+    ): Int = (chars.coerceAtLeast(0) * tokensPerChar).toInt()
 
-    private fun summarize(history: MutableList<ChatMessage>, summarizer: Summarizer): Int {
+    private fun summarize(
+        history: MutableList<ChatMessage>,
+        summarizer: Summarizer,
+    ): Int {
         val cut = summaryBoundary(history)
         if (cut <= 0) return 0
 
-        val summary = runCatching { summarizer.summarize(history.subList(0, cut).toList()) }
-            .getOrNull()
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
-            ?: return 0
+        val summary =
+            runCatching { summarizer.summarize(history.subList(0, cut).toList()) }
+                .getOrNull()
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return 0
 
         history.subList(0, cut).clear()
         history.add(0, ChatMessage.text("assistant", SUMMARY_ACK))
@@ -113,10 +119,15 @@ object HistoryCompaction {
 
     fun estimateTokens(messages: List<ChatMessage>): Int = charsOf(messages) / CHARS_PER_TOKEN
 
-    fun overheadTokens(system: String?, tools: List<ToolDefinition>): Int =
-        overheadChars(system, tools) / CHARS_PER_TOKEN
+    fun overheadTokens(
+        system: String?,
+        tools: List<ToolDefinition>,
+    ): Int = overheadChars(system, tools) / CHARS_PER_TOKEN
 
-    fun overheadChars(system: String?, tools: List<ToolDefinition>): Int {
+    fun overheadChars(
+        system: String?,
+        tools: List<ToolDefinition>,
+    ): Int {
         var chars = system?.length ?: 0
         for (tool in tools) {
             chars += tool.name.length + tool.description.length + tool.input_schema.toString().length
@@ -140,9 +151,16 @@ object HistoryCompaction {
         }
     }
 
-    private class Elision(val message: ChatMessage, val savedChars: Int, val count: Int)
+    private class Elision(
+        val message: ChatMessage,
+        val savedChars: Int,
+        val count: Int,
+    )
 
-    private fun elide(message: ChatMessage, previous: ChatMessage?): Elision? {
+    private fun elide(
+        message: ChatMessage,
+        previous: ChatMessage?,
+    ): Elision? {
         var saved = 0
         var count = 0
         val copy = JsonArray()
@@ -165,11 +183,13 @@ object HistoryCompaction {
 
             val id = obj.get("tool_use_id")?.asString.orEmpty()
             val stub = stubFor(original, toolNameOf(previous, id))
-            copy.add(JsonObject().apply {
-                addProperty("type", "tool_result")
-                addProperty("tool_use_id", id)
-                addProperty("content", stub)
-            })
+            val replacement =
+                JsonObject().apply {
+                    addProperty("type", "tool_result")
+                    addProperty("tool_use_id", id)
+                    addProperty("content", stub)
+                }
+            copy.add(replacement)
             saved += original.length - stub.length
             count++
         }
@@ -177,13 +197,21 @@ object HistoryCompaction {
         return if (count == 0) null else Elision(ChatMessage(message.role, copy), saved, count)
     }
 
-    private fun stubFor(original: String, toolName: String): String {
+    private fun stubFor(
+        original: String,
+        toolName: String,
+    ): String {
         val kb = original.toByteArray(Charsets.UTF_8).size / 1024.0
-        return "$ELIDED_PREFIX to save context: %.1f kB from %s. The call ran; its output is no longer part of this conversation.]"
-            .format(Locale.ROOT, kb, toolName)
+        return (
+            "$ELIDED_PREFIX to save context: %.1f kB from %s. " +
+                "The call ran; its output is no longer part of this conversation.]"
+        ).format(Locale.ROOT, kb, toolName)
     }
 
-    private fun toolNameOf(assistantMessage: ChatMessage?, id: String): String {
+    private fun toolNameOf(
+        assistantMessage: ChatMessage?,
+        id: String,
+    ): String {
         if (assistantMessage == null || assistantMessage.role != "assistant" || id.isEmpty()) return "a tool"
         for (block in assistantMessage.content) {
             if (!block.isJsonObject) continue

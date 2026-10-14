@@ -5,7 +5,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ContextMeterTest {
-
     companion object {
         private const val MESSAGE_CHARS = 1_000
     }
@@ -153,5 +152,8 @@ class ContextMeterTest {
     private fun historyOf(messages: Int): List<ChatMessage> =
         (0 until messages).map { message(if (it % 2 == 0) "user" else "assistant", "m".repeat(MESSAGE_CHARS)) }
 
-    private fun message(role: String, text: String): ChatMessage = ChatMessage.text(role, text)
+    private fun message(
+        role: String,
+        text: String,
+    ): ChatMessage = ChatMessage.text(role, text)
 }

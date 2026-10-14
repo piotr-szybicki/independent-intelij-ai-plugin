@@ -27,7 +27,6 @@ import javax.swing.text.StyleConstants
 import javax.swing.text.html.StyleSheet
 
 internal object ChatColors {
-
     val background: Color get() = UIUtil.getPanelBackground()
     val foreground: Color get() = UIUtil.getLabelForeground()
     val muted: Color get() = UIUtil.getContextHelpForeground()
@@ -53,8 +52,15 @@ internal object ChatColors {
 
     val codeBackground: Color get() = mix(background, foreground, 0.07)
 
-    fun mix(base: Color, tint: Color, tintRatio: Double): Color {
-        fun channel(a: Int, b: Int) = (a * (1 - tintRatio) + b * tintRatio).toInt().coerceIn(0, 255)
+    fun mix(
+        base: Color,
+        tint: Color,
+        tintRatio: Double,
+    ): Color {
+        fun channel(
+            a: Int,
+            b: Int,
+        ) = (a * (1 - tintRatio) + b * tintRatio).toInt().coerceIn(0, 255)
         return Color(channel(base.red, tint.red), channel(base.green, tint.green), channel(base.blue, tint.blue))
     }
 
@@ -76,7 +82,6 @@ internal open class RoundedPanel(
     private val stroke: () -> Color? = { null },
     private val strokeWidth: () -> Float = { 1f },
 ) : JPanel(layout) {
-
     init {
         isOpaque = false
     }
@@ -97,8 +102,13 @@ internal open class RoundedPanel(
                 val inset = pen / 2f
                 g2.draw(
                     RoundRectangle2D.Float(
-                        inset, inset, width - pen, height - pen, arcSize.toFloat(), arcSize.toFloat(),
-                    )
+                        inset,
+                        inset,
+                        width - pen,
+                        height - pen,
+                        arcSize.toFloat(),
+                        arcSize.toFloat(),
+                    ),
                 )
             }
         } finally {
@@ -108,13 +118,13 @@ internal open class RoundedPanel(
 }
 
 internal fun chatCodeFontName(): String {
-    val colors = ApplicationManager.getApplication()?.getServiceIfCreated(EditorColorsManager::class.java)
-        ?: return Font.MONOSPACED
+    val colors =
+        ApplicationManager.getApplication()?.getServiceIfCreated(EditorColorsManager::class.java)
+            ?: return Font.MONOSPACED
     return colors.globalScheme.editorFontName
 }
 
 internal class HtmlTextPane : JEditorPane("text/html", "") {
-
     private var fixedWidth = -1
 
     init {
@@ -141,7 +151,7 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
         sheet.addRule("code { font-family: $codeFont; background-color: $codeBackground; }")
         sheet.addRule(
             "pre { font-family: $codeFont; background-color: $codeBackground; " +
-                "margin: ${JBUI.scale(6)}px 0; padding: ${JBUI.scale(7)}px; }"
+                "margin: ${JBUI.scale(6)}px 0; padding: ${JBUI.scale(7)}px; }",
         )
         sheet.addRule("table { margin: ${JBUI.scale(6)}px 0; }")
         sheet.addRule("td, th { padding: ${JBUI.scale(2)}px ${JBUI.scale(6)}px; }")
@@ -168,14 +178,20 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
         return if (fixedWidth > 0) Dimension(fixedWidth, preferred.height) else preferred
     }
 
-    override fun getMinimumSize(): Dimension = if (fixedWidth > 0) Dimension(0, preferredSize.height) else super.getMinimumSize()
+    override fun getMinimumSize(): Dimension =
+        if (fixedWidth >
+            0
+        ) {
+            Dimension(0, preferredSize.height)
+        } else {
+            super.getMinimumSize()
+        }
 }
 
 internal class ChatInputPane(
     private val placeholder: String,
     private val visibleRows: Int = 3,
 ) : JTextPane() {
-
     private data class FencedBlock(
         val fenceStart: Int,
         val contentStart: Int,
@@ -183,21 +199,27 @@ internal class ChatInputPane(
         val fenceEnd: Int,
     )
 
-    private val bodyStyle: Style = addStyle("chat-input-body", null).apply {
-        StyleConstants.setFontFamily(this, JBFont.label().family)
-        StyleConstants.setFontSize(this, JBFont.label().size)
-        StyleConstants.setForeground(this, ChatColors.foreground)
-    }
+    private val bodyStyle: Style =
+        addStyle("chat-input-body", null).apply {
+            StyleConstants.setFontFamily(this, JBFont.label().family)
+            StyleConstants.setFontSize(this, JBFont.label().size)
+            StyleConstants.setForeground(this, ChatColors.foreground)
+        }
 
-    private val codeStyle: Style = addStyle("chat-input-code", bodyStyle).apply {
-        StyleConstants.setFontFamily(this, chatCodeFontName())
-        StyleConstants.setBackground(this, ChatColors.codeBackground)
-    }
+    private val codeStyle: Style =
+        addStyle("chat-input-code", bodyStyle).apply {
+            StyleConstants.setFontFamily(this, chatCodeFontName())
+            StyleConstants.setBackground(this, ChatColors.codeBackground)
+        }
 
-    private val fenceStyle: Style = addStyle("chat-input-fence", bodyStyle).apply {
-        StyleConstants.setForeground(this, ChatColors.mix(UIUtil.getTextFieldBackground(), ChatColors.foreground, 0.22))
-        StyleConstants.setFontSize(this, maxOf(10, JBFont.small().size - 1))
-    }
+    private val fenceStyle: Style =
+        addStyle("chat-input-fence", bodyStyle).apply {
+            StyleConstants.setForeground(
+                this,
+                ChatColors.mix(UIUtil.getTextFieldBackground(), ChatColors.foreground, 0.22),
+            )
+            StyleConstants.setFontSize(this, maxOf(10, JBFont.small().size - 1))
+        }
 
     private var restyling = false
 
@@ -206,11 +228,15 @@ internal class ChatInputPane(
         background = UIUtil.getTextFieldBackground()
         foreground = ChatColors.foreground
         font = JBFont.label()
-        document.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent) = scheduleRestyle()
-            override fun removeUpdate(e: DocumentEvent) = scheduleRestyle()
-            override fun changedUpdate(e: DocumentEvent) = scheduleRestyle()
-        })
+        document.addDocumentListener(
+            object : DocumentListener {
+                override fun insertUpdate(e: DocumentEvent) = scheduleRestyle()
+
+                override fun removeUpdate(e: DocumentEvent) = scheduleRestyle()
+
+                override fun changedUpdate(e: DocumentEvent) = scheduleRestyle()
+            },
+        )
     }
 
     private fun scheduleRestyle() {
@@ -228,15 +254,18 @@ internal class ChatInputPane(
     private fun restyle() {
         val styled = styledDocument
         val text = styled.getText(0, styled.length)
-        val blocks = FENCED_BLOCK.findAll(text).map { match ->
-            val content = match.groups[1]!!.range
-            FencedBlock(
-                fenceStart = match.range.first,
-                contentStart = content.first,
-                contentEnd = content.last + 1,
-                fenceEnd = match.range.last + 1,
-            )
-        }.toList()
+        val blocks =
+            FENCED_BLOCK
+                .findAll(text)
+                .map { match ->
+                    val content = match.groups[1]!!.range
+                    FencedBlock(
+                        fenceStart = match.range.first,
+                        contentStart = content.first,
+                        contentEnd = content.last + 1,
+                        fenceEnd = match.range.last + 1,
+                    )
+                }.toList()
 
         styled.setCharacterAttributes(0, styled.length, bodyStyle, true)
         blocks.forEach { block ->
@@ -261,8 +290,9 @@ internal class ChatInputPane(
         val preferred = super.getPreferredSize()
         val textFont = font ?: return preferred
         val textMargin = margin ?: return preferred
-        val rows = visibleRows * getFontMetrics(textFont).height +
-            insets.top + insets.bottom + textMargin.top + textMargin.bottom
+        val rows =
+            visibleRows * getFontMetrics(textFont).height +
+                insets.top + insets.bottom + textMargin.top + textMargin.bottom
         return Dimension(preferred.width, maxOf(preferred.height, rows))
     }
 

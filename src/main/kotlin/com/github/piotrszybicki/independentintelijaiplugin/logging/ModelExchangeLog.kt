@@ -15,20 +15,21 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.atomic.AtomicLong
 
 object ModelExchangeLog {
-
     val root: Path =
         PathManager.getLogDir().resolve("independent-ai-plugin").resolve("exchanges")
 
     private val fallback = Logger.getInstance(ModelExchangeLog::class.java)
 
-    private val gson = GsonBuilder()
-        .disableHtmlEscaping()
-        .setPrettyPrinting()
-        .create()
+    private val gson =
+        GsonBuilder()
+            .disableHtmlEscaping()
+            .setPrettyPrinting()
+            .create()
 
-    private val idStamp = DateTimeFormatter
-        .ofPattern("yyyyMMdd-HHmmss-SSS")
-        .withZone(ZoneId.systemDefault())
+    private val idStamp =
+        DateTimeFormatter
+            .ofPattern("yyyyMMdd-HHmmss-SSS")
+            .withZone(ZoneId.systemDefault())
 
     private val sequence = AtomicLong()
 
@@ -39,25 +40,41 @@ object ModelExchangeLog {
 
     fun newRequestId(): String = "${idStamp.format(Instant.now())}-${"%05d".format(sequence.incrementAndGet())}"
 
-    fun recordRequest(conversationId: String, requestId: String, body: String) {
+    fun recordRequest(
+        conversationId: String,
+        requestId: String,
+        body: String,
+    ) {
         write(conversationId, requestId, REQUEST_FILE) { parsed(body) }
     }
 
-    fun recordResponse(conversationId: String, requestId: String, body: String) {
+    fun recordResponse(
+        conversationId: String,
+        requestId: String,
+        body: String,
+    ) {
         write(conversationId, requestId, RESPONSE_FILE) { parsed(body) }
     }
 
-    fun recordFailure(conversationId: String, requestId: String, error: String) {
+    fun recordFailure(
+        conversationId: String,
+        requestId: String,
+        error: String,
+    ) {
         write(conversationId, requestId, RESPONSE_FILE) {
             JsonObject().apply { addProperty("error", error) }
         }
     }
 
-
     private const val REQUEST_FILE = "request.json"
     private const val RESPONSE_FILE = "response.json"
 
-    private fun write(conversationId: String, requestId: String, name: String, document: () -> JsonElement) {
+    private fun write(
+        conversationId: String,
+        requestId: String,
+        name: String,
+        document: () -> JsonElement,
+    ) {
         if (broken) return
         runCatching {
             val directory = root.resolve(segment(conversationId, UNASSIGNED)).resolve(segment(requestId, "request"))
@@ -71,10 +88,16 @@ object ModelExchangeLog {
         }
     }
 
-    private fun segment(value: String, fallbackName: String): String {
-        val cleaned = value.trim().map { if (it.isLetterOrDigit() || it == '-' || it == '_') it else '_' }
-            .joinToString("")
-            .take(120)
+    private fun segment(
+        value: String,
+        fallbackName: String,
+    ): String {
+        val cleaned =
+            value
+                .trim()
+                .map { if (it.isLetterOrDigit() || it == '-' || it == '_') it else '_' }
+                .joinToString("")
+                .take(120)
         return cleaned.ifEmpty { fallbackName }
     }
 

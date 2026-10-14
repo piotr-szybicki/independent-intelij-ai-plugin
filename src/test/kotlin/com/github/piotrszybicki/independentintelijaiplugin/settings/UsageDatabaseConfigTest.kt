@@ -7,17 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UsageDatabaseConfigTest {
-
     private val url = "jdbc:mysql://localhost:3306/ai_usage?user=root&password=\${env:MYSQL_PASSWORD}"
 
-    private fun file(section: String) = """
+    private fun file(section: String) =
+        """
         {
           "usage-database": $section,
           "configurations": [
             {"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t"}
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `reads the url and the switch`() {

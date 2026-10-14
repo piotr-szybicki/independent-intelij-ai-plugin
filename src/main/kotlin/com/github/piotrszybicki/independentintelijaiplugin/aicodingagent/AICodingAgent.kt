@@ -10,35 +10,61 @@ class AICodingAgent(
     private val environment: () -> String = { "" },
     private val skills: () -> String = { "" },
 ) {
-
     enum class ToolOutcome { OK, FAILED, CANCELLED, TOO_LARGE }
 
-    data class ToolCallId(val requestId: String, val toolUseId: String)
+    data class ToolCallId(
+        val requestId: String,
+        val toolUseId: String,
+    )
 
     interface Listener {
         fun onAssistantText(text: String)
 
         fun onThinking(summary: String) {}
 
-        fun onToolCall(call: ToolCallId, name: String, input: JsonObject, result: String, outcome: ToolOutcome)
+        fun onToolCall(
+            call: ToolCallId,
+            name: String,
+            input: JsonObject,
+            result: String,
+            outcome: ToolOutcome,
+        )
 
-        fun onToolStarted(call: ToolCallId, name: String, input: JsonObject, interruptible: Boolean) {}
+        fun onToolStarted(
+            call: ToolCallId,
+            name: String,
+            input: JsonObject,
+            interruptible: Boolean,
+        ) {}
 
         fun onUsage(usage: AICodingAgentUsage) {}
 
-        fun onMaxTokens(limit: Int, suggested: Int): Int?
+        fun onMaxTokens(
+            limit: Int,
+            suggested: Int,
+        ): Int?
 
         fun onMaxIterations(used: Int): Boolean = false
 
-        fun onToolOutputTooLarge(name: String, toolUseId: String, output: String, tokens: Int, limit: Int) {}
+        fun onToolOutputTooLarge(
+            name: String,
+            toolUseId: String,
+            output: String,
+            tokens: Int,
+            limit: Int,
+        ) {}
 
         fun onCompacted(result: HistoryCompaction.Result) {}
 
-        fun onContext(usedTokens: Int, windowTokens: Int) {}
+        fun onContext(
+            usedTokens: Int,
+            windowTokens: Int,
+        ) {}
     }
 
     companion object {
-        private val SYSTEM_PROMPT = """
+        private val SYSTEM_PROMPT =
+            """
             You are a coding assistant inside InteliJ IDE.
 
             Do the work in the turn you announce it in. If you say you are about to read, edit, run
@@ -54,7 +80,7 @@ class AICodingAgent(
             shows it is small, or when what you need is code the outline does not name.
 
             Use summary tool each time you want to run a build a longer output. 
-        """.trimIndent()
+            """.trimIndent()
 
         const val MAX_TOKENS_CEILING = 12_000
 
@@ -64,7 +90,10 @@ class AICodingAgent(
 
         private const val ABANDONED_RESULT = "This tool never ran: the turn ended with an error before it started."
 
-        private fun withheldResult(tokens: Int, limit: Int): String =
+        private fun withheldResult(
+            tokens: Int,
+            limit: Int,
+        ): String =
             "This tool ran, but its output was not sent: it came to $tokens tokens, over the " +
                 "$limit-token limit on a single tool result. The user has seen the output in the " +
                 "IDE; you have not. Ask for less of it next time -- a narrower path, a line range, " +
@@ -89,7 +118,11 @@ class AICodingAgent(
     private fun systemPrompt(agentPrompt: String): String {
         val parts = mutableListOf(basePrompt)
         agentPrompt.trim().takeIf { it.isNotEmpty() }?.let { parts.add(it) }
-        runCatching { skills() }.getOrDefault("").trim().takeIf { it.isNotEmpty() }?.let { parts.add(it) }
+        runCatching { skills() }
+            .getOrDefault("")
+            .trim()
+            .takeIf { it.isNotEmpty() }
+            ?.let { parts.add(it) }
         return parts.joinToString("\n\n")
     }
 
@@ -131,14 +164,27 @@ class AICodingAgent(
                     budget += maxIterations
                 }
                 used++
-                val summarizer = HistoryCompaction.Summarizer { messages ->
-                    if (isCancelled()) null
-                    else summarize(
-                        endpoint, model, messages, toolDefinitions, system, reasoning, listener, conversationId,
-                    )
-                }
-                HistoryCompaction.compact(history, contextWindowTokens, overheadChars, meter.tokensPerChar, summarizer)
-                    .takeIf { !it.isEmpty }?.let {
+                val summarizer =
+                    HistoryCompaction.Summarizer { messages ->
+                        if (isCancelled()) {
+                            null
+                        } else {
+                            summarize(
+                                endpoint,
+                                model,
+                                messages,
+                                toolDefinitions,
+                                system,
+                                reasoning,
+                                listener,
+                                conversationId,
+                            )
+                        }
+                    }
+                HistoryCompaction
+                    .compact(history, contextWindowTokens, overheadChars, meter.tokensPerChar, summarizer)
+                    .takeIf { !it.isEmpty }
+                    ?.let {
                         log.info(
                             "Compacted the conversation: dropped ${it.evicted} tool result(s), " +
                                 "summarised ${it.summarizedMessages} message(s), " +
@@ -152,9 +198,17 @@ class AICodingAgent(
                 if (isCancelled()) return
                 val sentMessages = history.size
                 val sentChars = HistoryCompaction.charsOf(history) + overheadChars
-                val turn = AICodingAgentClient.sendMessage(
-                    endpoint, model, tokenCap, history, toolDefinitions, system, reasoning, conversationId,
-                )
+                val turn =
+                    AICodingAgentClient.sendMessage(
+                        endpoint,
+                        model,
+                        tokenCap,
+                        history,
+                        toolDefinitions,
+                        system,
+                        reasoning,
+                        conversationId,
+                    )
                 turn.usage?.let(listener::onUsage)
                 val truncated = turn.stopReason == "max_tokens"
                 val content = if (truncated) withoutTrailingToolUse(turn.content) else turn.content
@@ -176,11 +230,13 @@ class AICodingAgent(
                     val obj = block.asJsonObject
                     when (obj.get("type")?.asString) {
                         "text" -> listener.onAssistantText(obj.get("text")?.asString.orEmpty())
-                        "thinking" -> obj.get("thinking")
-                            ?.takeIf { it.isJsonPrimitive }
-                            ?.asString
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let(listener::onThinking)
+                        "thinking" ->
+                            obj
+                                .get("thinking")
+                                ?.takeIf { it.isJsonPrimitive }
+                                ?.asString
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let(listener::onThinking)
                     }
                 }
 
@@ -188,12 +244,15 @@ class AICodingAgent(
                 if (toolUseBlocks.isEmpty()) {
                     if (!truncated) return
                     val suggested =
-                        if (tokenCap >= MAX_TOKENS_CEILING) tokenCap
-                        else (tokenCap * 2).coerceAtMost(MAX_TOKENS_CEILING)
+                        if (tokenCap >= MAX_TOKENS_CEILING) {
+                            tokenCap
+                        } else {
+                            (tokenCap * 2).coerceAtMost(MAX_TOKENS_CEILING)
+                        }
                     val next = listener.onMaxTokens(tokenCap, suggested)?.takeIf { it > 0 } ?: return
                     tokenCap = next
                     history.add(
-                        ChatMessage.text("user", if (droppedToolUse) RETRY_TOOL_CALL_PROMPT else CONTINUE_PROMPT)
+                        ChatMessage.text("user", if (droppedToolUse) RETRY_TOOL_CALL_PROMPT else CONTINUE_PROMPT),
                     )
                     continue
                 }
@@ -209,25 +268,27 @@ class AICodingAgent(
 
                     val startedAt = System.currentTimeMillis()
                     var outcome = ToolOutcome.OK
-                    val resultText = if (isCancelled()) {
-                        outcome = ToolOutcome.CANCELLED
-                        CANCELLED_RESULT
-                    } else {
-                        listener.onToolStarted(call, toolName, input, toolsByName[toolName]?.interruptible ?: true)
-                        runCatching {
-                            val tool = toolsByName[toolName] ?: throw AICodingAgentApiException("Unknown tool: $toolName")
-                            tool.execute(input)
-                        }.getOrElse { e ->
-                            log.info("Tool '$toolName' failed: ${e.message}")
-                            if (isCancelled()) {
-                                outcome = ToolOutcome.CANCELLED
-                                CANCELLED_RESULT
-                            } else {
-                                outcome = ToolOutcome.FAILED
-                                "Error: ${e.message}"
+                    val resultText =
+                        if (isCancelled()) {
+                            outcome = ToolOutcome.CANCELLED
+                            CANCELLED_RESULT
+                        } else {
+                            listener.onToolStarted(call, toolName, input, toolsByName[toolName]?.interruptible ?: true)
+                            runCatching {
+                                val tool =
+                                    toolsByName[toolName] ?: throw AICodingAgentApiException("Unknown tool: $toolName")
+                                tool.execute(input)
+                            }.getOrElse { e ->
+                                log.info("Tool '$toolName' failed: ${e.message}")
+                                if (isCancelled()) {
+                                    outcome = ToolOutcome.CANCELLED
+                                    CANCELLED_RESULT
+                                } else {
+                                    outcome = ToolOutcome.FAILED
+                                    "Error: ${e.message}"
+                                }
                             }
                         }
-                    }
                     val elapsed = System.currentTimeMillis() - startedAt
 
                     val resultTokens = TokenCounter.count(resultText)
@@ -258,18 +319,20 @@ class AICodingAgent(
                         durationMillis = elapsed,
                     )
 
-                    toolResults.add(JsonObject().apply {
-                        addProperty("type", "tool_result")
-                        addProperty("tool_use_id", toolUseId)
-                        addProperty(
-                            "content",
-                            if (outcome == ToolOutcome.TOO_LARGE) {
-                                withheldResult(resultTokens, maxToolOutputTokens)
-                            } else {
-                                resultText
-                            },
-                        )
-                    })
+                    toolResults.add(
+                        JsonObject().apply {
+                            addProperty("type", "tool_result")
+                            addProperty("tool_use_id", toolUseId)
+                            addProperty(
+                                "content",
+                                if (outcome == ToolOutcome.TOO_LARGE) {
+                                    withheldResult(resultTokens, maxToolOutputTokens)
+                                } else {
+                                    resultText
+                                },
+                            )
+                        },
+                    )
                 }
 
                 history.add(ChatMessage("user", toolResults))
@@ -285,7 +348,13 @@ class AICodingAgent(
             answerDanglingToolUse(history)
         }
     }
-    private class Overrun(val name: String, val toolUseId: String, val output: String, val tokens: Int)
+
+    private class Overrun(
+        val name: String,
+        val toolUseId: String,
+        val output: String,
+        val tokens: Int,
+    )
 
     private fun summarize(
         endpoint: AICodingAgentEndpoint,
@@ -299,39 +368,59 @@ class AICodingAgent(
     ): String? {
         log.info("Summarising ${messages.size} message(s) to make room in the context window")
         val request = messages + ChatMessage.text("user", HistoryCompaction.SUMMARY_REQUEST)
-        val turn = try {
-            AICodingAgentClient.sendMessage(
-                endpoint, model, SUMMARY_MAX_TOKENS, request, tools, system, reasoning, conversationId,
-            )
-        } catch (e: Exception) {
-            log.info("Summarising the conversation failed, leaving the history as it is: ${e.message}")
-            return null
-        }
+        val turn =
+            try {
+                AICodingAgentClient.sendMessage(
+                    endpoint,
+                    model,
+                    SUMMARY_MAX_TOKENS,
+                    request,
+                    tools,
+                    system,
+                    reasoning,
+                    conversationId,
+                )
+            } catch (e: Exception) {
+                log.info("Summarising the conversation failed, leaving the history as it is: ${e.message}")
+                return null
+            }
         turn.usage?.let(listener::onUsage)
 
         return turn.content
             .filter { it.isJsonObject && it.asJsonObject.get("type")?.asString == "text" }
-            .joinToString("\n") { it.asJsonObject.get("text")?.asString.orEmpty() }
-            .takeIf { it.isNotBlank() }
+            .joinToString("\n") {
+                it.asJsonObject
+                    .get("text")
+                    ?.asString
+                    .orEmpty()
+            }.takeIf { it.isNotBlank() }
     }
-
 
     private fun answerDanglingToolUse(history: MutableList<ChatMessage>) {
         val last = history.lastOrNull() ?: return
         if (last.role != "assistant") return
 
-        val unanswered = last.content.filter {
-            it.isJsonObject && it.asJsonObject.get("type")?.asString == "tool_use"
-        }
+        val unanswered =
+            last.content.filter {
+                it.isJsonObject && it.asJsonObject.get("type")?.asString == "tool_use"
+            }
         if (unanswered.isEmpty()) return
 
         val results = JsonArray()
         for (block in unanswered) {
-            results.add(JsonObject().apply {
-                addProperty("type", "tool_result")
-                addProperty("tool_use_id", block.asJsonObject.get("id")?.asString.orEmpty())
-                addProperty("content", ABANDONED_RESULT)
-            })
+            results.add(
+                JsonObject().apply {
+                    addProperty("type", "tool_result")
+                    addProperty(
+                        "tool_use_id",
+                        block.asJsonObject
+                            .get("id")
+                            ?.asString
+                            .orEmpty(),
+                    )
+                    addProperty("content", ABANDONED_RESULT)
+                },
+            )
         }
         log.info("Answering ${results.size()} tool call(s) left dangling by a turn that did not finish")
         history.add(ChatMessage("user", results))

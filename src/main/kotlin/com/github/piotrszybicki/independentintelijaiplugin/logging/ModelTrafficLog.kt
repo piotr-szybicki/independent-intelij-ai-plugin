@@ -13,7 +13,6 @@ import java.util.logging.Level
 import java.util.logging.LogRecord
 
 object ModelTrafficLog {
-
     private const val SIZE_LIMIT = 20 * 1024 * 1024
     private const val FILE_COUNT = 5
 
@@ -24,9 +23,10 @@ object ModelTrafficLog {
 
     private val fallback = Logger.getInstance(ModelTrafficLog::class.java)
 
-    private val fileLogger: java.util.logging.Logger? = runCatching { openFileLogger() }
-        .onFailure { fallback.warn("Could not open $currentFile; model traffic stays in idea.log", it) }
-        .getOrNull()
+    private val fileLogger: java.util.logging.Logger? =
+        runCatching { openFileLogger() }
+            .onFailure { fallback.warn("Could not open $currentFile; model traffic stays in idea.log", it) }
+            .getOrNull()
 
     fun info(message: String) {
         val logger = fileLogger
@@ -36,10 +36,11 @@ object ModelTrafficLog {
     private fun openFileLogger(): java.util.logging.Logger {
         Files.createDirectories(pattern.parent)
 
-        val handler = FileHandler(pattern.toString(), SIZE_LIMIT, FILE_COUNT, true).apply {
-            formatter = TrafficFormatter()
-            level = Level.INFO
-        }
+        val handler =
+            FileHandler(pattern.toString(), SIZE_LIMIT, FILE_COUNT, true).apply {
+                formatter = TrafficFormatter()
+                level = Level.INFO
+            }
 
         return java.util.logging.Logger.getLogger("independent-ai-plugin.traffic").apply {
             useParentHandlers = false
@@ -51,10 +52,10 @@ object ModelTrafficLog {
     }
 
     private class TrafficFormatter : Formatter() {
-
-        private val timestamp = DateTimeFormatter
-            .ofPattern("yyyy-MM-dd HH:mm:ss,SSS")
-            .withZone(ZoneId.systemDefault())
+        private val timestamp =
+            DateTimeFormatter
+                .ofPattern("yyyy-MM-dd HH:mm:ss,SSS")
+                .withZone(ZoneId.systemDefault())
 
         override fun format(record: LogRecord): String {
             val thrown = record.thrown?.stackTraceToString()?.let { "\n$it" } ?: ""

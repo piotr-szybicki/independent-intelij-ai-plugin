@@ -4,7 +4,6 @@ import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 
 object MarkdownRenderer {
-
     private val parser: Parser = Parser.builder().build()
 
     private val renderer: HtmlRenderer = HtmlRenderer.builder().escapeHtml(true).build()

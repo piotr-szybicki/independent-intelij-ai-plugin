@@ -6,7 +6,6 @@ import com.knuddels.jtokkit.api.Encoding
 import com.knuddels.jtokkit.api.EncodingType
 
 object TokenCounter {
-
     private val log = Logger.getInstance(TokenCounter::class.java)
 
     private const val CHARS_PER_TOKEN = 4

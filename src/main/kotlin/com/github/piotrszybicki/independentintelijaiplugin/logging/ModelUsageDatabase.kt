@@ -1,6 +1,5 @@
 package com.github.piotrszybicki.independentintelijaiplugin.logging
 
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
@@ -18,7 +17,6 @@ import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 
 object ModelUsageDatabase {
-
     private val fallback = Logger.getInstance(ModelUsageDatabase::class.java)
 
     const val TABLE = "model_requests"
@@ -40,7 +38,6 @@ object ModelUsageDatabase {
     private var nextAttemptAt = 0L
 
     private var dropped = 0
-
 
     fun recordRequest(
         conversationId: String,
@@ -188,7 +185,6 @@ object ModelUsageDatabase {
         )
     }
 
-
     fun recordToolCall(
         conversationId: String,
         requestId: String,
@@ -252,8 +248,10 @@ object ModelUsageDatabase {
                 "\n\n[... truncated: ${result.length - MAX_RESULT_CHARS} more characters were not recorded]"
         }
 
-
-    private fun submit(sql: String, bind: PreparedStatement.(Timestamp) -> Unit) {
+    private fun submit(
+        sql: String,
+        bind: PreparedStatement.(Timestamp) -> Unit,
+    ) {
         val target = configuredUrl()
         if (target.isEmpty()) return
         val startedAt = Timestamp.from(Instant.now())
@@ -261,7 +259,12 @@ object ModelUsageDatabase {
     }
 
     @Synchronized
-    private fun runWrite(target: String, sql: String, startedAt: Timestamp, bind: PreparedStatement.(Timestamp) -> Unit) {
+    private fun runWrite(
+        target: String,
+        sql: String,
+        startedAt: Timestamp,
+        bind: PreparedStatement.(Timestamp) -> Unit,
+    ) {
         if (System.currentTimeMillis() < nextAttemptAt) {
             dropped++
             return
@@ -270,25 +273,31 @@ object ModelUsageDatabase {
             .recoverCatching {
                 closeQuietly()
                 execute(target, sql, startedAt, bind)
-            }
-            .onSuccess {
+            }.onSuccess {
                 if (dropped > 0) {
                     fallback.info("Usage logging recovered; $dropped row(s) were dropped while $target was unreachable")
                     dropped = 0
                 }
                 nextAttemptAt = 0
-            }
-            .onFailure {
+            }.onFailure {
                 closeQuietly()
                 if (nextAttemptAt == 0L) {
-                    fallback.warn("Could not write usage rows to $target; retrying in ${RETRY_INTERVAL_MILLIS / 1000}s", it)
+                    fallback.warn(
+                        "Could not write usage rows to $target; retrying in ${RETRY_INTERVAL_MILLIS / 1000}s",
+                        it,
+                    )
                 }
                 nextAttemptAt = System.currentTimeMillis() + RETRY_INTERVAL_MILLIS
                 dropped++
             }
     }
 
-    private fun execute(target: String, sql: String, startedAt: Timestamp, bind: PreparedStatement.(Timestamp) -> Unit) {
+    private fun execute(
+        target: String,
+        sql: String,
+        startedAt: Timestamp,
+        bind: PreparedStatement.(Timestamp) -> Unit,
+    ) {
         val handle = connect(target)
         handle.prepareStatement(sql).use {
             it.bind(startedAt)
@@ -315,8 +324,10 @@ object ModelUsageDatabase {
         if (parsed.database.isNotEmpty()) {
             open(parsed.serverUrl).use { server ->
                 server.createStatement().use {
-                    it.execute("CREATE DATABASE IF NOT EXISTS `${parsed.database}` " +
-                        "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+                    it.execute(
+                        "CREATE DATABASE IF NOT EXISTS `${parsed.database}` " +
+                            "DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+                    )
                 }
             }
         }
@@ -333,9 +344,10 @@ object ModelUsageDatabase {
         return opened
     }
 
-    private val ADDED_COLUMNS = listOf(
-        "cost_usd" to "cost_usd DECIMAL(12,6) NULL AFTER cache_hit_rate",
-    )
+    private val ADDED_COLUMNS =
+        listOf(
+            "cost_usd" to "cost_usd DECIMAL(12,6) NULL AFTER cache_hit_rate",
+        )
 
     private fun addMissingColumns(handle: Connection) {
         for ((name, definition) in ADDED_COLUMNS) {
@@ -345,9 +357,13 @@ object ModelUsageDatabase {
         }
     }
 
-    private fun hasColumn(handle: Connection, column: String): Boolean {
-        val sql = "SELECT 1 FROM information_schema.COLUMNS " +
-            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+    private fun hasColumn(
+        handle: Connection,
+        column: String,
+    ): Boolean {
+        val sql =
+            "SELECT 1 FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
         return handle.prepareStatement(sql).use { statement ->
             statement.setString(1, TABLE)
             statement.setString(2, column)
@@ -367,17 +383,18 @@ object ModelUsageDatabase {
         connectedTo = ""
     }
 
-    private fun configuredUrl(): String = runCatching {
-        val project = ProjectManager.getInstance().openProjects.firstOrNull() ?: return@runCatching ""
-        val loaded = AgentConfigurations.getInstance(project).usageDatabase()
-        loaded.error?.let { return@runCatching complain(it) }
-        if (!loaded.database.isActive) return@runCatching ""
-        try {
-            JdbcUrl.prepare(loaded.database.url, TIMEOUTS)
-        } catch (e: Exception) {
-            complain("the usage database URL cannot be used: ${e.message}")
-        }
-    }.getOrDefault("")
+    private fun configuredUrl(): String =
+        runCatching {
+            val project = ProjectManager.getInstance().openProjects.firstOrNull() ?: return@runCatching ""
+            val loaded = AgentConfigurations.getInstance(project).usageDatabase()
+            loaded.error?.let { return@runCatching complain(it) }
+            if (!loaded.database.isActive) return@runCatching ""
+            try {
+                JdbcUrl.prepare(loaded.database.url, TIMEOUTS)
+            } catch (e: Exception) {
+                complain("the usage database URL cannot be used: ${e.message}")
+            }
+        }.getOrDefault("")
 
     private fun complain(reason: String): String {
         if (badUrlWarned != reason) {
@@ -390,16 +407,22 @@ object ModelUsageDatabase {
     @Volatile
     private var badUrlWarned = ""
 
-    private fun PreparedStatement.setDoubleOrNull(index: Int, value: Double?) {
+    private fun PreparedStatement.setDoubleOrNull(
+        index: Int,
+        value: Double?,
+    ) {
         if (value == null) setNull(index, Types.DOUBLE) else setDouble(index, value)
     }
 
-    private fun PreparedStatement.setDecimalOrNull(index: Int, value: BigDecimal?) {
+    private fun PreparedStatement.setDecimalOrNull(
+        index: Int,
+        value: BigDecimal?,
+    ) {
         if (value == null) setNull(index, Types.DECIMAL) else setBigDecimal(index, value)
     }
 
-
-    private val SCHEMA = """
+    private val SCHEMA =
+        """
         CREATE TABLE IF NOT EXISTS $TABLE (
             request_id         VARCHAR(64)  NOT NULL,
             conversation_id    VARCHAR(191) NOT NULL,
@@ -424,9 +447,10 @@ object ModelUsageDatabase {
             KEY ${TABLE}_conversation (conversation_id, started_at),
             KEY ${TABLE}_started_at (started_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    """.trimIndent()
+        """.trimIndent()
 
-    private val TOOL_SCHEMA = """
+    private val TOOL_SCHEMA =
+        """
         CREATE TABLE IF NOT EXISTS $TOOL_TABLE (
             id              BIGINT       NOT NULL AUTO_INCREMENT,
             request_id      VARCHAR(64)  NOT NULL,
@@ -448,12 +472,11 @@ object ModelUsageDatabase {
             CONSTRAINT ${TOOL_TABLE}_request
                 FOREIGN KEY (request_id) REFERENCES $TABLE (request_id) ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-    """.trimIndent()
+        """.trimIndent()
 
     private fun asJson(body: String): String =
         runCatching { JsonParser.parseString(body) }.getOrNull()?.takeIf { !it.isJsonNull }?.toString()
             ?: JsonPrimitive(body).toString()
-
 
     fun test(url: String): String {
         val target = runCatching { JdbcUrl.prepare(url, TIMEOUTS) }.getOrElse { return "Bad URL: ${it.message}" }
@@ -463,16 +486,18 @@ object ModelUsageDatabase {
             openWithSchema(target).use { handle ->
                 val server = handle.metaData.databaseProductVersion
                 val database = handle.catalog ?: JdbcUrl.parse(target).database
-                val (rows, spent) = handle.createStatement().use { statement ->
-                    statement.executeQuery("SELECT COUNT(*), COALESCE(SUM(cost_usd), 0) FROM $TABLE").use {
-                        if (it.next()) it.getLong(1) to it.getBigDecimal(2) else 0L to BigDecimal.ZERO
+                val (rows, spent) =
+                    handle.createStatement().use { statement ->
+                        statement.executeQuery("SELECT COUNT(*), COALESCE(SUM(cost_usd), 0) FROM $TABLE").use {
+                            if (it.next()) it.getLong(1) to it.getBigDecimal(2) else 0L to BigDecimal.ZERO
+                        }
                     }
-                }
-                val toolCalls = handle.createStatement().use { statement ->
-                    statement.executeQuery("SELECT COUNT(*) FROM $TOOL_TABLE").use {
-                        if (it.next()) it.getLong(1) else 0L
+                val toolCalls =
+                    handle.createStatement().use { statement ->
+                        statement.executeQuery("SELECT COUNT(*) FROM $TOOL_TABLE").use {
+                            if (it.next()) it.getLong(1) else 0L
+                        }
                     }
-                }
                 resetBackoff()
                 "Connected to MySQL $server.\n" +
                     "Database `$database`, table `$TABLE` holds $rows row(s), " +

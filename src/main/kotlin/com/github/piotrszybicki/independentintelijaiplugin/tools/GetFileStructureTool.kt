@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonObject
 import com.intellij.ide.structureView.StructureViewTreeElement
 import com.intellij.ide.structureView.TreeBasedStructureViewBuilder
@@ -11,10 +12,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
-
+class GetFileStructureTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_MAX_DEPTH = 3
         private const val MAX_MAX_DEPTH = 10
@@ -32,45 +33,71 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             "read_project_file and edit_file_lines directly. Pass 'path' for a project file, or " +
             "'class_name' for a library or JDK class, whose lines feed read_library_class. For " +
             "one known symbol, use get_symbol_info."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("path", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "File path relative to the project root, e.g. src/Main.kt. Give this or 'class_name'.",
-                )
-            })
-            add("class_name", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "Class from a library, framework or the JDK, simple or fully qualified. Use " +
-                        "instead of 'path' for anything outside the project.",
-                )
-            })
-            add("max_depth", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "How far to descend: 1 for top-level declarations only, 2 to include their " +
-                        "members. Defaults to $DEFAULT_MAX_DEPTH, maximum $MAX_MAX_DEPTH.",
-                )
-            })
-            add("max_items", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "Stop after this many entries. Defaults to $DEFAULT_MAX_ITEMS, maximum $MAX_MAX_ITEMS.",
-                )
-            })
-        })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "path",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "File path relative to the project root, e.g. src/Main.kt. Give this or 'class_name'.",
+                            )
+                        },
+                    )
+                    add(
+                        "class_name",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Class from a library, framework or the JDK, simple or fully qualified. Use " +
+                                    "instead of 'path' for anything outside the project.",
+                            )
+                        },
+                    )
+                    add(
+                        "max_depth",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "How far to descend: 1 for top-level declarations only, 2 to include their " +
+                                    "members. Defaults to $DEFAULT_MAX_DEPTH, maximum $MAX_MAX_DEPTH.",
+                            )
+                        },
+                    )
+                    add(
+                        "max_items",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "Stop after this many entries. Defaults to $DEFAULT_MAX_ITEMS, maximum $MAX_MAX_ITEMS.",
+                            )
+                        },
+                    )
+                },
+            )
+        }
 
     override fun execute(input: JsonObject): String {
-        val path = input.get("path")?.asString?.trim()?.takeIf { it.isNotEmpty() }
-        val className = input.get("class_name")?.asString?.trim()?.takeIf { it.isNotEmpty() }
+        val path =
+            input
+                .get("path")
+                ?.asString
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        val className =
+            input
+                .get("class_name")
+                ?.asString
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
 
         if (path == null && className == null) return "Error: give either 'path' or 'class_name'"
         if (path != null && className != null) {
@@ -81,18 +108,20 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         val maxItems = (input.get("max_items")?.asInt ?: DEFAULT_MAX_ITEMS).coerceIn(1, MAX_MAX_ITEMS)
 
         val source = if (path != null) fromPath(path) else fromClassName(className!!)
-        val target = when (source) {
-            is Source.Error -> return source.message
-            is Source.Resolved -> source
-        }
+        val target =
+            when (source) {
+                is Source.Error -> return source.message
+                is Source.Resolved -> source
+            }
 
-        val outline = try {
-            compute(target.file, maxDepth, maxItems)
-        } catch (e: ProcessCanceledException) {
-            return "Error: outlining ${target.label} was cancelled before it finished."
-        } catch (e: Exception) {
-            return "Error: could not outline ${target.label}: ${describe(e)}"
-        } ?: return "Error: could not read ${target.label}."
+        val outline =
+            try {
+                compute(target.file, maxDepth, maxItems)
+            } catch (e: ProcessCanceledException) {
+                return "Error: outlining ${target.label} was cancelled before it finished."
+            } catch (e: Exception) {
+                return "Error: could not outline ${target.label}: ${describe(e)}"
+            } ?: return "Error: could not read ${target.label}."
 
         if (!outline.supported) {
             return "No structure available for ${target.label} -- the IDE has no outline for this " +
@@ -112,16 +141,17 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             if (outline.truncated) append(" (truncated at $maxItems)")
             append(":\n")
             for (entry in outline.entries) {
-                val lineText = when {
-                    entry.startLine != null && entry.endLine != null -> {
-                        val start = "%${width}d".format(entry.startLine)
-                        val end = "%${width}d".format(entry.endLine)
-                        if (entry.startLine == entry.endLine) start else "$start-$end"
+                val lineText =
+                    when {
+                        entry.startLine != null && entry.endLine != null -> {
+                            val start = "%${width}d".format(entry.startLine)
+                            val end = "%${width}d".format(entry.endLine)
+                            if (entry.startLine == entry.endLine) start else "$start-$end"
+                        }
+                        entry.startLine != null -> "%${width}d".format(entry.startLine)
+                        entry.endLine != null -> "%${width}d".format(entry.endLine)
+                        else -> null
                     }
-                    entry.startLine != null -> "%${width}d".format(entry.startLine)
-                    entry.endLine != null -> "%${width}d".format(entry.endLine)
-                    else -> null
-                }
                 append(lineText?.padStart(columnWidth) ?: blankRange)
                 append("  ")
                 append("  ".repeat(entry.depth))
@@ -132,41 +162,52 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
     }
 
     private sealed class Source {
-        class Resolved(val file: PsiFile, val label: String) : Source()
-        class Error(val message: String) : Source()
+        class Resolved(
+            val file: PsiFile,
+            val label: String,
+        ) : Source()
+
+        class Error(
+            val message: String,
+        ) : Source()
     }
 
     private fun fromPath(path: String): Source {
-        val vf = PsiTargets.resolveProjectFile(project, path)
-            ?: return Source.Error(
-                "Error: path is outside the project directory or does not exist: $path. For a class " +
-                    "from a library or the JDK, use 'class_name' instead."
-            )
+        val vf =
+            PsiTargets.resolveProjectFile(project, path)
+                ?: return Source.Error(
+                    "Error: path is outside the project directory or does not exist: $path. For a class " +
+                        "from a library or the JDK, use 'class_name' instead.",
+                )
         if (vf.isDirectory) return Source.Error("Error: not a file: $path")
 
-        val psiFile = PsiTargets.resolvePsiFile(project, path)
-            ?: return Source.Error("Error: could not open $path as a source file.")
+        val psiFile =
+            PsiTargets.resolvePsiFile(project, path)
+                ?: return Source.Error("Error: could not open $path as a source file.")
         return Source.Resolved(psiFile, path)
     }
 
     private fun fromClassName(className: String): Source {
-        val resolution = try {
-            LibraryClasses.resolve(project, className, MAX_CANDIDATES)
-        } catch (e: Exception) {
-            return Source.Error("Error: could not look up \"$className\": ${e.message ?: e::class.java.simpleName}")
-        }
+        val resolution =
+            try {
+                LibraryClasses.resolve(project, className, MAX_CANDIDATES)
+            } catch (e: Exception) {
+                return Source.Error("Error: could not look up \"$className\": ${e.message ?: e::class.java.simpleName}")
+            }
 
         return when (resolution) {
-            is LibraryClasses.Resolution.NotFound -> Source.Error(
-                "No class named \"$className\" is visible to this project. Check the spelling, and " +
-                    "note this searches the project's own sources plus its libraries and SDK."
-            )
+            is LibraryClasses.Resolution.NotFound ->
+                Source.Error(
+                    "No class named \"$className\" is visible to this project. Check the spelling, and " +
+                        "note this searches the project's own sources plus its libraries and SDK.",
+                )
 
-            is LibraryClasses.Resolution.Ambiguous -> Source.Error(
-                "\"$className\" is ambiguous — ${resolution.candidates.size} classes match:\n" +
-                    resolution.candidates.joinToString("\n") { "  ${it.qualifiedName}" } +
-                    "\n\nCall again with the fully qualified name."
-            )
+            is LibraryClasses.Resolution.Ambiguous ->
+                Source.Error(
+                    "\"$className\" is ambiguous — ${resolution.candidates.size} classes match:\n" +
+                        resolution.candidates.joinToString("\n") { "  ${it.qualifiedName}" } +
+                        "\n\nCall again with the fully qualified name.",
+                )
 
             is LibraryClasses.Resolution.Found ->
                 Source.Resolved(resolution.candidate.file, resolution.candidate.qualifiedName)
@@ -187,17 +228,28 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         val supported: Boolean,
     )
 
-    private fun compute(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? =
-        ReadAction.computeBlocking<Outline?, RuntimeException> { build(psiFile, maxDepth, maxItems) }
+    private fun compute(
+        psiFile: PsiFile,
+        maxDepth: Int,
+        maxItems: Int,
+    ): Outline? = ReadAction.computeBlocking<Outline?, RuntimeException> { build(psiFile, maxDepth, maxItems) }
 
     private fun describe(e: Exception): String {
-        val message = e.message?.replace('\n', ' ')?.trim()?.takeIf { it.isNotEmpty() }
-            ?: return e::class.java.simpleName
+        val message =
+            e.message
+                ?.replace('\n', ' ')
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return e::class.java.simpleName
         val capped = if (message.length <= MAX_ERROR_CHARS) message else message.take(MAX_ERROR_CHARS) + "…"
         return "${e::class.java.simpleName}: $capped"
     }
 
-    private fun build(psiFile: PsiFile, maxDepth: Int, maxItems: Int): Outline? {
+    private fun build(
+        psiFile: PsiFile,
+        maxDepth: Int,
+        maxItems: Int,
+    ): Outline? {
         val text = psiFile.text ?: return null
         val lines = Lines(text)
 
@@ -247,7 +299,10 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         return false
     }
 
-    private fun lineRangeOf(element: TreeElement, lines: Lines): Pair<Int?, Int?>? {
+    private fun lineRangeOf(
+        element: TreeElement,
+        lines: Lines,
+    ): Pair<Int?, Int?>? {
         val psi = (element as? StructureViewTreeElement)?.value as? PsiElement ?: return null
         if (!psi.isValid) return null
         val range = psi.textRange ?: return null
@@ -257,7 +312,9 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
         return start to end
     }
 
-    private class Lines(text: String) {
+    private class Lines(
+        text: String,
+    ) {
         private val starts: IntArray
 
         val count: Int
@@ -280,5 +337,4 @@ class GetFileStructureTool(private val project: Project) : AICodingAgentTool {
             return index + 1
         }
     }
-
 }

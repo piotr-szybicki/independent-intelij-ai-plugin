@@ -8,7 +8,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HistoryCompactionTest {
-
     companion object {
         private const val RESULT_CHARS = 20_000
 
@@ -148,13 +147,16 @@ class HistoryCompactionTest {
         assertTrue(withTools > HistoryCompaction.overheadTokens("s".repeat(400), emptyList()))
     }
 
-
     @Test
     fun `does not summarise while eliding tool output is still enough`() {
         val history = historyOf(turns = 20)
         var asked = false
 
-        val result = HistoryCompaction.compact(history, WINDOW) { asked = true; "a summary" }
+        val result =
+            HistoryCompaction.compact(history, WINDOW) {
+                asked = true
+                "a summary"
+            }
 
         assertFalse("summarised when eliding would have done", asked)
         assertFalse(result.summarized)
@@ -244,10 +246,11 @@ class HistoryCompactionTest {
 
     @Test
     fun `declines to summarise a history too short to be worth it`() {
-        val history = mutableListOf(
-            ChatMessage.text("user", "x".repeat(RESULT_CHARS * 10)),
-            ChatMessage.text("assistant", "y".repeat(RESULT_CHARS * 10)),
-        )
+        val history =
+            mutableListOf(
+                ChatMessage.text("user", "x".repeat(RESULT_CHARS * 10)),
+                ChatMessage.text("assistant", "y".repeat(RESULT_CHARS * 10)),
+            )
         val before = history.toList()
 
         val result = HistoryCompaction.compact(history, WINDOW) { "the story so far" }
@@ -276,7 +279,6 @@ class HistoryCompactionTest {
         assertTrue(request.contains("do not reproduce file contents"))
     }
 
-
     private fun historyOf(turns: Int): MutableList<ChatMessage> {
         val history = mutableListOf(ChatMessage.text("user", "go"))
         for (i in 0 until turns) {
@@ -285,6 +287,7 @@ class HistoryCompactionTest {
         }
         return history
     }
+
     private fun proseHistoryOf(turns: Int): MutableList<ChatMessage> {
         val history = mutableListOf<ChatMessage>()
         for (i in 0 until turns) {
@@ -294,34 +297,55 @@ class HistoryCompactionTest {
         return history
     }
 
-    private fun textOf(message: ChatMessage): String = message.content[0].asJsonObject.get("text").asString
+    private fun textOf(message: ChatMessage): String =
+        message.content[0]
+            .asJsonObject
+            .get("text")
+            .asString
 
+    private fun toolUse(id: String): JsonArray =
+        JsonArray().apply {
+            add(
+                JsonObject().apply {
+                    addProperty("type", "tool_use")
+                    addProperty("id", id)
+                    addProperty("name", "read_project_file")
+                },
+            )
+        }
 
-    private fun toolUse(id: String): JsonArray = JsonArray().apply {
-        add(JsonObject().apply {
-            addProperty("type", "tool_use")
-            addProperty("id", id)
-            addProperty("name", "read_project_file")
-        })
-    }
+    private fun toolResult(
+        id: String,
+        body: String,
+    ): JsonArray =
+        JsonArray().apply {
+            add(
+                JsonObject().apply {
+                    addProperty("type", "tool_result")
+                    addProperty("tool_use_id", id)
+                    addProperty("content", body)
+                },
+            )
+        }
 
-    private fun toolResult(id: String, body: String): JsonArray = JsonArray().apply {
-        add(JsonObject().apply {
-            addProperty("type", "tool_result")
-            addProperty("tool_use_id", id)
-            addProperty("content", body)
-        })
-    }
+    private fun oldestResult(history: List<ChatMessage>): String =
+        contentOf(
+            history.first { message ->
+                message.content.any { it.asJsonObject.get("type")?.asString == "tool_result" }
+            },
+        )
 
-    private fun oldestResult(history: List<ChatMessage>): String = contentOf(
-        history.first { message ->
-            message.content.any { it.asJsonObject.get("type")?.asString == "tool_result" }
-        },
-    )
+    private fun contentOf(message: ChatMessage): String =
+        message.content[0]
+            .asJsonObject
+            .get("content")
+            .asString
 
-    private fun contentOf(message: ChatMessage): String = message.content[0].asJsonObject.get("content").asString
-
-    private fun idsOf(message: ChatMessage?, type: String, idField: String): Set<String> {
+    private fun idsOf(
+        message: ChatMessage?,
+        type: String,
+        idField: String,
+    ): Set<String> {
         if (message == null) return emptySet()
         val ids = linkedSetOf<String>()
         for (block in message.content) {

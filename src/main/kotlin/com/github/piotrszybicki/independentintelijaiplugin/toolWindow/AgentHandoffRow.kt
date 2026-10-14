@@ -19,43 +19,47 @@ internal class AgentHandoffRow(
     onCancel: () -> Unit,
     onOpenChat: () -> Unit,
 ) : ChatRow(BorderLayout()) {
-
     private val body = HtmlTextPane()
 
-    private val note = JBLabel().apply {
-        font = JBFont.small()
-        foreground = ChatColors.muted
-        toolTipText = "The whole of this file is what the agent is started with"
-    }
+    private val note =
+        JBLabel().apply {
+            font = JBFont.small()
+            foreground = ChatColors.muted
+            toolTipText = "The whole of this file is what the agent is started with"
+        }
 
     private val openSpec = CardButton("Open spec", "Edit the specification before handing it over", onOpenSpec)
 
-    private val proceed = CardButton(
-        "Proceed",
-        "Start @$agentName in a new chat with this specification",
-    ) { if (onProceed()) settle(AgentHandoff.PROCEEDED) }
+    private val proceed =
+        CardButton(
+            "Proceed",
+            "Start @$agentName in a new chat with this specification",
+        ) { if (onProceed()) settle(AgentHandoff.PROCEEDED) }
 
-    private val cancel = CardButton("Cancel", "Drop this hand-off and stay in this chat") {
-        onCancel()
-        settle(AgentHandoff.CANCELLED)
-    }
+    private val cancel =
+        CardButton("Cancel", "Drop this hand-off and stay in this chat") {
+            onCancel()
+            settle(AgentHandoff.CANCELLED)
+        }
 
     private val openChat = CardButton("Open agent chat", "Go to the chat @$agentName is running in", onOpenChat)
 
-    private val actions = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
-        isOpaque = false
-        add(openSpec.component)
-        add(proceed.component)
-        add(cancel.component)
-        add(openChat.component)
-    }
+    private val actions =
+        JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+            isOpaque = false
+            add(openSpec.component)
+            add(proceed.component)
+            add(cancel.component)
+            add(openChat.component)
+        }
 
-    private val stack = JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
-        isOpaque = false
-        add(body)
-        add(note)
-        add(actions)
-    }
+    private val stack =
+        JPanel(VerticalLayout(JBUI.scale(4), VerticalLayout.FILL)).apply {
+            isOpaque = false
+            add(body)
+            add(note)
+            add(actions)
+        }
 
     init {
         border = JBUI.Borders.emptyRight(ChatMetrics.bubbleIndent)
@@ -89,11 +93,12 @@ internal class AgentHandoffRow(
         proceed.isVisible = draft
         cancel.isVisible = draft
         openChat.isVisible = state == AgentHandoff.PROCEEDED
-        note.text = when (state) {
-            AgentHandoff.PROCEEDED -> "Handed off — $specName"
-            AgentHandoff.CANCELLED -> "Cancelled — $specName"
-            else -> "Spec: $specName — edit it, then press Proceed"
-        }
+        note.text =
+            when (state) {
+                AgentHandoff.PROCEEDED -> "Handed off — $specName"
+                AgentHandoff.CANCELLED -> "Cancelled — $specName"
+                else -> "Spec: $specName — edit it, then press Proceed"
+            }
         revalidate()
         repaint()
     }
@@ -102,6 +107,5 @@ internal class AgentHandoffRow(
         body.applyWidth(width - ChatMetrics.bubbleIndent - 2 * ChatMetrics.bubblePadding)
     }
 
-    private fun escape(text: String): String =
-        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    private fun escape(text: String): String = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 }

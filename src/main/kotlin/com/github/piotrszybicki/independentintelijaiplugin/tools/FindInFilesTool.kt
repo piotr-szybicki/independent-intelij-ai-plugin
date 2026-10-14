@@ -1,5 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
+import com.github.piotrszybicki.independentintelijaiplugin.settings.FindInFilesConfig
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.find.FindModel
@@ -14,12 +17,10 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.usageView.UsageInfo
 import com.intellij.usages.UsageViewPresentation
 import com.intellij.util.Processor
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
-import com.github.piotrszybicki.independentintelijaiplugin.settings.FindInFilesConfig
 
-class FindInFilesTool(private val project: Project) : AICodingAgentTool {
-
+class FindInFilesTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private val LOG = Logger.getInstance(FindInFilesTool::class.java)
 
@@ -38,52 +39,81 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
             "Results are locations only, grouped by file: the file's path on its own line, then " +
             "the line number of each match indented below it. Read the file to see the matching " +
             "text. To find uses of a declaration, use find_usages."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("query", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "Text to search for, or a regular expression when 'regex' is true")
-            })
-            add("regex", JsonObject().apply {
-                addProperty("type", "boolean")
-                addProperty("description", "Treat the query as a regular expression. Defaults to false.")
-            })
-            add("case_sensitive", JsonObject().apply {
-                addProperty("type", "boolean")
-                addProperty("description", "Match case exactly. Defaults to false.")
-            })
-            add("whole_words", JsonObject().apply {
-                addProperty("type", "boolean")
-                addProperty("description", "Match whole words only. Defaults to false.")
-            })
-            add("file_mask", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "Restrict to file names matching a mask, e.g. \"*.kt\" or \"*.{kt,java}\". " +
-                        "Omit to search every file.",
-                )
-            })
-            add("directory", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "Restrict to a directory, relative to the project root. Omit to search the whole project.",
-                )
-            })
-            add("max_files", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "Stop once matches have been found in this many files. Defaults to " +
-                        "$DEFAULT_MAX_FILES, which is also the maximum. Every match inside those " +
-                        "files is reported.",
-                )
-            })
-        })
-        add("required", JsonArray().apply { add("query") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "query",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Text to search for, or a regular expression when 'regex' is true",
+                            )
+                        },
+                    )
+                    add(
+                        "regex",
+                        JsonObject().apply {
+                            addProperty("type", "boolean")
+                            addProperty("description", "Treat the query as a regular expression. Defaults to false.")
+                        },
+                    )
+                    add(
+                        "case_sensitive",
+                        JsonObject().apply {
+                            addProperty("type", "boolean")
+                            addProperty("description", "Match case exactly. Defaults to false.")
+                        },
+                    )
+                    add(
+                        "whole_words",
+                        JsonObject().apply {
+                            addProperty("type", "boolean")
+                            addProperty("description", "Match whole words only. Defaults to false.")
+                        },
+                    )
+                    add(
+                        "file_mask",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Restrict to file names matching a mask, e.g. \"*.kt\" or \"*.{kt,java}\". " +
+                                    "Omit to search every file.",
+                            )
+                        },
+                    )
+                    add(
+                        "directory",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Restrict to a directory, relative to the project root. Omit to " +
+                                    "search the whole project.",
+                            )
+                        },
+                    )
+                    add(
+                        "max_files",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "Stop once matches have been found in this many files. Defaults to " +
+                                    "$DEFAULT_MAX_FILES, which is also the maximum. Every match inside those " +
+                                    "files is reported.",
+                            )
+                        },
+                    )
+                },
+            )
+            add("required", JsonArray().apply { add("query") })
+        }
 
     override fun execute(input: JsonObject): String {
         val query = input.get("query")?.asString.orEmpty()
@@ -95,24 +125,31 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
                 "something more specific, or use find_usages if it is a declaration you are after."
         }
 
-        val maxFiles = (input.get("max_files")?.asInt ?: input.get("max_results")?.asInt ?: DEFAULT_MAX_FILES)
-            .coerceIn(1, MAX_MAX_FILES)
+        val maxFiles =
+            (input.get("max_files")?.asInt ?: input.get("max_results")?.asInt ?: DEFAULT_MAX_FILES)
+                .coerceIn(1, MAX_MAX_FILES)
 
-        val model = FindModel().apply {
-            stringToFind = query
-            isCaseSensitive = input.get("case_sensitive")?.asBoolean ?: false
-            isRegularExpressions = input.get("regex")?.asBoolean ?: false
-            isWholeWordsOnly = input.get("whole_words")?.asBoolean ?: false
-            searchContext = FindModel.SearchContext.ANY
-            input.get("file_mask")?.asString?.takeIf { mask -> mask.isNotBlank() }?.let { fileFilter = it }
-        }
+        val model =
+            FindModel().apply {
+                stringToFind = query
+                isCaseSensitive = input.get("case_sensitive")?.asBoolean ?: false
+                isRegularExpressions = input.get("regex")?.asBoolean ?: false
+                isWholeWordsOnly = input.get("whole_words")?.asBoolean ?: false
+                searchContext = FindModel.SearchContext.ANY
+                input
+                    .get("file_mask")
+                    ?.asString
+                    ?.takeIf { mask -> mask.isNotBlank() }
+                    ?.let { fileFilter = it }
+            }
 
         val directory = input.get("directory")?.asString
         if (directory.isNullOrBlank()) {
             model.isProjectScope = true
         } else {
-            val dir = PsiTargets.resolveProjectPath(project, directory)
-                ?: return "Error: directory is outside the project: $directory"
+            val dir =
+                PsiTargets.resolveProjectPath(project, directory)
+                    ?: return "Error: directory is outside the project: $directory"
             if (!dir.isDirectory) return "Error: not a directory: $directory"
             model.isProjectScope = false
             model.directoryName = dir.path
@@ -124,32 +161,34 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         var limit = Limit.NONE
         val presentation = FindInProjectUtil.setupProcessPresentation(UsageViewPresentation())
 
-        val failure = runCatching {
-            ProgressManager.getInstance().runProcess({
-                FindInProjectUtil.findUsages(
-                    model,
-                    project,
-                    Processor { usage ->
-                        val file = ReadAction.compute<VirtualFile?, RuntimeException> { usage.virtualFile }
-                            ?: return@Processor true
-                        synchronized(found) {
-                            if (file !in files && files.size >= maxFiles) {
-                                limit = Limit.FILES
-                                return@synchronized false
+        val failure =
+            runCatching {
+                ProgressManager.getInstance().runProcess({
+                    FindInProjectUtil.findUsages(
+                        model,
+                        project,
+                        Processor { usage ->
+                            val file =
+                                ReadAction.compute<VirtualFile?, RuntimeException> { usage.virtualFile }
+                                    ?: return@Processor true
+                            synchronized(found) {
+                                if (file !in files && files.size >= maxFiles) {
+                                    limit = Limit.FILES
+                                    return@synchronized false
+                                }
+                                files.add(file)
+                                found.add(usage)
+                                if (found.size >= MAX_TOTAL_MATCHES) {
+                                    limit = Limit.MATCHES
+                                    return@synchronized false
+                                }
+                                true
                             }
-                            files.add(file)
-                            found.add(usage)
-                            if (found.size >= MAX_TOTAL_MATCHES) {
-                                limit = Limit.MATCHES
-                                return@synchronized false
-                            }
-                            true
-                        }
-                    },
-                    presentation,
-                )
-            }, EmptyProgressIndicator())
-        }.exceptionOrNull()
+                        },
+                        presentation,
+                    )
+                }, EmptyProgressIndicator())
+            }.exceptionOrNull()
 
         failure?.let {
             return "Error: the search failed: ${it.message ?: it::class.java.simpleName}"
@@ -164,28 +203,35 @@ class FindInFilesTool(private val project: Project) : AICodingAgentTool {
         return loaded.findInFiles.blocking(query)
     }
 
-    private fun render(query: String, usages: List<UsageInfo>, limit: Limit): String {
-        val matches = ReadAction.computeBlocking<List<MatchListing.Match>, RuntimeException> {
-            usages.mapNotNull { usage ->
-                val file = usage.virtualFile ?: return@mapNotNull null
-                val document = FileDocumentManager.getInstance().getDocument(file) ?: return@mapNotNull null
-                val offset = usage.navigationOffset.takeIf { it in 0..document.textLength }
-                    ?: return@mapNotNull null
+    private fun render(
+        query: String,
+        usages: List<UsageInfo>,
+        limit: Limit,
+    ): String {
+        val matches =
+            ReadAction.computeBlocking<List<MatchListing.Match>, RuntimeException> {
+                usages.mapNotNull { usage ->
+                    val file = usage.virtualFile ?: return@mapNotNull null
+                    val document = FileDocumentManager.getInstance().getDocument(file) ?: return@mapNotNull null
+                    val offset =
+                        usage.navigationOffset.takeIf { it in 0..document.textLength }
+                            ?: return@mapNotNull null
 
-                MatchListing.Match(PsiTargets.relativePath(project, file), document.getLineNumber(offset) + 1)
+                    MatchListing.Match(PsiTargets.relativePath(project, file), document.getLineNumber(offset) + 1)
+                }
             }
-        }
         if (matches.isEmpty()) return "No matches for \"$query\"."
 
         val fileCount = matches.distinctBy { it.path }.size
-        val summary = buildString {
-            append("${MatchListing.count(matches)} line(s) in $fileCount file(s) for \"$query\"")
-            when (limit) {
-                Limit.FILES -> append(", the most files this tool lists")
-                Limit.MATCHES -> append(", the most lines this tool lists")
-                Limit.NONE -> Unit
+        val summary =
+            buildString {
+                append("${MatchListing.count(matches)} line(s) in $fileCount file(s) for \"$query\"")
+                when (limit) {
+                    Limit.FILES -> append(", the most files this tool lists")
+                    Limit.MATCHES -> append(", the most lines this tool lists")
+                    Limit.NONE -> Unit
+                }
             }
-        }
         return MatchListing.format(summary, matches, truncated = limit != Limit.NONE)
     }
 }

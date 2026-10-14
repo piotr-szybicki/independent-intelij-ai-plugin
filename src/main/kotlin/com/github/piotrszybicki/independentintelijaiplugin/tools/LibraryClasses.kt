@@ -13,7 +13,6 @@ import com.intellij.psi.PsiFile
 import com.intellij.usageView.UsageViewLongNameLocation
 
 internal object LibraryClasses {
-
     class Candidate(
         val qualifiedName: String,
         val file: PsiFile,
@@ -24,13 +23,28 @@ internal object LibraryClasses {
     )
 
     sealed class Resolution {
-        class Found(val candidate: Candidate) : Resolution()
-        class Ambiguous(val candidates: List<Candidate>) : Resolution()
+        class Found(
+            val candidate: Candidate,
+        ) : Resolution()
+
+        class Ambiguous(
+            val candidates: List<Candidate>,
+        ) : Resolution()
+
         object NotFound : Resolution()
     }
 
-    fun resolve(project: Project, name: String, maxCandidates: Int): Resolution {
-        val trimmed = name.trim().removeSuffix(".class").removeSuffix(".java").removeSuffix(".kt")
+    fun resolve(
+        project: Project,
+        name: String,
+        maxCandidates: Int,
+    ): Resolution {
+        val trimmed =
+            name
+                .trim()
+                .removeSuffix(".class")
+                .removeSuffix(".java")
+                .removeSuffix(".kt")
         if (trimmed.isEmpty()) return Resolution.NotFound
 
         val simpleName = trimmed.substringAfterLast('.')
@@ -40,11 +54,12 @@ internal object LibraryClasses {
         val byPath = LinkedHashMap<String, Candidate>()
 
         for (contributor in ChooseByNameContributor.CLASS_EP_NAME.extensionList) {
-            val items = runCatching {
-                ReadAction.computeBlocking<Array<NavigationItem>, RuntimeException> {
-                    contributor.getItemsByName(simpleName, simpleName, project, true)
-                }
-            }.getOrDefault(emptyArray())
+            val items =
+                runCatching {
+                    ReadAction.computeBlocking<Array<NavigationItem>, RuntimeException> {
+                        contributor.getItemsByName(simpleName, simpleName, project, true)
+                    }
+                }.getOrDefault(emptyArray())
 
             for (item in items) {
                 val candidate = describe(project, index, item) ?: continue
@@ -58,16 +73,24 @@ internal object LibraryClasses {
         return when {
             candidates.isEmpty() -> Resolution.NotFound
             candidates.size == 1 -> Resolution.Found(candidates.single())
-            else -> candidates.firstOrNull { it.qualifiedName == trimmed }
-                ?.let { Resolution.Found(it) }
-                ?: Resolution.Ambiguous(candidates)
+            else ->
+                candidates
+                    .firstOrNull { it.qualifiedName == trimmed }
+                    ?.let { Resolution.Found(it) }
+                    ?: Resolution.Ambiguous(candidates)
         }
     }
 
-    private fun matchesQualifier(qualifiedName: String, requested: String): Boolean =
-        qualifiedName == requested || qualifiedName.endsWith(".$requested")
+    private fun matchesQualifier(
+        qualifiedName: String,
+        requested: String,
+    ): Boolean = qualifiedName == requested || qualifiedName.endsWith(".$requested")
 
-    private fun describe(project: Project, index: ProjectFileIndex, item: NavigationItem): Candidate? =
+    private fun describe(
+        project: Project,
+        index: ProjectFileIndex,
+        item: NavigationItem,
+    ): Candidate? =
         ReadAction.computeBlocking<Candidate?, RuntimeException> {
             val element = item as? PsiElement ?: return@computeBlocking null
 
@@ -78,9 +101,10 @@ internal object LibraryClasses {
             val inProject = PsiTargets.isInProject(project, element)
             if (!inProject && !index.isInLibrary(vf)) return@computeBlocking null
 
-            val qualifiedName = ElementDescriptionUtil
-                .getElementDescription(element, UsageViewLongNameLocation.INSTANCE)
-                .ifBlank { item.name.orEmpty() }
+            val qualifiedName =
+                ElementDescriptionUtil
+                    .getElementDescription(element, UsageViewLongNameLocation.INSTANCE)
+                    .ifBlank { item.name.orEmpty() }
 
             Candidate(
                 qualifiedName = qualifiedName,
@@ -92,8 +116,12 @@ internal object LibraryClasses {
             )
         }
 
-    private fun libraryNameOf(index: ProjectFileIndex, vf: VirtualFile): String? =
-        index.getOrderEntriesForFile(vf)
+    private fun libraryNameOf(
+        index: ProjectFileIndex,
+        vf: VirtualFile,
+    ): String? =
+        index
+            .getOrderEntriesForFile(vf)
             .filterIsInstance<LibraryOrderEntry>()
             .firstNotNullOfOrNull { it.libraryName }
 }

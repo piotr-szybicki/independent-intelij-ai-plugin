@@ -15,8 +15,10 @@ import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
-class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTransport {
-
+class McpStdioTransport(
+    config: McpServerConfig,
+    workingDir: File?,
+) : McpTransport {
     companion object {
         private val LOG = Logger.getInstance(McpStdioTransport::class.java)
 
@@ -26,15 +28,17 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
             if (!SystemInfo.isWindows) return command
             if (command.contains('/') || command.contains('\\')) return command
 
-            val extensions = (System.getenv("PATHEXT") ?: ".COM;.EXE;.BAT;.CMD")
-                .split(';')
-                .filter { it.isNotBlank() }
+            val extensions =
+                (System.getenv("PATHEXT") ?: ".COM;.EXE;.BAT;.CMD")
+                    .split(';')
+                    .filter { it.isNotBlank() }
             val directories = (System.getenv("PATH") ?: "").split(File.pathSeparatorChar)
 
             for (directory in directories) {
                 if (directory.isBlank()) continue
-                val candidates = listOf(File(directory, command)) +
-                    extensions.map { File(directory, command + it) }
+                val candidates =
+                    listOf(File(directory, command)) +
+                        extensions.map { File(directory, command + it) }
                 candidates.firstOrNull { it.isFile }?.let { return it.absolutePath }
             }
             return command
@@ -57,25 +61,34 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
         workingDir?.takeIf { it.isDirectory }?.let { builder.directory(it) }
         builder.environment().putAll(config.env)
 
-        process = try {
-            builder.start()
-        } catch (e: Exception) {
-            throw McpException("could not start '${config.command} ${config.args.joinToString(" ")}': ${e.message}", e)
-        }
+        process =
+            try {
+                builder.start()
+            } catch (e: Exception) {
+                throw McpException(
+                    "could not start '${config.command} ${config.args.joinToString(" ")}'" +
+                        ": ${e.message}",
+                    e,
+                )
+            }
 
         writer = BufferedWriter(OutputStreamWriter(process.outputStream, StandardCharsets.UTF_8))
         thread("MCP stdout: $name") { readResponses() }
         thread("MCP stderr: $name") { readErrors() }
     }
 
-    override fun request(message: JsonObject, timeoutMillis: Long): JsonObject {
+    override fun request(
+        message: JsonObject,
+        timeoutMillis: Long,
+    ): JsonObject {
         val id = message.get("id")?.asInt ?: throw McpException("internal: request without an id")
         val mailbox = ArrayBlockingQueue<JsonObject>(1)
         pending[id] = mailbox
         try {
             write(message)
-            val response = mailbox.poll(timeoutMillis, TimeUnit.MILLISECONDS)
-                ?: throw McpException(deathNote() ?: "no answer within ${timeoutMillis / 1000}s")
+            val response =
+                mailbox.poll(timeoutMillis, TimeUnit.MILLISECONDS)
+                    ?: throw McpException(deathNote() ?: "no answer within ${timeoutMillis / 1000}s")
             return response
         } finally {
             pending.remove(id)
@@ -91,7 +104,6 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
         if (!process.waitFor(2, TimeUnit.SECONDS)) process.destroyForcibly()
         failPending("the server was shut down")
     }
-
 
     private fun write(message: JsonObject) {
         if (closed || !process.isAlive) {
@@ -142,12 +154,16 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
     }
 
     private fun failPending(reason: String) {
-        val failure = JsonObject().apply {
-            add("error", JsonObject().apply {
-                addProperty("code", -32000)
-                addProperty("message", reason)
-            })
-        }
+        val failure =
+            JsonObject().apply {
+                add(
+                    "error",
+                    JsonObject().apply {
+                        addProperty("code", -32000)
+                        addProperty("message", reason)
+                    },
+                )
+            }
         pending.values.forEach { it.offer(failure) }
     }
 
@@ -161,7 +177,10 @@ class McpStdioTransport(config: McpServerConfig, workingDir: File?) : McpTranspo
         }
     }
 
-    private fun thread(name: String, body: () -> Unit) {
+    private fun thread(
+        name: String,
+        body: () -> Unit,
+    ) {
         Thread({ runCatching(body).onFailure { LOG.info("$name ended: ${it.message}") } }, name)
             .apply { isDaemon = true }
             .start()

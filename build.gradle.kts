@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.intellij.platform")
     id("org.jetbrains.changelog")
+    id("org.jlleitschuh.gradle.ktlint") version "13.1.0"
 }
 
 java {
@@ -13,7 +14,6 @@ java {
         languageVersion = JavaLanguageVersion.of(25)
     }
 }
-
 
 kotlin {
     compilerOptions {
@@ -27,7 +27,6 @@ kotlin {
 tasks.withType<JavaCompile>().configureEach {
     options.release = 25
 }
-
 
 tasks.register<JavaExec>("runHelloWorld") {
     group = "application"

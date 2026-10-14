@@ -21,7 +21,10 @@ internal class ChatAttachments(
     private val onStatus: (String) -> Unit,
     private val onRevalidate: () -> Unit,
 ) {
-    data class PendingAttachment(val summary: String, val body: String)
+    data class PendingAttachment(
+        val summary: String,
+        val body: String,
+    )
 
     private val maxAttachmentChars = 60_000
     private val maxTotalAttachmentChars = 150_000
@@ -30,14 +33,15 @@ internal class ChatAttachments(
 
     private val attachmentList = JPanel(GridLayout(0, 1, 0, JBUI.scale(3))).apply { isOpaque = false }
 
-    val component: JComponent = CappedScrollPane(attachmentList, 96).apply {
-        border = JBUI.Borders.empty()
-        isOpaque = false
-        viewport.isOpaque = false
-        isVisible = false
-        horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
-        verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
-    }
+    val component: JComponent =
+        CappedScrollPane(attachmentList, 96).apply {
+            border = JBUI.Borders.empty()
+            isOpaque = false
+            viewport.isOpaque = false
+            isVisible = false
+            horizontalScrollBarPolicy = ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER
+            verticalScrollBarPolicy = ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED
+        }
 
     fun attachments(): List<PendingAttachment> = pending.toList()
 
@@ -64,7 +68,7 @@ internal class ChatAttachments(
             if (text.length > maxAttachmentChars) {
                 onStatus(
                     "$displayPath is too large to attach (${text.length} characters). " +
-                        "Select the part you mean, or just ask -- the AI can read it itself."
+                        "Select the part you mean, or just ask -- the AI can read it itself.",
                 )
                 return
             }
@@ -85,22 +89,31 @@ internal class ChatAttachments(
         )
     }
 
-    fun startSideChat(code: String, displayPath: String, extension: String, lineRange: String) {
+    fun startSideChat(
+        code: String,
+        displayPath: String,
+        extension: String,
+        lineRange: String,
+    ) {
         add(
             body = fence("Selected code from $displayPath ($lineRange)", extension, code),
             summary = "$displayPath ($lineRange)",
         )
     }
 
-    fun add(body: String, summary: String) {
+    fun add(
+        body: String,
+        summary: String,
+    ) {
         val existing = pending.indexOfFirst { it.summary == summary }
-        val othersLength = pending
-            .filterIndexed { index, _ -> index != existing }
-            .sumOf { it.body.length }
+        val othersLength =
+            pending
+                .filterIndexed { index, _ -> index != existing }
+                .sumOf { it.body.length }
         if (othersLength + body.length > maxTotalAttachmentChars) {
             onStatus(
                 "That is more than $maxTotalAttachmentChars characters of attachments. " +
-                    "Send what is attached, or remove some of it, first."
+                    "Send what is attached, or remove some of it, first.",
             )
             return
         }
@@ -129,26 +142,27 @@ internal class ChatAttachments(
     }
 
     private fun chip(attachment: PendingAttachment): JComponent {
-        val chip = RoundedPanel(
-            BorderLayout(JBUI.scale(6), 0),
-            arc = { ChatMetrics.smallArc },
-            fill = { ChatColors.card },
-            stroke = { ChatColors.separator },
-        ).apply {
-            border = JBUI.Borders.empty(JBUI.scale(3), JBUI.scale(7))
-            add(
-                JBLabel("📎 ${attachment.summary}").apply {
-                    font = JBFont.small()
-                    foreground = ChatColors.foreground
-                    toolTipText = attachment.summary
-                },
-                BorderLayout.CENTER,
-            )
-            add(
-                InplaceButton("Remove attachment", AllIcons.Actions.Close) { remove(attachment) },
-                BorderLayout.EAST,
-            )
-        }
+        val chip =
+            RoundedPanel(
+                BorderLayout(JBUI.scale(6), 0),
+                arc = { ChatMetrics.smallArc },
+                fill = { ChatColors.card },
+                stroke = { ChatColors.separator },
+            ).apply {
+                border = JBUI.Borders.empty(JBUI.scale(3), JBUI.scale(7))
+                add(
+                    JBLabel("📎 ${attachment.summary}").apply {
+                        font = JBFont.small()
+                        foreground = ChatColors.foreground
+                        toolTipText = attachment.summary
+                    },
+                    BorderLayout.CENTER,
+                )
+                add(
+                    InplaceButton("Remove attachment", AllIcons.Actions.Close) { remove(attachment) },
+                    BorderLayout.EAST,
+                )
+            }
         return JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply {
             isOpaque = false
             add(chip)
@@ -165,11 +179,16 @@ internal class ChatAttachments(
         }
     }
 
-    private fun fence(heading: String, extension: String, code: String): String = buildString {
-        append(heading).append(":\n")
-        append("```").append(extension).append('\n')
-        append(code)
-        if (!code.endsWith("\n")) append('\n')
-        append("```")
-    }
+    private fun fence(
+        heading: String,
+        extension: String,
+        code: String,
+    ): String =
+        buildString {
+            append(heading).append(":\n")
+            append("```").append(extension).append('\n')
+            append(code)
+            if (!code.endsWith("\n")) append('\n')
+            append("```")
+        }
 }

@@ -6,14 +6,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DirectoryListingTest {
-
-    private val sourceTree = listOf(
-        Entry("com", true),
-        Entry("com/example", true),
-        Entry("com/example/A.kt", false),
-        Entry("com/example/B.kt", false),
-        Entry("README.md", false),
-    )
+    private val sourceTree =
+        listOf(
+            Entry("com", true),
+            Entry("com/example", true),
+            Entry("com/example/A.kt", false),
+            Entry("com/example/B.kt", false),
+            Entry("README.md", false),
+        )
 
     @Test
     fun `prints each directory once instead of once per file`() {
@@ -31,32 +31,34 @@ class DirectoryListingTest {
 
     @Test
     fun `collapses a chain of single-subdirectory directories onto one line`() {
-        val listing = DirectoryListing.format(
-            "src",
-            listOf(
-                Entry("com", true),
-                Entry("com/github", true),
-                Entry("com/github/vendor", true),
-                Entry("com/github/vendor/Tool.kt", false),
-            ),
-            truncated = false,
-        )
+        val listing =
+            DirectoryListing.format(
+                "src",
+                listOf(
+                    Entry("com", true),
+                    Entry("com/github", true),
+                    Entry("com/github/vendor", true),
+                    Entry("com/github/vendor/Tool.kt", false),
+                ),
+                truncated = false,
+            )
 
         assertTrue(listing, listing.contains("com/github/vendor/\n  Tool.kt"))
     }
 
     @Test
     fun `keeps a directory that has files of its own`() {
-        val listing = DirectoryListing.format(
-            "src",
-            listOf(
-                Entry("com", true),
-                Entry("com/example", true),
-                Entry("com/example/A.kt", false),
-                Entry("com/Root.kt", false),
-            ),
-            truncated = false,
-        )
+        val listing =
+            DirectoryListing.format(
+                "src",
+                listOf(
+                    Entry("com", true),
+                    Entry("com/example", true),
+                    Entry("com/example/A.kt", false),
+                    Entry("com/Root.kt", false),
+                ),
+                truncated = false,
+            )
 
         assertEquals(
             """
@@ -73,11 +75,12 @@ class DirectoryListingTest {
 
     @Test
     fun `keeps a directory with nothing in it`() {
-        val listing = DirectoryListing.format(
-            "src",
-            listOf(Entry("generated", true), Entry("Main.kt", false)),
-            truncated = false,
-        )
+        val listing =
+            DirectoryListing.format(
+                "src",
+                listOf(Entry("generated", true), Entry("Main.kt", false)),
+                truncated = false,
+            )
 
         assertTrue(listing, listing.contains("generated/"))
     }

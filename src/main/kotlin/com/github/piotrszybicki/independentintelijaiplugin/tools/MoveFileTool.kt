@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
@@ -13,41 +14,63 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiManager
 import com.intellij.refactoring.move.moveFilesOrDirectories.MoveFilesOrDirectoriesProcessor
 import com.intellij.refactoring.rename.RenameProcessor
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import java.io.File
 
-class MoveFileTool(private val project: Project) : AICodingAgentTool {
-
+class MoveFileTool(
+    private val project: Project,
+) : AICodingAgentTool {
     override val name = "move_file"
     override val description =
         "Moves or renames a project file, creating missing target directories and updating " +
             "references to it. Fails if the target path already exists."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("from", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "Current file path relative to the project root, e.g. src/Main.kt")
-            })
-            add("to", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "New file path relative to the project root, including the file name, e.g. src/app/App.kt",
-                )
-            })
-        })
-        add("required", JsonArray().apply { add("from"); add("to") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "from",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Current file path relative to the project root, e.g. src/Main.kt",
+                            )
+                        },
+                    )
+                    add(
+                        "to",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "New file path relative to the project root, including the file name, " +
+                                    "e.g. src/app/App.kt",
+                            )
+                        },
+                    )
+                },
+            )
+            add(
+                "required",
+                JsonArray().apply {
+                    add("from")
+                    add("to")
+                },
+            )
+        }
 
     override fun execute(input: JsonObject): String {
         val fromPath = input.get("from")?.asString ?: return "Error: missing 'from'"
         val toPath = input.get("to")?.asString ?: return "Error: missing 'to'"
 
-        val source = PsiTargets.resolveProjectPath(project, fromPath)
-            ?: return "Error: path is outside the project directory: $fromPath"
-        val target = PsiTargets.resolveProjectPath(project, toPath)
-            ?: return "Error: path is outside the project directory: $toPath"
+        val source =
+            PsiTargets.resolveProjectPath(project, fromPath)
+                ?: return "Error: path is outside the project directory: $fromPath"
+        val target =
+            PsiTargets.resolveProjectPath(project, toPath)
+                ?: return "Error: path is outside the project directory: $toPath"
 
         if (!source.exists()) return "Error: file not found: $fromPath"
         if (source.isDirectory) return "Error: $fromPath is a directory; move its files individually"
@@ -68,16 +91,25 @@ class MoveFileTool(private val project: Project) : AICodingAgentTool {
                 "intermediate path first."
         }
 
-        val vf = PsiTargets.resolveProjectFile(project, fromPath)
-            ?: return "Error: $fromPath is not loaded in the IDE's file system"
+        val vf =
+            PsiTargets.resolveProjectFile(project, fromPath)
+                ?: return "Error: $fromPath is not loaded in the IDE's file system"
 
-        val targetDirVf = createDirectory(targetDir.path)
-            ?: return "Error: cannot create target directory ${targetDir.path}"
+        val targetDirVf =
+            createDirectory(targetDir.path)
+                ?: return "Error: cannot create target directory ${targetDir.path}"
 
-        val psiFile = ReadAction.computeBlocking<PsiFile?, RuntimeException> { PsiManager.getInstance(project).findFile(vf) }
-        val psiDir = ReadAction.computeBlocking<PsiDirectory?, RuntimeException> {
-            PsiManager.getInstance(project).findDirectory(targetDirVf)
-        }
+        val psiFile =
+            ReadAction.computeBlocking<PsiFile?, RuntimeException> {
+                PsiManager
+                    .getInstance(
+                        project,
+                    ).findFile(vf)
+            }
+        val psiDir =
+            ReadAction.computeBlocking<PsiDirectory?, RuntimeException> {
+                PsiManager.getInstance(project).findDirectory(targetDirVf)
+            }
 
         var error: String? = null
         ApplicationManager.getApplication().invokeAndWait {
@@ -100,27 +132,47 @@ class MoveFileTool(private val project: Project) : AICodingAgentTool {
         return "Moved $fromPath to $toPath."
     }
 
-    private fun rename(psiFile: PsiFile, newName: String) {
+    private fun rename(
+        psiFile: PsiFile,
+        newName: String,
+    ) {
         RenameProcessor(project, psiFile, newName, false, false).apply { setPreviewUsages(false) }.run()
     }
 
-    private fun move(psiFile: PsiFile, targetDir: PsiDirectory) {
+    private fun move(
+        psiFile: PsiFile,
+        targetDir: PsiDirectory,
+    ) {
         MoveFilesOrDirectoriesProcessor(project, arrayOf(psiFile), targetDir, false, false, null, null).run()
     }
 
-    private fun moveOnDisk(vf: VirtualFile, targetDir: VirtualFile, newName: String) {
-        WriteCommandAction.runWriteCommandAction(project, "Move File", null, Runnable {
-            if (vf.parent != targetDir) vf.move(this, targetDir)
-            if (vf.name != newName) vf.rename(this, newName)
-        })
+    private fun moveOnDisk(
+        vf: VirtualFile,
+        targetDir: VirtualFile,
+        newName: String,
+    ) {
+        WriteCommandAction.runWriteCommandAction(
+            project,
+            "Move File",
+            null,
+            Runnable {
+                if (vf.parent != targetDir) vf.move(this, targetDir)
+                if (vf.name != newName) vf.rename(this, newName)
+            },
+        )
     }
 
     private fun createDirectory(path: String): VirtualFile? {
         var created: VirtualFile? = null
         ApplicationManager.getApplication().invokeAndWait {
-            WriteCommandAction.runWriteCommandAction(project, "Create Directory", null, Runnable {
-                created = runCatching { VfsUtil.createDirectoryIfMissing(path) }.getOrNull()
-            })
+            WriteCommandAction.runWriteCommandAction(
+                project,
+                "Create Directory",
+                null,
+                Runnable {
+                    created = runCatching { VfsUtil.createDirectoryIfMissing(path) }.getOrNull()
+                },
+            )
         }
         return created
     }

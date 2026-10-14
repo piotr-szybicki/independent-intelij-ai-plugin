@@ -10,7 +10,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReasoningOptionsTest {
-
     @Test
     fun `sends nothing when both are left to the provider`() {
         val options = ReasoningOptions.PROVIDER_DEFAULT
@@ -59,7 +58,6 @@ class ReasoningOptionsTest {
         assertEquals(listOf("low", "medium", "high", "xhigh", "max"), wire)
     }
 
-
     @Test
     fun `sends the chosen effort when thinking is on`() {
         val reasoning = ReasoningOptions(Effort.MEDIUM, ThinkingMode.ADAPTIVE).reasoningJson()!!
@@ -105,20 +103,30 @@ class ReasoningOptionsTest {
 
     @Test
     fun `carries the field into the Responses request body`() {
-        val body = OpenAiProtocol.responsesRequest(
-            "gpt-5.3-codex", 8000, null, listOf(ChatMessage.text("user", "hi")), emptyList(),
-            reasoning = ReasoningOptions(Effort.MEDIUM, ThinkingMode.ADAPTIVE).reasoningJson(),
-        )
+        val body =
+            OpenAiProtocol.responsesRequest(
+                "gpt-5.3-codex",
+                8000,
+                null,
+                listOf(ChatMessage.text("user", "hi")),
+                emptyList(),
+                reasoning = ReasoningOptions(Effort.MEDIUM, ThinkingMode.ADAPTIVE).reasoningJson(),
+            )
 
         assertEquals("medium", body.getAsJsonObject("reasoning").get("effort").asString)
     }
 
     @Test
     fun `leaves the field out of the body when there is nothing to say`() {
-        val body = OpenAiProtocol.responsesRequest(
-            "gpt-5.3-codex", 8000, null, listOf(ChatMessage.text("user", "hi")), emptyList(),
-            reasoning = null,
-        )
+        val body =
+            OpenAiProtocol.responsesRequest(
+                "gpt-5.3-codex",
+                8000,
+                null,
+                listOf(ChatMessage.text("user", "hi")),
+                emptyList(),
+                reasoning = null,
+            )
 
         assertFalse(body.has("reasoning"))
     }

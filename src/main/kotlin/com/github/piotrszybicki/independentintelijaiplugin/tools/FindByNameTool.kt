@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.navigation.ChooseByNameContributor
@@ -9,10 +10,10 @@ import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class FindByNameTool(private val project: Project) : AICodingAgentTool {
-
+class FindByNameTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_MAX_RESULTS = 50
         private const val MAX_MAX_RESULTS = 200
@@ -27,65 +28,99 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
             "substring by default. File results come back as a tree -- a directory on its own line " +
             "ending in \"/\", its files on the indented lines below it -- so a file's path is its " +
             "directory line joined to its name. To search contents, use find_in_files."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("query", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "The name, or part of it, to look for")
-            })
-            add("type", JsonObject().apply {
-                addProperty("type", "string")
-                add("enum", JsonArray().apply {
-                    add("class")
-                    add("file")
-                    add("action")
-                })
-                addProperty("description", "What kind of thing to look for")
-            })
-            add("exact", JsonObject().apply {
-                addProperty("type", "boolean")
-                addProperty(
-                    "description",
-                    "Require the whole name to equal the query rather than contain it. Defaults to false.",
-                )
-            })
-            add("max_results", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "Stop after this many results. Defaults to $DEFAULT_MAX_RESULTS, maximum $MAX_MAX_RESULTS.",
-                )
-            })
-        })
-        add("required", JsonArray().apply {
-            add("query")
-            add("type")
-        })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "query",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty("description", "The name, or part of it, to look for")
+                        },
+                    )
+                    add(
+                        "type",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            add(
+                                "enum",
+                                JsonArray().apply {
+                                    add("class")
+                                    add("file")
+                                    add("action")
+                                },
+                            )
+                            addProperty("description", "What kind of thing to look for")
+                        },
+                    )
+                    add(
+                        "exact",
+                        JsonObject().apply {
+                            addProperty("type", "boolean")
+                            addProperty(
+                                "description",
+                                "Require the whole name to equal the query rather than contain it. Defaults to false.",
+                            )
+                        },
+                    )
+                    add(
+                        "max_results",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "Stop after this many results. Defaults to $DEFAULT_MAX_RESULTS, " +
+                                    "maximum $MAX_MAX_RESULTS.",
+                            )
+                        },
+                    )
+                },
+            )
+            add(
+                "required",
+                JsonArray().apply {
+                    add("query")
+                    add("type")
+                },
+            )
+        }
 
     override fun execute(input: JsonObject): String {
-        val query = input.get("query")?.asString?.trim().orEmpty()
+        val query =
+            input
+                .get("query")
+                ?.asString
+                ?.trim()
+                .orEmpty()
         if (query.isEmpty()) return "Error: missing 'query'"
 
-        val type = input.get("type")?.asString?.lowercase()
-            ?: return "Error: missing 'type'. Use one of: class, file, action"
+        val type =
+            input.get("type")?.asString?.lowercase()
+                ?: return "Error: missing 'type'. Use one of: class, file, action"
 
         val exact = input.get("exact")?.asBoolean ?: false
-        val maxResults = (input.get("max_results")?.asInt ?: DEFAULT_MAX_RESULTS)
-            .coerceIn(1, MAX_MAX_RESULTS)
+        val maxResults =
+            (input.get("max_results")?.asInt ?: DEFAULT_MAX_RESULTS)
+                .coerceIn(1, MAX_MAX_RESULTS)
 
         val matches: (String) -> Boolean = { candidate ->
-            if (exact) candidate.equals(query, ignoreCase = true)
-            else candidate.contains(query, ignoreCase = true)
+            if (exact) {
+                candidate.equals(query, ignoreCase = true)
+            } else {
+                candidate.contains(query, ignoreCase = true)
+            }
         }
 
-        val results = when (type) {
-            "class" -> findClasses(matches, maxResults)
-            "file" -> findFiles(matches, maxResults)
-            "action" -> findActions(matches, maxResults)
-            else -> return "Error: unknown type \"$type\". Use one of: class, file, action"
-        }
+        val results =
+            when (type) {
+                "class" -> findClasses(matches, maxResults)
+                "file" -> findFiles(matches, maxResults)
+                "action" -> findActions(matches, maxResults)
+                else -> return "Error: unknown type \"$type\". Use one of: class, file, action"
+            }
 
         if (results.isEmpty()) return "No $type matching \"$query\"."
 
@@ -93,30 +128,37 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
             append("${results.size} $type result(s) for \"$query\"")
             if (results.size >= maxResults) append(" (stopped at the limit; narrow the query to see the rest)")
             append(":\n")
-            if (type == "file") append(DirectoryListing.tree(results))
-            else results.forEach { append(it).append('\n') }
+            if (type == "file") {
+                append(DirectoryListing.tree(results))
+            } else {
+                results.forEach { append(it).append('\n') }
+            }
         }
     }
 
-
-    private fun findClasses(matches: (String) -> Boolean, maxResults: Int): List<String> {
+    private fun findClasses(
+        matches: (String) -> Boolean,
+        maxResults: Int,
+    ): List<String> {
         val results = mutableListOf<String>()
 
         for (contributor in ChooseByNameContributor.CLASS_EP_NAME.extensionList) {
-            val names = runCatching {
-                ReadAction.computeBlocking<Array<String>, RuntimeException> {
-                    contributor.getNames(project, false)
-                }
-            }.getOrDefault(emptyArray())
+            val names =
+                runCatching {
+                    ReadAction.computeBlocking<Array<String>, RuntimeException> {
+                        contributor.getNames(project, false)
+                    }
+                }.getOrDefault(emptyArray())
 
             for (candidateName in names.take(MAX_CANDIDATE_NAMES)) {
                 if (!matches(candidateName)) continue
 
-                val items = runCatching {
-                    ReadAction.computeBlocking<Array<NavigationItem>, RuntimeException> {
-                        contributor.getItemsByName(candidateName, candidateName, project, false)
-                    }
-                }.getOrDefault(emptyArray())
+                val items =
+                    runCatching {
+                        ReadAction.computeBlocking<Array<NavigationItem>, RuntimeException> {
+                            contributor.getItemsByName(candidateName, candidateName, project, false)
+                        }
+                    }.getOrDefault(emptyArray())
 
                 for (item in items) {
                     results.add(renderNavigationItem(candidateName, item))
@@ -127,11 +169,15 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
         return results
     }
 
-    private fun renderNavigationItem(name: String, item: NavigationItem): String =
+    private fun renderNavigationItem(
+        name: String,
+        item: NavigationItem,
+    ): String =
         ReadAction.computeBlocking<String, RuntimeException> {
             val element = item as? PsiElement
-            val vf = element?.containingFile?.virtualFile
-                ?: return@computeBlocking "$name (location unavailable)"
+            val vf =
+                element?.containingFile?.virtualFile
+                    ?: return@computeBlocking "$name (location unavailable)"
 
             val path = PsiTargets.relativePath(project, vf)
             val document = FileDocumentManager.getInstance().getDocument(vf)
@@ -141,8 +187,10 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
             "$name — $path:${document.getLineNumber(offset) + 1}"
         }
 
-
-    private fun findFiles(matches: (String) -> Boolean, maxResults: Int): List<String> {
+    private fun findFiles(
+        matches: (String) -> Boolean,
+        maxResults: Int,
+    ): List<String> {
         val results = mutableListOf<String>()
         val root = PsiTargets.resolveProjectFile(project, ".") ?: return results
 
@@ -155,8 +203,10 @@ class FindByNameTool(private val project: Project) : AICodingAgentTool {
         return results
     }
 
-
-    private fun findActions(matches: (String) -> Boolean, maxResults: Int): List<String> {
+    private fun findActions(
+        matches: (String) -> Boolean,
+        maxResults: Int,
+    ): List<String> {
         val manager = ActionManager.getInstance()
         val results = mutableListOf<String>()
 

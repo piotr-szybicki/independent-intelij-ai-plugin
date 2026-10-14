@@ -29,26 +29,31 @@ internal class SkillMentionPopup(
     private val active: () -> Set<String>,
     private val onChosen: (SkillDefinition) -> Unit,
 ) {
-
     private var popup: JBPopup? = null
 
     fun install() {
-        input.document.addDocumentListener(object : DocumentListener {
-            override fun insertUpdate(e: DocumentEvent) {
-                if (e.length != 1) return
-                val offset = e.offset
-                val typed = runCatching { e.document.getText(offset, 1) }.getOrNull() ?: return
-                if (typed != MENTION) return
-                if (!opensMention(e, offset)) return
-                SwingUtilities.invokeLater { show(offset) }
-            }
+        input.document.addDocumentListener(
+            object : DocumentListener {
+                override fun insertUpdate(e: DocumentEvent) {
+                    if (e.length != 1) return
+                    val offset = e.offset
+                    val typed = runCatching { e.document.getText(offset, 1) }.getOrNull() ?: return
+                    if (typed != MENTION) return
+                    if (!opensMention(e, offset)) return
+                    SwingUtilities.invokeLater { show(offset) }
+                }
 
-            override fun removeUpdate(e: DocumentEvent) = Unit
-            override fun changedUpdate(e: DocumentEvent) = Unit
-        })
+                override fun removeUpdate(e: DocumentEvent) = Unit
+
+                override fun changedUpdate(e: DocumentEvent) = Unit
+            },
+        )
     }
 
-    private fun opensMention(e: DocumentEvent, offset: Int): Boolean {
+    private fun opensMention(
+        e: DocumentEvent,
+        offset: Int,
+    ): Boolean {
         if (offset == 0) return true
         val before = runCatching { e.document.getText(0, offset) }.getOrNull() ?: return false
         return before.isBlank()
@@ -60,50 +65,54 @@ internal class SkillMentionPopup(
 
         val at = caretPoint(offset) ?: return
 
-        val skills = runCatching { SkillCatalog.enabledIn(SkillCatalog.scan(project).skills) }
-            .getOrDefault(emptyList())
+        val skills =
+            runCatching { SkillCatalog.enabledIn(SkillCatalog.scan(project).skills) }
+                .getOrDefault(emptyList())
         if (skills.isEmpty()) {
-            JBPopupFactory.getInstance()
+            JBPopupFactory
+                .getInstance()
                 .createMessage(
                     "No skills were found. Add one at ${SkillRoot.DEFAULT_PATHS.lines().first()}/" +
                         "<name>/SKILL.md, or point the settings page at another directory.",
-                )
-                .show(at)
+                ).show(at)
             return
         }
 
         val alreadyOn = active()
 
-        val renderer = object : ColoredListCellRenderer<SkillDefinition>() {
-            override fun customizeCellRenderer(
-                list: JList<out SkillDefinition>,
-                value: SkillDefinition,
-                index: Int,
-                selected: Boolean,
-                hasFocus: Boolean,
-            ) {
-                append("/${value.name}", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
-                if (value.name in alreadyOn) {
-                    append("  already on", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+        val renderer =
+            object : ColoredListCellRenderer<SkillDefinition>() {
+                override fun customizeCellRenderer(
+                    list: JList<out SkillDefinition>,
+                    value: SkillDefinition,
+                    index: Int,
+                    selected: Boolean,
+                    hasFocus: Boolean,
+                ) {
+                    append("/${value.name}", SimpleTextAttributes.REGULAR_BOLD_ATTRIBUTES)
+                    if (value.name in alreadyOn) {
+                        append("  already on", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES)
+                    }
+                    append("  ${value.description}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    toolTipText = value.description
                 }
-                append("  ${value.description}", SimpleTextAttributes.GRAYED_ATTRIBUTES)
-                toolTipText = value.description
             }
-        }
 
-        val created = JBPopupFactory.getInstance().createPopupChooserBuilder(skills)
-            .setTitle("Switch a Skill On for This Chat")
-            .setMovable(false)
-            .setResizable(false)
-            .setRenderer(renderer)
-            .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-            .setNamerForFiltering { "${it.name} ${it.description}" }
-            .setItemChosenCallback { skill ->
-                removeMention(offset)
-                onChosen(skill)
-            }
-            .setAdText("Keep typing to filter, Enter switches it on, Escape leaves the / alone")
-            .createPopup()
+        val created =
+            JBPopupFactory
+                .getInstance()
+                .createPopupChooserBuilder(skills)
+                .setTitle("Switch a Skill On for This Chat")
+                .setMovable(false)
+                .setResizable(false)
+                .setRenderer(renderer)
+                .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
+                .setNamerForFiltering { "${it.name} ${it.description}" }
+                .setItemChosenCallback { skill ->
+                    removeMention(offset)
+                    onChosen(skill)
+                }.setAdText("Keep typing to filter, Enter switches it on, Escape leaves the / alone")
+                .createPopup()
 
         popup = created
         created.show(at)

@@ -1,7 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 class ContextMeter {
-
     companion object {
         const val DEFAULT_TOKENS_PER_CHAR: Double = 1.0 / 4
 
@@ -18,7 +17,12 @@ class ContextMeter {
 
     val anchor: Int get() = anchorTokens
 
-    fun observe(promptTokens: Int, outputTokens: Int, promptChars: Int, coveredMessages: Int) {
+    fun observe(
+        promptTokens: Int,
+        outputTokens: Int,
+        promptChars: Int,
+        coveredMessages: Int,
+    ) {
         if (promptTokens <= 0) return
 
         anchorTokens = promptTokens + outputTokens.coerceAtLeast(0)
@@ -30,7 +34,10 @@ class ContextMeter {
         tokensPerChar = ratio
     }
 
-    fun estimate(history: List<ChatMessage>, overheadChars: Int): Int {
+    fun estimate(
+        history: List<ChatMessage>,
+        overheadChars: Int,
+    ): Int {
         if (anchorTokens <= 0 || anchorMessages > history.size) {
             return tokens(overheadChars + HistoryCompaction.charsOf(history))
         }

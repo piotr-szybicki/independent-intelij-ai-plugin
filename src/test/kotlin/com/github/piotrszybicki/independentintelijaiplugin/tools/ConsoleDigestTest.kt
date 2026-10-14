@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConsoleDigestTest {
-
     private val projectPath = "C:/Users/piotr/Documents/intellij-platform-plugin-template"
 
     @Test
@@ -23,9 +22,10 @@ class ConsoleDigestTest {
 
     @Test
     fun `leaves distinct diagnostics alone`() {
-        val text = "e: Foo.kt:1:1: Unresolved reference: alpha\n" +
-            "e: Foo.kt:2:2: Unresolved reference: beta\n" +
-            "e: Foo.kt:3:3: Unresolved reference: gamma\n"
+        val text =
+            "e: Foo.kt:1:1: Unresolved reference: alpha\n" +
+                "e: Foo.kt:2:2: Unresolved reference: beta\n" +
+                "e: Foo.kt:3:3: Unresolved reference: gamma\n"
 
         assertEquals(text.trim(), ConsoleDigest.of(text))
     }
@@ -50,9 +50,10 @@ class ConsoleDigestTest {
     @Test
     fun `front-codes a compiler cascade into a template and its positions`() {
         val positions = listOf("44:58", "44:71", "44:72", "45:5", "47:5", "47:22", "52:25")
-        val text = positions.joinToString("\n") {
-            "e: file:///$projectPath/build.gradle.kts:$it: Unexpected symbol"
-        }
+        val text =
+            positions.joinToString("\n") {
+                "e: file:///$projectPath/build.gradle.kts:$it: Unexpected symbol"
+            }
 
         val digest = ConsoleDigest.of(text, projectPath)
 
@@ -76,9 +77,10 @@ class ConsoleDigestTest {
 
     @Test
     fun `does not cut a shared prefix through the middle of a token`() {
-        val text = (100..139).joinToString("\n") {
-            "at org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.run(VerifyPluginTask.kt:$it)"
-        }
+        val text =
+            (100..139).joinToString("\n") {
+                "at org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask.run(VerifyPluginTask.kt:$it)"
+            }
 
         val digest = ConsoleDigest.of(text)
 
@@ -89,16 +91,20 @@ class ConsoleDigestTest {
 
     @Test
     fun `front-codes long similar lines under a shared header`() {
-        val text = listOf(
-            "at com.github.piotrszybicki.independentintelijaiplugin.tools.ConfigurationRunner.run(Runner.kt:47)",
-            "at com.github.piotrszybicki.independentintelijaiplugin.tools.RunConfigurationTool.execute(Tool.kt:88)",
-            "at com.github.piotrszybicki.independentintelijaiplugin.tools.StartDebugConfigurationTool.go(Dbg.kt:12)",
-        ).joinToString("\n")
+        val text =
+            listOf(
+                "at com.github.piotrszybicki.independentintelijaiplugin.tools.ConfigurationRunner.run(Runner.kt:47)",
+                "at com.github.piotrszybicki.independentintelijaiplugin.tools.RunConfigurationTool.execute(Tool.kt:88)",
+                "at com.github.piotrszybicki.independentintelijaiplugin.tools.StartDebugConfigurationTool.go(Dbg.kt:12)",
+            ).joinToString("\n")
 
         val rendered = ConsoleDigest.of(text).lines()
 
         assertEquals(rendered.joinToString("\n"), 4, rendered.size)
-        assertTrue(rendered[0], rendered[0].startsWith("at com.github.piotrszybicki.independentintelijaiplugin.tools.\u2026"))
+        assertTrue(
+            rendered[0],
+            rendered[0].startsWith("at com.github.piotrszybicki.independentintelijaiplugin.tools.\u2026"),
+        )
         assertTrue(rendered[0], rendered[0].endsWith("[3 lines]"))
         assertEquals("  ConfigurationRunner.run(Runner.kt:47)", rendered[1])
         assertFalse(rendered[2], rendered[2].contains("independentintelijaiplugin"))
@@ -106,12 +112,13 @@ class ConsoleDigestTest {
 
     @Test
     fun `hoists a shared suffix out of the repeated lines`() {
-        val text = listOf(
-            "  Deprecated API usage: com.intellij.openapi.util.text.StringUtil.notNullize is deprecated",
-            "  Deprecated API usage: com.intellij.execution.ui.ConsoleView.attachToProcess is deprecated",
-            "  Deprecated API usage: com.intellij.ide.plugins.PluginManagerCore.isDisabled is deprecated",
-            "  Deprecated API usage: com.intellij.util.ui.UIUtil.getLabelFont is deprecated",
-        ).joinToString("\n")
+        val text =
+            listOf(
+                "  Deprecated API usage: com.intellij.openapi.util.text.StringUtil.notNullize is deprecated",
+                "  Deprecated API usage: com.intellij.execution.ui.ConsoleView.attachToProcess is deprecated",
+                "  Deprecated API usage: com.intellij.ide.plugins.PluginManagerCore.isDisabled is deprecated",
+                "  Deprecated API usage: com.intellij.util.ui.UIUtil.getLabelFont is deprecated",
+            ).joinToString("\n")
 
         val rendered = ConsoleDigest.of(text).lines()
 

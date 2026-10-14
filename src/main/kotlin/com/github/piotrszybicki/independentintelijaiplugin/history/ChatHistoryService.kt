@@ -25,9 +25,7 @@ data class StoredRow(
     val summary: String = "",
     val details: String = "",
     val status: String? = null,
-
     val requestId: String? = null,
-
     val handoff: AgentHandoff? = null,
 ) {
     companion object {
@@ -55,16 +53,11 @@ data class StoredChat(
     val messages: List<ChatMessage>,
     val transcript: List<StoredRow>,
     val usage: SessionUsage? = null,
-
     val context: ContextMeter.State? = null,
-
     val configurationName: String? = null,
     val model: String? = null,
-
     val agent: AgentSession? = null,
-
     val returns: List<AgentReturn>? = null,
-
     val conversationTools: ConversationTools? = null,
 )
 
@@ -72,13 +65,13 @@ data class ChatSummary(
     val id: String,
     val title: String,
     val updatedAt: Long,
-
     val agentName: String? = null,
 )
 
 @Service(Service.Level.PROJECT)
-class ChatHistoryService(project: Project) {
-
+class ChatHistoryService(
+    project: Project,
+) {
     private val log = Logger.getInstance(ChatHistoryService::class.java)
     private val gson = Gson()
     private val lock = Any()
@@ -86,7 +79,10 @@ class ChatHistoryService(project: Project) {
     private val directory: Path =
         Paths.get(PathManager.getSystemPath(), "aiCodingAgentChat", "chats", project.locationHash)
 
-    private data class Index(var activeId: String?, val chats: MutableList<ChatSummary>)
+    private data class Index(
+        var activeId: String?,
+        val chats: MutableList<ChatSummary>,
+    )
 
     fun chats(): List<ChatSummary> = synchronized(lock) { readIndex().chats.toList() }
 
@@ -102,14 +98,19 @@ class ChatHistoryService(project: Project) {
         }
     }
 
-    fun load(id: String): StoredChat? = synchronized(lock) {
-        runCatching {
-            gson.fromJson(Files.readString(fileFor(id)), StoredChat::class.java)
-                .takeIf { it.id.isNotEmpty() && it.messages.isNotEmpty() && it.transcript.isNotEmpty() }
-        }.onFailure { log.warn("Could not read chat $id: ${it.message}") }.getOrNull()
-    }
+    fun load(id: String): StoredChat? =
+        synchronized(lock) {
+            runCatching {
+                gson
+                    .fromJson(Files.readString(fileFor(id)), StoredChat::class.java)
+                    .takeIf { it.id.isNotEmpty() && it.messages.isNotEmpty() && it.transcript.isNotEmpty() }
+            }.onFailure { log.warn("Could not read chat $id: ${it.message}") }.getOrNull()
+        }
 
-    fun save(chat: StoredChat, active: Boolean = true) {
+    fun save(
+        chat: StoredChat,
+        active: Boolean = true,
+    ) {
         if (chat.messages.isEmpty() || chat.transcript.isEmpty()) return
         synchronized(lock) {
             runCatching {
@@ -127,7 +128,10 @@ class ChatHistoryService(project: Project) {
         }
     }
 
-    fun addReturn(chatId: String, returned: AgentReturn): Boolean {
+    fun addReturn(
+        chatId: String,
+        returned: AgentReturn,
+    ): Boolean {
         synchronized(lock) {
             val chat = load(chatId) ?: return false
             save(
@@ -162,27 +166,30 @@ class ChatHistoryService(project: Project) {
     private fun fileFor(id: String): Path = directory.resolve("$id.json")
 
     private fun readIndex(): Index {
-        val parsed = runCatching { gson.fromJson(Files.readString(directory.resolve(INDEX_FILE)), Index::class.java) }
-            .getOrNull()
+        val parsed =
+            runCatching { gson.fromJson(Files.readString(directory.resolve(INDEX_FILE)), Index::class.java) }
+                .getOrNull()
         val chats = parsed?.chats ?: return rebuildIndex()
         return Index(parsed.activeId, chats)
     }
 
     private fun rebuildIndex(): Index {
-        val summaries = chatIdsOnDisk()
-            .mapNotNull { id -> load(id)?.let { ChatSummary(it.id, it.title, it.updatedAt, it.agent?.agentName) } }
-            .sortedByDescending { it.updatedAt }
+        val summaries =
+            chatIdsOnDisk()
+                .mapNotNull { id -> load(id)?.let { ChatSummary(it.id, it.title, it.updatedAt, it.agent?.agentName) } }
+                .sortedByDescending { it.updatedAt }
 
         val index = Index(null, summaries.toMutableList())
         if (summaries.isNotEmpty()) runCatching { writeIndex(index) }
         return index
     }
 
-    private fun chatIdsOnDisk(): List<String> = runCatching {
-        Files.newDirectoryStream(directory, "*.json").use { stream ->
-            stream.map { it.fileName.toString().removeSuffix(".json") }.filter { it != INDEX_ID }
-        }
-    }.getOrDefault(emptyList())
+    private fun chatIdsOnDisk(): List<String> =
+        runCatching {
+            Files.newDirectoryStream(directory, "*.json").use { stream ->
+                stream.map { it.fileName.toString().removeSuffix(".json") }.filter { it != INDEX_ID }
+            }
+        }.getOrDefault(emptyList())
 
     private fun writeIndex(index: Index) {
         Files.createDirectories(directory)
@@ -196,7 +203,10 @@ class ChatHistoryService(project: Project) {
         }
     }
 
-    private fun writeAtomically(target: Path, text: String) {
+    private fun writeAtomically(
+        target: Path,
+        text: String,
+    ) {
         val temp = target.resolveSibling("${target.fileName}.tmp")
         Files.writeString(temp, text)
         Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
@@ -217,10 +227,17 @@ class ChatHistoryService(project: Project) {
 
         fun titleFor(transcript: List<StoredRow>): String {
             val opening = transcript.firstOrNull { it.kind == StoredRow.USER }?.text.orEmpty()
-            val line = opening.lineSequence()
-                .map { it.trim().trimStart('#', '>', '-', '*', ' ').replace('`', ' ').trim() }
-                .firstOrNull { it.isNotEmpty() }
-                ?: return UNTITLED
+            val line =
+                opening
+                    .lineSequence()
+                    .map {
+                        it
+                            .trim()
+                            .trimStart('#', '>', '-', '*', ' ')
+                            .replace('`', ' ')
+                            .trim()
+                    }.firstOrNull { it.isNotEmpty() }
+                    ?: return UNTITLED
             return if (line.length > MAX_TITLE_LENGTH) line.take(MAX_TITLE_LENGTH - 1).trimEnd() + "…" else line
         }
     }

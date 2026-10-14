@@ -14,7 +14,9 @@ import java.awt.LayoutManager
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 
-internal abstract class ChatRow(layout: LayoutManager) : JPanel(layout) {
+internal abstract class ChatRow(
+    layout: LayoutManager,
+) : JPanel(layout) {
     init {
         isOpaque = false
     }
@@ -26,6 +28,7 @@ internal abstract class ChatRow(layout: LayoutManager) : JPanel(layout) {
 
 internal interface FailedRequest {
     fun markFailed(action: () -> Unit)
+
     fun clearFailure()
 }
 
@@ -36,25 +39,29 @@ internal class PlaceholderRow : ChatRow(VerticalLayout(JBUI.scale(4), VerticalLa
             JBLabel("Ask AI about this project", SwingConstants.CENTER).apply {
                 font = JBFont.label().asBold()
                 foreground = ChatColors.foreground
-            }
+            },
         )
         add(
-            JBLabel("Attach a selection for context — Enter sends, Shift+Enter adds a line", SwingConstants.CENTER).apply {
+            JBLabel(
+                "Attach a selection for context — Enter sends, Shift+Enter adds a line",
+                SwingConstants.CENTER,
+            ).apply {
                 font = JBFont.small()
                 foreground = ChatColors.muted
-            }
+            },
         )
         add(
             JBLabel("Type @ to hand the work over to an agent", SwingConstants.CENTER).apply {
                 font = JBFont.small()
                 foreground = ChatColors.muted
-            }
+            },
         )
     }
 }
 
-internal class AssistantRow(private val markdown: String) : ChatRow(BorderLayout()) {
-
+internal class AssistantRow(
+    private val markdown: String,
+) : ChatRow(BorderLayout()) {
     private val body = HtmlTextPane()
 
     init {
@@ -67,19 +74,22 @@ internal class AssistantRow(private val markdown: String) : ChatRow(BorderLayout
     override fun toMarkdown(): String? = markdown.trim().takeIf { it.isNotEmpty() }
 }
 
-internal class ErrorRow(message: String) : ChatRow(BorderLayout(0, JBUI.scale(4))) {
-
+internal class ErrorRow(
+    message: String,
+) : ChatRow(BorderLayout(0, JBUI.scale(4))) {
     private var onRetry: (() -> Unit)? = null
 
-    private val retry = CardButton("Retry", "Send this request to the model again") {
-        onRetry?.invoke()
-    }
+    private val retry =
+        CardButton("Retry", "Send this request to the model again") {
+            onRetry?.invoke()
+        }
 
-    private val actions = JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
-        isOpaque = false
-        isVisible = false
-        add(retry.component)
-    }
+    private val actions =
+        JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+            isOpaque = false
+            isVisible = false
+            add(retry.component)
+        }
 
     init {
         add(
@@ -109,23 +119,26 @@ internal class ErrorRow(message: String) : ChatRow(BorderLayout(0, JBUI.scale(4)
     }
 }
 
-internal class ThinkingRow(onCancel: () -> Unit) : ChatRow(BorderLayout(JBUI.scale(6), 0)) {
-
+internal class ThinkingRow(
+    onCancel: () -> Unit,
+) : ChatRow(BorderLayout(JBUI.scale(6), 0)) {
     private companion object {
         const val ENABLED_TOOLTIP = "Stop — cancel what the AI is doing"
         const val DISABLED_TOOLTIP = "Cannot be stopped from here — this is running in the terminal"
     }
 
     private var cancellable = true
-    private val label = JBLabel("AI is working", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT).apply {
-        font = JBFont.small()
-        foreground = ChatColors.muted
-        iconTextGap = JBUI.scale(6)
-    }
+    private val label =
+        JBLabel("AI is working", AnimatedIcon.Default.INSTANCE, SwingConstants.LEFT).apply {
+            font = JBFont.small()
+            foreground = ChatColors.muted
+            iconTextGap = JBUI.scale(6)
+        }
 
-    private val stop = InplaceButton(ENABLED_TOOLTIP, AllIcons.Actions.Suspend) {
-        if (cancellable) onCancel()
-    }
+    private val stop =
+        InplaceButton(ENABLED_TOOLTIP, AllIcons.Actions.Suspend) {
+            if (cancellable) onCancel()
+        }
 
     init {
         add(stop, BorderLayout.WEST)

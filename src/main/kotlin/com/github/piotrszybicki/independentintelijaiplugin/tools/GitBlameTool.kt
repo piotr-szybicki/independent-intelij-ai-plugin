@@ -1,13 +1,14 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.project.Project
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import git4idea.commands.GitCommand
 
-class GitBlameTool(private val project: Project) : AICodingAgentTool {
-
+class GitBlameTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val MAX_CHARS = 20_000
     }
@@ -16,31 +17,48 @@ class GitBlameTool(private val project: Project) : AICodingAgentTool {
     override val description =
         "Per line of a file: the commit, author and date that last changed it. Uncommitted edits " +
             "are not reflected."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("path", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", "File to blame, relative to the project root.")
-            })
-            add("start_line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty("description", "First line to blame, 1-based and inclusive. Defaults to the whole file.")
-            })
-            add("end_line", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty("description", "Last line to blame, 1-based and inclusive.")
-            })
-        })
-        add("required", JsonArray().apply { add("path") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "path",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty("description", "File to blame, relative to the project root.")
+                        },
+                    )
+                    add(
+                        "start_line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "First line to blame, 1-based and inclusive. Defaults to the whole file.",
+                            )
+                        },
+                    )
+                    add(
+                        "end_line",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty("description", "Last line to blame, 1-based and inclusive.")
+                        },
+                    )
+                },
+            )
+            add("required", JsonArray().apply { add("path") })
+        }
 
     override fun execute(input: JsonObject): String {
         val path = input.get("path")?.asString ?: return "Error: missing 'path' argument"
-        val resolved = when (val result = GitRepositories.resolve(project, path)) {
-            is GitRepositories.Resolved.Error -> return result.message
-            is GitRepositories.Resolved.Ok -> result
-        }
+        val resolved =
+            when (val result = GitRepositories.resolve(project, path)) {
+                is GitRepositories.Resolved.Error -> return result.message
+                is GitRepositories.Resolved.Ok -> result
+            }
         val pathInRepo = resolved.pathInRepo ?: return "Error: 'path' must name a file, not the repository root"
 
         val startLine = input.get("start_line")?.asInt

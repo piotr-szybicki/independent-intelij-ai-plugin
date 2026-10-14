@@ -13,7 +13,6 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 object AgentFiles {
-
     private const val DIRECTORY = ".cache"
 
     private val LOG = Logger.getInstance(AgentFiles::class.java)
@@ -22,7 +21,11 @@ object AgentFiles {
 
     private val HEADER_STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
-    fun spec(project: Project, agent: AgentDefinition, markdown: String): Path? {
+    fun spec(
+        project: Project,
+        agent: AgentDefinition,
+        markdown: String,
+    ): Path? {
         val now = LocalDateTime.now()
         return save(project, agent.name, "spec", now) {
             header(
@@ -32,7 +35,11 @@ object AgentFiles {
         }
     }
 
-    fun summary(project: Project, agentName: String, markdown: String): Path? {
+    fun summary(
+        project: Project,
+        agentName: String,
+        markdown: String,
+    ): Path? {
         val now = LocalDateTime.now()
         return save(project, agentName, "summary", now) {
             header(
@@ -42,7 +49,10 @@ object AgentFiles {
         }
     }
 
-    fun open(project: Project, path: Path): Boolean {
+    fun open(
+        project: Project,
+        path: Path,
+    ): Boolean {
         val file = findFile(path)
         if (file == null) {
             LOG.warn("Wrote $path but could not find it in the VFS")
@@ -67,13 +77,19 @@ object AgentFiles {
             .getOrNull()
     }
 
-    fun displayPath(project: Project, path: Path): String {
+    fun displayPath(
+        project: Project,
+        path: Path,
+    ): String {
         val root = project.basePath ?: return path.toString()
         val relative = runCatching { Path.of(root).relativize(path) }.getOrNull() ?: return path.toString()
         return relative.toString().replace('\\', '/')
     }
 
-    private fun specBody(agent: AgentDefinition, markdown: String): String =
+    private fun specBody(
+        agent: AgentDefinition,
+        markdown: String,
+    ): String =
         markdown.trim().takeIf { it.isNotEmpty() }
             ?: agent.specTemplate.takeIf { it.isNotEmpty() }
             ?: "Describe what @${agent.name} should do."
@@ -99,7 +115,10 @@ object AgentFiles {
         }
     }
 
-    private fun header(what: String, how: String): String = "<!-- $what\n     $how -->\n\n"
+    private fun header(
+        what: String,
+        how: String,
+    ): String = "<!-- $what\n     $how -->\n\n"
 
     private fun findFile(path: Path): VirtualFile? {
         var file: VirtualFile? = null

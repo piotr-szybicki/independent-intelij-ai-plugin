@@ -13,8 +13,10 @@ data class McpToolDescriptor(
     val inputSchema: JsonObject,
 )
 
-class McpClient(private val config: McpServerConfig, private val workingDir: File?) : AutoCloseable {
-
+class McpClient(
+    private val config: McpServerConfig,
+    private val workingDir: File?,
+) : AutoCloseable {
     companion object {
         private val LOG = Logger.getInstance(McpClient::class.java)
         private val GSON = Gson()
@@ -24,8 +26,11 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
         private const val MAX_RESULT_CHARS = 30_000
 
         fun renderResult(result: JsonObject): String {
-            val rendered = result.getAsJsonArray("content").orEmpty()
-                .mapNotNull { block -> (block as? JsonObject)?.let(::renderBlock) }
+            val rendered =
+                result
+                    .getAsJsonArray("content")
+                    .orEmpty()
+                    .mapNotNull { block -> (block as? JsonObject)?.let(::renderBlock) }
             val structured = result.getAsJsonObject("structuredContent")
 
             var text = rendered.joinToString("\n\n").trim()
@@ -40,20 +45,28 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
             return if (result.get("isError")?.asBoolean == true) "Error: $text" else text
         }
 
-        private fun renderBlock(block: JsonObject): String? = when (block.get("type")?.asString) {
-            "text" -> block.get("text")?.asString
-            "image", "audio" -> {
-                val mime = block.get("mimeType")?.asString ?: "unknown type"
-                val bytes = block.get("data")?.asString?.length?.times(3)?.div(4) ?: 0
-                "[${block.get("type")?.asString}: $mime, ~$bytes bytes -- this client cannot show it]"
+        private fun renderBlock(block: JsonObject): String? =
+            when (block.get("type")?.asString) {
+                "text" -> block.get("text")?.asString
+                "image", "audio" -> {
+                    val mime = block.get("mimeType")?.asString ?: "unknown type"
+                    val bytes =
+                        block
+                            .get("data")
+                            ?.asString
+                            ?.length
+                            ?.times(3)
+                            ?.div(4) ?: 0
+                    "[${block.get("type")?.asString}: $mime, ~$bytes bytes -- this client cannot show it]"
+                }
+                "resource" ->
+                    block.getAsJsonObject("resource")?.let { resource ->
+                        val uri = resource.get("uri")?.asString.orEmpty()
+                        resource.get("text")?.asString?.let { "$uri:\n$it" } ?: "[binary resource: $uri]"
+                    }
+                "resource_link" -> "[resource: ${block.get("uri")?.asString}]"
+                else -> block.get("text")?.asString
             }
-            "resource" -> block.getAsJsonObject("resource")?.let { resource ->
-                val uri = resource.get("uri")?.asString.orEmpty()
-                resource.get("text")?.asString?.let { "$uri:\n$it" } ?: "[binary resource: $uri]"
-            }
-            "resource_link" -> "[resource: ${block.get("uri")?.asString}]"
-            else -> block.get("text")?.asString
-        }
 
         private fun JsonArray?.orEmpty(): JsonArray = this ?: JsonArray()
     }
@@ -68,21 +81,30 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
         val resolved = config.resolved()
         val timeout = resolved.timeoutSeconds * 1000L
 
-        val opened = if (resolved.isStdio) {
-            McpStdioTransport(resolved, workingDir)
-        } else {
-            McpHttpTransport(resolved)
-        }
+        val opened =
+            if (resolved.isStdio) {
+                McpStdioTransport(resolved, workingDir)
+            } else {
+                McpHttpTransport(resolved)
+            }
         transport = opened
 
-        val initialize = McpRpc.request(nextId.getAndIncrement(), "initialize", JsonObject().apply {
-            addProperty("protocolVersion", PROTOCOL_VERSION)
-            add("capabilities", JsonObject())
-            add("clientInfo", JsonObject().apply {
-                addProperty("name", "aicodingagent-intellij")
-                addProperty("version", "1.0")
-            })
-        })
+        val initialize =
+            McpRpc.request(
+                nextId.getAndIncrement(),
+                "initialize",
+                JsonObject().apply {
+                    addProperty("protocolVersion", PROTOCOL_VERSION)
+                    add("capabilities", JsonObject())
+                    add(
+                        "clientInfo",
+                        JsonObject().apply {
+                            addProperty("name", "aicodingagent-intellij")
+                            addProperty("version", "1.0")
+                        },
+                    )
+                },
+            )
 
         val result = McpRpc.resultOf(opened.request(initialize, timeout), "initialize")
         result.getAsJsonObject("serverInfo")?.let { info ->
@@ -101,12 +123,20 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
         return listTools(opened, timeout)
     }
 
-    fun callTool(toolName: String, arguments: JsonObject): String {
+    fun callTool(
+        toolName: String,
+        arguments: JsonObject,
+    ): String {
         val open = transport ?: throw McpException("not connected")
-        val request = McpRpc.request(nextId.getAndIncrement(), "tools/call", JsonObject().apply {
-            addProperty("name", toolName)
-            add("arguments", arguments)
-        })
+        val request =
+            McpRpc.request(
+                nextId.getAndIncrement(),
+                "tools/call",
+                JsonObject().apply {
+                    addProperty("name", toolName)
+                    add("arguments", arguments)
+                },
+            )
         val result = McpRpc.resultOf(open.request(request, config.timeoutSeconds * 1000L), "tools/call")
         return renderResult(result)
     }
@@ -116,7 +146,10 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
         transport = null
     }
 
-    private fun listTools(open: McpTransport, timeout: Long): List<McpToolDescriptor> {
+    private fun listTools(
+        open: McpTransport,
+        timeout: Long,
+    ): List<McpToolDescriptor> {
         val tools = mutableListOf<McpToolDescriptor>()
         var cursor: String? = null
 
@@ -128,11 +161,12 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
             for (element in result.getAsJsonArray("tools").orEmpty()) {
                 val tool = element as? JsonObject ?: continue
                 val name = tool.get("name")?.asString ?: continue
-                tools += McpToolDescriptor(
-                    name = name,
-                    description = tool.get("description")?.asString.orEmpty(),
-                    inputSchema = tool.getAsJsonObject("inputSchema") ?: emptySchema(),
-                )
+                tools +=
+                    McpToolDescriptor(
+                        name = name,
+                        description = tool.get("description")?.asString.orEmpty(),
+                        inputSchema = tool.getAsJsonObject("inputSchema") ?: emptySchema(),
+                    )
             }
 
             cursor = result.get("nextCursor")?.asString
@@ -141,8 +175,9 @@ class McpClient(private val config: McpServerConfig, private val workingDir: Fil
         return tools
     }
 
-    private fun emptySchema(): JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject())
-    }
+    private fun emptySchema(): JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add("properties", JsonObject())
+        }
 }

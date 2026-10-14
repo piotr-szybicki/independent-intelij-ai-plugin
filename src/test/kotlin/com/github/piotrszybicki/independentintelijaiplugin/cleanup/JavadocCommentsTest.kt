@@ -6,8 +6,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class JavadocCommentsTest {
-
-    private fun strip(source: String, onlyBlank: Boolean = false): String {
+    private fun strip(
+        source: String,
+        onlyBlank: Boolean = false,
+    ): String {
         val comments = Regex("""/\*\*.*?\*/""", RegexOption.DOT_MATCHES_ALL).findAll(source)
         var result = source
         for (match in comments.toList().asReversed()) {
@@ -40,14 +42,15 @@ class JavadocCommentsTest {
 
     @Test
     fun `a comment on its own lines takes the lines with it`() {
-        val source = """
+        val source =
+            """
             class A {
                 /**
                  * What this does.
                  */
                 fun a() {}
             }
-        """.trimIndent()
+            """.trimIndent()
 
         assertEquals(
             """
@@ -66,12 +69,13 @@ class JavadocCommentsTest {
 
     @Test
     fun `line and block comments survive the sweep`() {
-        val source = """
+        val source =
+            """
             // still here
             /* and this */
             /** but not this */
             val a = 1
-        """.trimIndent()
+            """.trimIndent()
 
         assertEquals(
             """
@@ -85,7 +89,8 @@ class JavadocCommentsTest {
 
     @Test
     fun `report-only mode aside, the blank filter leaves written documentation alone`() {
-        val source = """
+        val source =
+            """
             /**
              *
              */
@@ -95,7 +100,7 @@ class JavadocCommentsTest {
              * Worth saying.
              */
             fun b() {}
-        """.trimIndent()
+            """.trimIndent()
 
         assertEquals(
             """

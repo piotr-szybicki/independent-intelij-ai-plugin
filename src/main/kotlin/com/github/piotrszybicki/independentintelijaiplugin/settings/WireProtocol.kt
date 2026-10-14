@@ -7,23 +7,33 @@ enum class WireProtocol(
     private val aliases: List<String>,
 ) {
     ANTHROPIC_MESSAGES(
-        "Anthropic Messages (Anthropic, Bedrock/Vertex gateways)", "/messages", "anthropic-messages",
+        "Anthropic Messages (Anthropic, Bedrock/Vertex gateways)",
+        "/messages",
+        "anthropic-messages",
         listOf("anthropic", "messages"),
     ),
     OPENAI_CHAT_COMPLETIONS(
-        "OpenAI Chat Completions (Azure, OpenRouter, vLLM, Ollama)", "/chat/completions", "openai-chat-completions",
+        "OpenAI Chat Completions (Azure, OpenRouter, vLLM, Ollama)",
+        "/chat/completions",
+        "openai-chat-completions",
         listOf("chat-completions", "completions"),
     ),
     OPENAI_RESPONSES(
-        "OpenAI Responses (OpenAI, Microsoft Foundry)", "/responses", "openai-responses",
+        "OpenAI Responses (OpenAI, Microsoft Foundry)",
+        "/responses",
+        "openai-responses",
         listOf("responses"),
     ),
     ;
 
     companion object {
-
         fun parse(value: String): WireProtocol? {
-            val wanted = value.trim().lowercase().replace('_', '-').replace(' ', '-')
+            val wanted =
+                value
+                    .trim()
+                    .lowercase()
+                    .replace('_', '-')
+                    .replace(' ', '-')
             return entries.firstOrNull { protocol ->
                 wanted == protocol.wireName ||
                     wanted == protocol.name.lowercase().replace('_', '-') ||

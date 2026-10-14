@@ -1,7 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 object EndpointUrl {
-
     const val ENV_VAR = "AI_API_URL"
 
     val fromEnvironment: String?
@@ -9,7 +8,10 @@ object EndpointUrl {
 
     fun resolve(configured: String): String = resolve(fromEnvironment, configured)
 
-    fun resolve(environment: String?, configured: String): String =
+    fun resolve(
+        environment: String?,
+        configured: String,
+    ): String =
         environment?.trim()?.takeIf { it.isNotBlank() }
             ?: configured.trim().ifBlank { AgentConfiguration.DEFAULT_ENDPOINT_URL }
 }

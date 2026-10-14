@@ -13,8 +13,10 @@ import java.awt.BorderLayout
 import javax.swing.JComponent
 import javax.swing.JPanel
 
-class ToolSelectionDialog(project: Project?, selected: Set<String>) : DialogWrapper(project) {
-
+class ToolSelectionDialog(
+    project: Project?,
+    selected: Set<String>,
+) : DialogWrapper(project) {
     private val boxes: Map<String, JBCheckBox> =
         ToolCatalog.entries.associate { it.name to JBCheckBox(it.name, it.name in selected) }
 
@@ -36,31 +38,32 @@ class ToolSelectionDialog(project: Project?, selected: Set<String>) : DialogWrap
     }
 
     override fun createCenterPanel(): JComponent {
-        val content = panel {
-            row {
-                comment(
-                    "Every selected tool's definition is sent with every message, so the set is a " +
-                        "standing cost on each turn whether the model uses any of it or not. A " +
-                        "tool that is not selected cannot be called at all, so this bounds what " +
-                        "the assistant may do as well as what it costs.",
-                )
-            }
-            row {
-                button("Read-Only Defaults") { select(ToolCatalog.parse(ToolCatalog.DEFAULT_ENABLED)) }
-                button("Select All") { select(ToolCatalog.entries.mapTo(mutableSetOf()) { it.name }) }
-                button("Clear") { select(emptySet()) }
-            }
-            for (category in ToolCategory.entries) {
-                group {
-                    row { cell(masters.getValue(category)) }
-                    indent {
-                        for (entry in ToolCatalog.entries.filter { it.category == category }) {
-                            row { cell(boxes.getValue(entry.name)) }
+        val content =
+            panel {
+                row {
+                    comment(
+                        "Every selected tool's definition is sent with every message, so the set is a " +
+                            "standing cost on each turn whether the model uses any of it or not. A " +
+                            "tool that is not selected cannot be called at all, so this bounds what " +
+                            "the assistant may do as well as what it costs.",
+                    )
+                }
+                row {
+                    button("Read-Only Defaults") { select(ToolCatalog.parse(ToolCatalog.DEFAULT_ENABLED)) }
+                    button("Select All") { select(ToolCatalog.entries.mapTo(mutableSetOf()) { it.name }) }
+                    button("Clear") { select(emptySet()) }
+                }
+                for (category in ToolCategory.entries) {
+                    group {
+                        row { cell(masters.getValue(category)) }
+                        indent {
+                            for (entry in ToolCatalog.entries.filter { it.category == category }) {
+                                row { cell(boxes.getValue(entry.name)) }
+                            }
                         }
                     }
                 }
             }
-        }
 
         return JPanel(BorderLayout()).apply {
             add(JBScrollPane(content).apply { border = JBUI.Borders.empty() }, BorderLayout.CENTER)

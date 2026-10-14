@@ -15,21 +15,25 @@ internal class AiTurnRow(
     onContinue: () -> Unit,
     private val onReturn: ((String) -> Boolean)? = null,
 ) : ChatRow(BorderLayout()) {
-
     private val contents = mutableListOf<ChatRow>()
 
-    private val stack = JPanel(VerticalLayout(ChatMetrics.rowGap, VerticalLayout.FILL)).apply {
-        isOpaque = false
-    }
+    private val stack =
+        JPanel(VerticalLayout(ChatMetrics.rowGap, VerticalLayout.FILL)).apply {
+            isOpaque = false
+        }
 
-    private val cost = JBLabel().apply {
-        font = JBFont.small()
-        foreground = ChatColors.muted
-        isVisible = false
-        horizontalAlignment = SwingConstants.RIGHT
-    }
+    private val cost =
+        JBLabel().apply {
+            font = JBFont.small()
+            foreground = ChatColors.muted
+            isVisible = false
+            horizontalAlignment = SwingConstants.RIGHT
+        }
 
-    fun setCost(text: String?, tooltip: String?) {
+    fun setCost(
+        text: String?,
+        tooltip: String?,
+    ) {
         cost.text = text.orEmpty()
         cost.toolTipText = tooltip
         cost.isVisible = !text.isNullOrEmpty()
@@ -37,24 +41,27 @@ internal class AiTurnRow(
         repaint()
     }
 
-    private val export = CardButton("Export MD", "Save this reply as a Markdown file") {
-        onExport(toMarkdown())
-    }
+    private val export =
+        CardButton("Export MD", "Save this reply as a Markdown file") {
+            onExport(toMarkdown())
+        }
 
-    private val returnSummary = CardButton(
-        "Return summary",
-        "Send this reply back to the chat that started this agent, as a file you can edit first",
-    ) { returnToParent() }.apply { isVisible = onReturn != null }
+    private val returnSummary =
+        CardButton(
+            "Return summary",
+            "Send this reply back to the chat that started this agent, as a file you can edit first",
+        ) { returnToParent() }.apply { isVisible = onReturn != null }
 
     private fun returnToParent() {
         if (onReturn?.invoke(finalMarkdown()) == true) returnSummary.settle("Returned")
     }
 
-    private val continueTurn = CardButton(
-        "Continue",
-        "Send the conversation again and carry on from where the limit stopped this turn",
-        onContinue,
-    ).apply { isVisible = false }
+    private val continueTurn =
+        CardButton(
+            "Continue",
+            "Send the conversation again and carry on from where the limit stopped this turn",
+            onContinue,
+        ).apply { isVisible = false }
 
     fun setContinuable(offered: Boolean) {
         continueTurn.isVisible = offered
@@ -62,19 +69,20 @@ internal class AiTurnRow(
         repaint()
     }
 
-    private val footer = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
-        isOpaque = false
-        add(
-            JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
-                isOpaque = false
-                add(export.component)
-                add(returnSummary.component)
-                add(continueTurn.component)
-            },
-            BorderLayout.WEST,
-        )
-        add(cost, BorderLayout.CENTER)
-    }
+    private val footer =
+        JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+            isOpaque = false
+            add(
+                JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+                    isOpaque = false
+                    add(export.component)
+                    add(returnSummary.component)
+                    add(continueTurn.component)
+                },
+                BorderLayout.WEST,
+            )
+            add(cost, BorderLayout.CENTER)
+        }
 
     init {
         border = JBUI.Borders.emptyRight(ChatMetrics.bubbleIndent)

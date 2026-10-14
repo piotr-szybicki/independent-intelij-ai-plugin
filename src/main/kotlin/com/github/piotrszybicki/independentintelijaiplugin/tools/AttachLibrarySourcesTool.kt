@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
@@ -10,10 +11,10 @@ import com.intellij.openapi.roots.LibraryOrderEntry
 import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.ActionCallback
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 
-class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool {
-
+class AttachLibrarySourcesTool(
+    private val project: Project,
+) : AICodingAgentTool {
     companion object {
         private const val EP_NAME = "com.intellij.attachSourcesProvider"
         private const val MAX_CANDIDATES = 20
@@ -30,55 +31,80 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
             "decompiled bytecode. Worth it only when read_library_class reports decompiled output " +
             "and the comments or parameter names matter. Asks the user first: it downloads over " +
             "the network and changes the project's library configuration."
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        add("properties", JsonObject().apply {
-            add("class_name", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "A class from the library whose sources are wanted, simple or fully qualified",
-                )
-            })
-            add("action", JsonObject().apply {
-                addProperty("type", "string")
-                addProperty(
-                    "description",
-                    "Which attach action to run, when a previous call reported more than one. Omit " +
-                        "when there is only one, which is the usual case.",
-                )
-            })
-            add("timeout_seconds", JsonObject().apply {
-                addProperty("type", "integer")
-                addProperty(
-                    "description",
-                    "How long to wait for the download. Defaults to $DEFAULT_TIMEOUT_SECONDS, " +
-                        "maximum $MAX_TIMEOUT_SECONDS.",
-                )
-            })
-        })
-        add("required", JsonArray().apply { add("class_name") })
-    }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        "class_name",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "A class from the library whose sources are wanted, simple or fully qualified",
+                            )
+                        },
+                    )
+                    add(
+                        "action",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Which attach action to run, when a previous call reported more than one. Omit " +
+                                    "when there is only one, which is the usual case.",
+                            )
+                        },
+                    )
+                    add(
+                        "timeout_seconds",
+                        JsonObject().apply {
+                            addProperty("type", "integer")
+                            addProperty(
+                                "description",
+                                "How long to wait for the download. Defaults to $DEFAULT_TIMEOUT_SECONDS, " +
+                                    "maximum $MAX_TIMEOUT_SECONDS.",
+                            )
+                        },
+                    )
+                },
+            )
+            add("required", JsonArray().apply { add("class_name") })
+        }
 
     override fun execute(input: JsonObject): String {
-        val className = input.get("class_name")?.asString?.trim().orEmpty()
+        val className =
+            input
+                .get("class_name")
+                ?.asString
+                ?.trim()
+                .orEmpty()
         if (className.isEmpty()) return "Error: missing 'class_name'"
 
-        val requested = input.get("action")?.asString?.trim()?.takeIf { it.isNotEmpty() }
-        val timeoutSeconds = (input.get("timeout_seconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS)
-            .coerceIn(1, MAX_TIMEOUT_SECONDS)
+        val requested =
+            input
+                .get("action")
+                ?.asString
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        val timeoutSeconds =
+            (input.get("timeout_seconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS)
+                .coerceIn(1, MAX_TIMEOUT_SECONDS)
 
-        val candidate = when (val resolution = LibraryClasses.resolve(project, className, MAX_CANDIDATES)) {
-            is LibraryClasses.Resolution.NotFound ->
-                return "No class named \"$className\" is visible to this project."
+        val candidate =
+            when (val resolution = LibraryClasses.resolve(project, className, MAX_CANDIDATES)) {
+                is LibraryClasses.Resolution.NotFound ->
+                    return "No class named \"$className\" is visible to this project."
 
-            is LibraryClasses.Resolution.Ambiguous ->
-                return "\"$className\" is ambiguous — ${resolution.candidates.size} classes match:\n" +
-                    resolution.candidates.joinToString("\n") { "  ${it.qualifiedName}" } +
-                    "\n\nCall again with the fully qualified name."
+                is LibraryClasses.Resolution.Ambiguous ->
+                    return "\"$className\" is ambiguous — ${resolution.candidates.size} classes match:\n" +
+                        resolution.candidates.joinToString("\n") { "  ${it.qualifiedName}" } +
+                        "\n\nCall again with the fully qualified name."
 
-            is LibraryClasses.Resolution.Found -> resolution.candidate
-        }
+                is LibraryClasses.Resolution.Found -> resolution.candidate
+            }
 
         if (candidate.inProject) {
             return "${candidate.qualifiedName} is part of this project, not a library -- its source " +
@@ -90,22 +116,25 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
                 ". read_library_class will return real source for it."
         }
 
-        val entries = ReadAction.computeBlocking<List<LibraryOrderEntry>, RuntimeException> {
-            ProjectFileIndex.getInstance(project)
-                .getOrderEntriesForFile(candidate.virtualFile)
-                .filterIsInstance<LibraryOrderEntry>()
-        }
+        val entries =
+            ReadAction.computeBlocking<List<LibraryOrderEntry>, RuntimeException> {
+                ProjectFileIndex
+                    .getInstance(project)
+                    .getOrderEntriesForFile(candidate.virtualFile)
+                    .filterIsInstance<LibraryOrderEntry>()
+            }
         if (entries.isEmpty()) {
             return "${candidate.qualifiedName} is not part of a library the project declares, so " +
                 "there is nothing to attach sources to."
         }
 
-        val actions = try {
-            findActions(entries, candidate)
-        } catch (e: Exception) {
-            return "Error: could not ask the IDE for source-attachment actions: " +
-                (e.message ?: e::class.java.simpleName)
-        }
+        val actions =
+            try {
+                findActions(entries, candidate)
+            } catch (e: Exception) {
+                return "Error: could not ask the IDE for source-attachment actions: " +
+                    (e.message ?: e::class.java.simpleName)
+            }
 
         val library = candidate.libraryName ?: entries.first().libraryName ?: "this library"
 
@@ -116,18 +145,21 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
                 "Structure | Libraries."
         }
 
-        val chosen = when {
-            requested != null -> actions.firstOrNull { it.label.equals(requested, ignoreCase = true) }
-                ?: actions.firstOrNull { it.label.contains(requested, ignoreCase = true) }
-                ?: return "Error: no attach action matching \"$requested\". Available:\n" +
-                    actions.joinToString("\n") { "  ${it.label}" }
+        val chosen =
+            when {
+                requested != null ->
+                    actions.firstOrNull { it.label.equals(requested, ignoreCase = true) }
+                        ?: actions.firstOrNull { it.label.contains(requested, ignoreCase = true) }
+                        ?: return "Error: no attach action matching \"$requested\". Available:\n" +
+                            actions.joinToString("\n") { "  ${it.label}" }
 
-            actions.size == 1 -> actions.single()
+                actions.size == 1 -> actions.single()
 
-            else -> return "${actions.size} ways to attach sources for $library:\n" +
-                actions.joinToString("\n") { "  ${it.label}" } +
-                "\n\nCall again with 'action' set to one of these."
-        }
+                else ->
+                    return "${actions.size} ways to attach sources for $library:\n" +
+                        actions.joinToString("\n") { "  ${it.label}" } +
+                        "\n\nCall again with 'action' set to one of these."
+            }
 
         if (!confirm(chosen.label, library, timeoutSeconds)) {
             return "The user declined to download sources for $library. Carry on with the " +
@@ -137,7 +169,10 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         return perform(chosen, entries, library, timeoutSeconds, candidate.qualifiedName)
     }
 
-    private class AttachAction(val label: String, val target: Any)
+    private class AttachAction(
+        val label: String,
+        val target: Any,
+    )
 
     private fun findActions(
         entries: List<LibraryOrderEntry>,
@@ -149,9 +184,10 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         val found = mutableListOf<AttachAction>()
         ReadAction.runBlocking<RuntimeException> {
             for (provider in providers) {
-                val actions = runCatching {
-                    call(provider, "getActions", 2, entries, candidate.file) as? Collection<*>
-                }.getOrNull() ?: continue
+                val actions =
+                    runCatching {
+                        call(provider, "getActions", 2, entries, candidate.file) as? Collection<*>
+                    }.getOrNull() ?: continue
 
                 for (action in actions.filterNotNull()) {
                     val label = runCatching { call(action, "getName", 0) as? String }.getOrNull()
@@ -170,22 +206,23 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         timeoutSeconds: Int,
         qualifiedName: String,
     ): String {
-        val callback = try {
-            var result: Any? = null
-            var failure: Exception? = null
-            ApplicationManager.getApplication().invokeAndWait {
-                try {
-                    result = call(action.target, "perform", 1, entries)
-                } catch (e: Exception) {
-                    failure = e
+        val callback =
+            try {
+                var result: Any? = null
+                var failure: Exception? = null
+                ApplicationManager.getApplication().invokeAndWait {
+                    try {
+                        result = call(action.target, "perform", 1, entries)
+                    } catch (e: Exception) {
+                        failure = e
+                    }
                 }
-            }
-            failure?.let { throw it }
-            result as? ActionCallback
-        } catch (e: Exception) {
-            return "Error running \"${action.label}\" for $library: ${e.message ?: e::class.java.simpleName}"
-        } ?: return "\"${action.label}\" was started for $library, but the IDE reported no result to " +
-            "wait on. Check whether sources appeared with read_library_class."
+                failure?.let { throw it }
+                result as? ActionCallback
+            } catch (e: Exception) {
+                return "Error running \"${action.label}\" for $library: ${e.message ?: e::class.java.simpleName}"
+            } ?: return "\"${action.label}\" was started for $library, but the IDE reported no result to " +
+                "wait on. Check whether sources appeared with read_library_class."
 
         if (!callback.waitFor(timeoutSeconds * 1000L)) {
             return "\"${action.label}\" is still running after ${timeoutSeconds}s. It continues in " +
@@ -210,28 +247,39 @@ class AttachLibrarySourcesTool(private val project: Project) : AICodingAgentTool
         }
     }
 
-    private fun confirm(actionLabel: String, library: String, timeoutSeconds: Int): Boolean {
+    private fun confirm(
+        actionLabel: String,
+        library: String,
+        timeoutSeconds: Int,
+    ): Boolean {
         var choice = -1
         ApplicationManager.getApplication().invokeAndWait {
-            choice = Messages.showDialog(
-                project,
-                "The AI wants to download and attach the sources for:\n\n$library\n\n" +
-                    "Action: $actionLabel\nWaits up to ${timeoutSeconds}s\n\n" +
-                    "This downloads over the network and changes your project's library " +
-                    "configuration. It is only needed so the AI can read comments and Javadoc that " +
-                    "decompiled bytecode does not carry.",
-                "Download Library Sources?",
-                arrayOf("Download", "Don't Download"),
-                1,
-                Messages.getQuestionIcon(),
-            )
+            choice =
+                Messages.showDialog(
+                    project,
+                    "The AI wants to download and attach the sources for:\n\n$library\n\n" +
+                        "Action: $actionLabel\nWaits up to ${timeoutSeconds}s\n\n" +
+                        "This downloads over the network and changes your project's library " +
+                        "configuration. It is only needed so the AI can read comments and Javadoc that " +
+                        "decompiled bytecode does not carry.",
+                    "Download Library Sources?",
+                    arrayOf("Download", "Don't Download"),
+                    1,
+                    Messages.getQuestionIcon(),
+                )
         }
         return choice == 0
     }
 
-    private fun call(target: Any, name: String, arity: Int, vararg args: Any?): Any? {
-        val method = target.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == arity }
-            ?: throw NoSuchMethodException("$name/$arity on ${target.javaClass.name}")
+    private fun call(
+        target: Any,
+        name: String,
+        arity: Int,
+        vararg args: Any?,
+    ): Any? {
+        val method =
+            target.javaClass.methods.firstOrNull { it.name == name && it.parameterCount == arity }
+                ?: throw NoSuchMethodException("$name/$arity on ${target.javaClass.name}")
         method.isAccessible = true
         return method.invoke(target, *args)
     }

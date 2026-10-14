@@ -9,7 +9,6 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 
 internal object SweepRunner {
-
     private const val NOTIFICATION_GROUP = "AICodingAgent.Cleanup"
 
     fun launch(
@@ -18,33 +17,41 @@ internal object SweepRunner {
         sweep: CommentSweep,
         report: (CommentSweep.Report) -> Unit,
     ) {
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, title, true) {
-            private var result: CommentSweep.Report? = null
-            private var failure: String? = null
+        ProgressManager.getInstance().run(
+            object : Task.Backgroundable(project, title, true) {
+                private var result: CommentSweep.Report? = null
+                private var failure: String? = null
 
-            override fun run(indicator: ProgressIndicator) {
-                try {
-                    result = sweep.run(indicator)
-                } catch (e: ProcessCanceledException) {
-                    throw e
-                } catch (e: Exception) {
-                    failure = e.message ?: e.toString()
+                override fun run(indicator: ProgressIndicator) {
+                    try {
+                        result = sweep.run(indicator)
+                    } catch (e: ProcessCanceledException) {
+                        throw e
+                    } catch (e: Exception) {
+                        failure = e.message ?: e.toString()
+                    }
                 }
-            }
 
-            override fun onSuccess() {
-                val stopped = failure
-                if (stopped != null) {
-                    notify(project, "$title stopped", stopped, NotificationType.ERROR)
-                    return
+                override fun onSuccess() {
+                    val stopped = failure
+                    if (stopped != null) {
+                        notify(project, "$title stopped", stopped, NotificationType.ERROR)
+                        return
+                    }
+                    result?.let(report)
                 }
-                result?.let(report)
-            }
-        })
+            },
+        )
     }
 
-    fun notify(project: Project, title: String, content: String, type: NotificationType) {
-        NotificationGroupManager.getInstance()
+    fun notify(
+        project: Project,
+        title: String,
+        content: String,
+        type: NotificationType,
+    ) {
+        NotificationGroupManager
+            .getInstance()
             .getNotificationGroup(NOTIFICATION_GROUP)
             .createNotification(title, content, type)
             .notify(project)

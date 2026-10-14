@@ -4,8 +4,11 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 
 object ToolResults {
-
-    fun replace(history: MutableList<ChatMessage>, toolUseId: String, content: String): Boolean {
+    fun replace(
+        history: MutableList<ChatMessage>,
+        toolUseId: String,
+        content: String,
+    ): Boolean {
         if (toolUseId.isEmpty()) return false
 
         for (i in history.indices.reversed()) {
@@ -23,11 +26,13 @@ object ToolResults {
                     copy.add(block)
                     continue
                 }
-                copy.add(JsonObject().apply {
-                    addProperty("type", "tool_result")
-                    addProperty("tool_use_id", toolUseId)
-                    addProperty("content", content)
-                })
+                copy.add(
+                    JsonObject().apply {
+                        addProperty("type", "tool_result")
+                        addProperty("tool_use_id", toolUseId)
+                        addProperty("content", content)
+                    },
+                )
                 found = true
             }
 

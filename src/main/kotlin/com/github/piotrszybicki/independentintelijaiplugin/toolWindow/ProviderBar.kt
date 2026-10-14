@@ -1,14 +1,14 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.ComboBox
 import com.intellij.ui.InplaceButton
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import javax.swing.BorderFactory
@@ -29,45 +29,49 @@ internal class ProviderBar(
     var modelName: String = ""
         private set
 
-    private val providerCombo = ComboBox(DefaultComboBoxModel<String>()).apply {
-        font = JBFont.small()
-        toolTipText = "Which provider in ${AgentConfiguration.FILE_NAME} to send to"
-        addActionListener { if (!refilling) providerChosen() }
-    }
+    private val providerCombo =
+        ComboBox(DefaultComboBoxModel<String>()).apply {
+            font = JBFont.small()
+            toolTipText = "Which provider in ${AgentConfiguration.FILE_NAME} to send to"
+            addActionListener { if (!refilling) providerChosen() }
+        }
 
-    private val modelCombo = ComboBox(DefaultComboBoxModel<String>()).apply {
-        font = JBFont.small()
-        toolTipText = "Which model to ask this provider for"
-        addActionListener { if (!refilling) modelChosen() }
-    }
+    private val modelCombo =
+        ComboBox(DefaultComboBoxModel<String>()).apply {
+            font = JBFont.small()
+            toolTipText = "Which model to ask this provider for"
+            addActionListener { if (!refilling) modelChosen() }
+        }
 
-    val component: JComponent = JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
-        isOpaque = false
-        border = BorderFactory.createCompoundBorder(
-            JBUI.Borders.customLineBottom(ChatColors.separator),
-            JBUI.Borders.empty(4, 8),
-        )
-        add(
-            JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
-                isOpaque = false
-                add(providerCombo)
-                add(modelCombo)
-            },
-            BorderLayout.CENTER,
-        )
-        add(
-            JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply {
-                isOpaque = false
-                trailing?.let { add(it) }
-                add(
-                    InplaceButton("Re-read ${AgentConfiguration.FILE_NAME}", AllIcons.Actions.Refresh) {
-                        refresh()
-                    },
+    val component: JComponent =
+        JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
+            isOpaque = false
+            border =
+                BorderFactory.createCompoundBorder(
+                    JBUI.Borders.customLineBottom(ChatColors.separator),
+                    JBUI.Borders.empty(4, 8),
                 )
-            },
-            BorderLayout.EAST,
-        )
-    }
+            add(
+                JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
+                    isOpaque = false
+                    add(providerCombo)
+                    add(modelCombo)
+                },
+                BorderLayout.CENTER,
+            )
+            add(
+                JPanel(FlowLayout(FlowLayout.RIGHT, JBUI.scale(6), 0)).apply {
+                    isOpaque = false
+                    trailing?.let { add(it) }
+                    add(
+                        InplaceButton("Re-read ${AgentConfiguration.FILE_NAME}", AllIcons.Actions.Refresh) {
+                            refresh()
+                        },
+                    )
+                },
+                BorderLayout.EAST,
+            )
+        }
 
     fun seedFromDefault() {
         val settings = AICodingAgentSettingsState.getInstance().state
@@ -76,7 +80,10 @@ internal class ProviderBar(
         refresh()
     }
 
-    fun setSelection(configuration: String?, model: String?) {
+    fun setSelection(
+        configuration: String?,
+        model: String?,
+    ) {
         configuration?.let { configurationName = it }
         model?.let { modelName = it }
         refresh()
@@ -86,8 +93,9 @@ internal class ProviderBar(
         refilling = true
         try {
             providers = AgentConfigurations.getInstance(project).load().configurations
-            val active = AgentConfigurations.select(providers, configurationName)
-                ?: AgentConfiguration.fallback()
+            val active =
+                AgentConfigurations.select(providers, configurationName)
+                    ?: AgentConfiguration.fallback()
 
             providerCombo.model = DefaultComboBoxModel(providers.map { it.name }.toTypedArray())
             providerCombo.isEnabled = providers.isNotEmpty()

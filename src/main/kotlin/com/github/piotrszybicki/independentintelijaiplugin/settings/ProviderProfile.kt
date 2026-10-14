@@ -8,29 +8,28 @@ data class ProviderProfile(
     val authScheme: AuthScheme?,
     val thinking: ThinkingMode,
 ) {
-
     companion object {
-
-        private val KNOWN_HOSTS = listOf(
-            KnownHost(
-                displayName = "the Anthropic API",
-                hosts = listOf("anthropic.com"),
-                authScheme = AuthScheme.X_API_KEY,
-                protocol = WireProtocol.ANTHROPIC_MESSAGES,
-            ),
-            KnownHost(
-                displayName = "Microsoft Foundry",
-                hosts = listOf("services.ai.azure.com", "openai.azure.com", "cognitiveservices.azure.com"),
-                authScheme = AuthScheme.BEARER,
-                protocol = WireProtocol.OPENAI_RESPONSES,
-            ),
-            KnownHost(
-                displayName = "OpenAI",
-                hosts = listOf("openai.com"),
-                authScheme = AuthScheme.BEARER,
-                protocol = WireProtocol.OPENAI_RESPONSES,
-            ),
-        )
+        private val KNOWN_HOSTS =
+            listOf(
+                KnownHost(
+                    displayName = "the Anthropic API",
+                    hosts = listOf("anthropic.com"),
+                    authScheme = AuthScheme.X_API_KEY,
+                    protocol = WireProtocol.ANTHROPIC_MESSAGES,
+                ),
+                KnownHost(
+                    displayName = "Microsoft Foundry",
+                    hosts = listOf("services.ai.azure.com", "openai.azure.com", "cognitiveservices.azure.com"),
+                    authScheme = AuthScheme.BEARER,
+                    protocol = WireProtocol.OPENAI_RESPONSES,
+                ),
+                KnownHost(
+                    displayName = "OpenAI",
+                    hosts = listOf("openai.com"),
+                    authScheme = AuthScheme.BEARER,
+                    protocol = WireProtocol.OPENAI_RESPONSES,
+                ),
+            )
 
         fun detect(url: String): ProviderProfile? {
             val uri = runCatching { URI(url.trim()) }.getOrNull() ?: return null
@@ -47,11 +46,12 @@ data class ProviderProfile(
             )
         }
 
-        fun defaultThinking(protocol: WireProtocol): ThinkingMode = when (protocol) {
-            WireProtocol.ANTHROPIC_MESSAGES -> ThinkingMode.ADAPTIVE
-            WireProtocol.OPENAI_RESPONSES -> ThinkingMode.ADAPTIVE
-            WireProtocol.OPENAI_CHAT_COMPLETIONS -> ThinkingMode.PROVIDER_DEFAULT
-        }
+        fun defaultThinking(protocol: WireProtocol): ThinkingMode =
+            when (protocol) {
+                WireProtocol.ANTHROPIC_MESSAGES -> ThinkingMode.ADAPTIVE
+                WireProtocol.OPENAI_RESPONSES -> ThinkingMode.ADAPTIVE
+                WireProtocol.OPENAI_CHAT_COMPLETIONS -> ThinkingMode.PROVIDER_DEFAULT
+            }
     }
 
     private data class KnownHost(

@@ -17,7 +17,6 @@ class McpToolSelectionDialog(
     private val entries: List<McpToolEntry>,
     selected: Set<String>,
 ) : DialogWrapper(project) {
-
     data class McpToolEntry(
         val serverName: String,
         val toolName: String,
@@ -27,9 +26,10 @@ class McpToolSelectionDialog(
 
     private val allInitially = selected.isEmpty()
 
-    private val boxes: Map<String, JBCheckBox> = entries.associate { entry ->
-        entry.qualifiedName to JBCheckBox(entry.toolName, allInitially || entry.qualifiedName in selected)
-    }
+    private val boxes: Map<String, JBCheckBox> =
+        entries.associate { entry ->
+            entry.qualifiedName to JBCheckBox(entry.toolName, allInitially || entry.qualifiedName in selected)
+        }
 
     private val servers = entries.map { it.serverName }.distinct()
 
@@ -50,35 +50,38 @@ class McpToolSelectionDialog(
     }
 
     override fun createCenterPanel(): JComponent {
-        val content = panel {
-            row {
-                comment(
-                    "Every selected tool's definition is sent with every message, so the set " +
-                        "costs tokens on each turn whether the model calls any or not. A tool " +
-                        "that is not selected cannot be called.",
-                )
-            }
-            row {
-                button("Select All") { select(entries.mapTo(mutableSetOf()) { it.qualifiedName }) }
-                button("Clear") { select(emptySet()) }
-            }
-            for (server in servers) {
-                group {
-                    row { cell(masters.getValue(server)) }
-                    indent {
-                        for (entry in entries.filter { it.serverName == server }) {
-                            val desc = entry.description.trim()
-                            val escaped = StringUtil.escapeXmlEntities(
-                                if (desc.length > 200) desc.take(200) + "…" else desc,
-                            ).ifBlank { "No description provided." }
-                            row {
-                                cell(boxes.getValue(entry.qualifiedName))
-                            }.rowComment(escaped)
+        val content =
+            panel {
+                row {
+                    comment(
+                        "Every selected tool's definition is sent with every message, so the set " +
+                            "costs tokens on each turn whether the model calls any or not. A tool " +
+                            "that is not selected cannot be called.",
+                    )
+                }
+                row {
+                    button("Select All") { select(entries.mapTo(mutableSetOf()) { it.qualifiedName }) }
+                    button("Clear") { select(emptySet()) }
+                }
+                for (server in servers) {
+                    group {
+                        row { cell(masters.getValue(server)) }
+                        indent {
+                            for (entry in entries.filter { it.serverName == server }) {
+                                val desc = entry.description.trim()
+                                val escaped =
+                                    StringUtil
+                                        .escapeXmlEntities(
+                                            if (desc.length > 200) desc.take(200) + "…" else desc,
+                                        ).ifBlank { "No description provided." }
+                                row {
+                                    cell(boxes.getValue(entry.qualifiedName))
+                                }.rowComment(escaped)
+                            }
                         }
                     }
                 }
             }
-        }
 
         return JPanel(BorderLayout()).apply {
             add(JBScrollPane(content).apply { border = JBUI.Borders.empty() }, BorderLayout.CENTER)

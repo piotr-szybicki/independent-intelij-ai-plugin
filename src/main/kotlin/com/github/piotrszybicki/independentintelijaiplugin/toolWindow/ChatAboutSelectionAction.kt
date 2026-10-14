@@ -1,26 +1,27 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.IconLoader
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 
-class ChatAboutSelectionAction : AnAction(
-    "Open a Side Chat",
-    "Start a new AI chat about the selected code",
-    IconLoader.getIcon("/icons/chatAboutCode.svg", ChatAboutSelectionAction::class.java),
-) {
-
+class ChatAboutSelectionAction :
+    AnAction(
+        "Open a Side Chat",
+        "Start a new AI chat about the selected code",
+        IconLoader.getIcon("/icons/chatAboutCode.svg", ChatAboutSelectionAction::class.java),
+    ) {
     override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
 
     override fun update(e: AnActionEvent) {
         val editor = e.getData(CommonDataKeys.EDITOR)
         val project = e.project
-        val available = project != null &&
-            AgentConfigurations.getInstance(project).unavailableReason == null
+        val available =
+            project != null &&
+                AgentConfigurations.getInstance(project).unavailableReason == null
         e.presentation.isEnabledAndVisible = available && editor?.selectionModel?.hasSelection() == true
     }
 
@@ -35,12 +36,13 @@ class ChatAboutSelectionAction : AnAction(
         val virtualFile = FileDocumentManager.getInstance().getFile(document)
         val basePath = project.basePath
 
-        val displayPath = when {
-            virtualFile == null -> "untitled"
-            basePath != null && virtualFile.path.startsWith(basePath) ->
-                virtualFile.path.removePrefix(basePath).trimStart('/', '\\')
-            else -> virtualFile.path
-        }
+        val displayPath =
+            when {
+                virtualFile == null -> "untitled"
+                basePath != null && virtualFile.path.startsWith(basePath) ->
+                    virtualFile.path.removePrefix(basePath).trimStart('/', '\\')
+                else -> virtualFile.path
+            }
         val extension = virtualFile?.extension.orEmpty()
 
         val startLine = document.getLineNumber(selectionModel.selectionStart) + 1

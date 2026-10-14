@@ -6,15 +6,15 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class FindInFilesConfigTest {
-
-    private fun file(section: String) = """
+    private fun file(section: String) =
+        """
         {
           "find-in-files": $section,
           "configurations": [
             {"name": "One", "model": "m", "url": "https://x/v1/messages", "token": "t"}
           ]
         }
-    """.trimIndent()
+        """.trimIndent()
 
     @Test
     fun `reads the phrases in the order they are written`() {

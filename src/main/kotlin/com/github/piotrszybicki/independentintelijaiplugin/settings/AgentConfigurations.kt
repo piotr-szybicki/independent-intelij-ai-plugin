@@ -15,19 +15,38 @@ import java.nio.file.Path
 import java.nio.file.Paths
 
 @Service(Service.Level.PROJECT)
-class AgentConfigurations(private val project: Project) {
+class AgentConfigurations(
+    private val project: Project,
+) {
+    data class Loaded(
+        val configurations: List<AgentConfiguration>,
+        val error: String?,
+    )
 
-    data class Loaded(val configurations: List<AgentConfiguration>, val error: String?)
+    data class LoadedDatabase(
+        val database: UsageDatabaseConfig,
+        val error: String?,
+    )
 
-    data class LoadedDatabase(val database: UsageDatabaseConfig, val error: String?)
+    data class LoadedFindInFiles(
+        val findInFiles: FindInFilesConfig,
+        val error: String?,
+    )
 
-    data class LoadedFindInFiles(val findInFiles: FindInFilesConfig, val error: String?)
+    data class LoadedAgents(
+        val roster: AgentRosterConfig,
+        val error: String?,
+    )
 
-    data class LoadedAgents(val roster: AgentRosterConfig, val error: String?)
+    data class LoadedSummarizer(
+        val summarizer: SummarizerConfig,
+        val error: String?,
+    )
 
-    data class LoadedSummarizer(val summarizer: SummarizerConfig, val error: String?)
-
-    data class LoadedConversationDefaults(val defaults: ConversationDefaultsConfig, val error: String?)
+    data class LoadedConversationDefaults(
+        val defaults: ConversationDefaultsConfig,
+        val error: String?,
+    )
 
     val path: Path?
         get() = configuredPath() ?: project.basePath?.let { Paths.get(it, AgentConfiguration.FILE_NAME) }
@@ -49,13 +68,14 @@ class AgentConfigurations(private val project: Project) {
             LOG.info("\$${AgentConfiguration.PATH_ENV_VAR} names $file, which is not there; not creating it")
             return null
         }
-        val failure = save(
-            AgentConfiguration.render(
-                AgentConfiguration.STARTER,
-                UsageDatabaseConfig.OFF,
-                FindInFilesConfig.DEFAULT,
-            ),
-        )
+        val failure =
+            save(
+                AgentConfiguration.render(
+                    AgentConfiguration.STARTER,
+                    UsageDatabaseConfig.OFF,
+                    FindInFilesConfig.DEFAULT,
+                ),
+            )
         if (failure != null) return null
         LOG.info("wrote a starter configuration file to $file")
         return file
@@ -71,16 +91,17 @@ class AgentConfigurations(private val project: Project) {
         agents: AgentRosterConfig,
         summarizer: SummarizerConfig,
         conversationDefaults: ConversationDefaultsConfig,
-    ): String? = save(
-        AgentConfiguration.render(
-            configurations,
-            database,
-            findInFiles,
-            agents,
-            summarizer,
-            conversationDefaults,
-        ),
-    )
+    ): String? =
+        save(
+            AgentConfiguration.render(
+                configurations,
+                database,
+                findInFiles,
+                agents,
+                summarizer,
+                conversationDefaults,
+            ),
+        )
 
     private fun save(text: String): String? {
         configuredPath()?.let {
@@ -90,10 +111,12 @@ class AgentConfigurations(private val project: Project) {
         val basePath = project.basePath ?: return "this project has no directory on disk"
         return try {
             WriteAction.runAndWait<IOException> {
-                val directory = LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath)
-                    ?: throw IOException("the project directory $basePath is not on disk")
-                val file = directory.findChild(AgentConfiguration.FILE_NAME)
-                    ?: directory.createChildData(this, AgentConfiguration.FILE_NAME)
+                val directory =
+                    LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath)
+                        ?: throw IOException("the project directory $basePath is not on disk")
+                val file =
+                    directory.findChild(AgentConfiguration.FILE_NAME)
+                        ?: directory.createChildData(this, AgentConfiguration.FILE_NAME)
                 VfsUtil.saveText(file, text)
             }
             null
@@ -129,8 +152,7 @@ class AgentConfigurations(private val project: Project) {
         }
     }
 
-    private fun notThere(): String =
-        unavailableReason ?: "${AgentConfiguration.FILE_NAME} is not in the project root"
+    private fun notThere(): String = unavailableReason ?: "${AgentConfiguration.FILE_NAME} is not in the project root"
 
     fun usageDatabase(): LoadedDatabase {
         val file = path ?: return LoadedDatabase(UsageDatabaseConfig.OFF, null)
@@ -207,12 +229,15 @@ class AgentConfigurations(private val project: Project) {
         }
     }
 
-    fun resolve(configurationName: String, modelName: String): AgentConfiguration {
-        val configuration = select(load().configurations, configurationName)
-            ?: AgentConfiguration.fallback()
+    fun resolve(
+        configurationName: String,
+        modelName: String,
+    ): AgentConfiguration {
+        val configuration =
+            select(load().configurations, configurationName)
+                ?: AgentConfiguration.fallback()
         return configuration.withModel(modelName)
     }
-
 
     private fun configuredPath(): Path? {
         val raw = System.getenv(AgentConfiguration.PATH_ENV_VAR)
@@ -232,7 +257,9 @@ class AgentConfigurations(private val project: Project) {
 
         fun getInstance(project: Project): AgentConfigurations = project.getService(AgentConfigurations::class.java)
 
-        fun select(configurations: List<AgentConfiguration>, wanted: String): AgentConfiguration? =
-            configurations.firstOrNull { it.name == wanted } ?: configurations.firstOrNull()
+        fun select(
+            configurations: List<AgentConfiguration>,
+            wanted: String,
+        ): AgentConfiguration? = configurations.firstOrNull { it.name == wanted } ?: configurations.firstOrNull()
     }
 }

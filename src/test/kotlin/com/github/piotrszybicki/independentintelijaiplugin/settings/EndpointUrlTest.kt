@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class EndpointUrlTest {
-
     private val configured = "https://saved.example/v1/messages"
     private val environment = "https://from-env.example/v1/messages"
 
