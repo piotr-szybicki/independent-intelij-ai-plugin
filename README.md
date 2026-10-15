@@ -198,7 +198,12 @@ What the summary leaves out is gone — the original is **not** kept for the mod
 so it can run the call again, narrowed, when it needs the exact text. That is the trade, and it is
 why the description tells the model not to reach for this when it needs something word for word,
 such as a file it is about to edit. **You** still see the whole output: the tool card in the
-transcript holds what the inner tool returned, and a shell command is in the Terminal tab as usual.
+transcript holds what the inner tool returned, and every shell command has its own persistent Run
+console and log file. The console names the process-tree root PID and has a Stop button; the chat's
+Stop button terminates that process tree too. Normal shell calls wait for their final output instead
+of timing out and tempting the model to start the same command again. An explicit `timeout_seconds`
+is still available for a debugger or background process, and a duplicate active command is reported
+rather than launched twice.
 
 The **`summarizer`** section of the configuration file says who writes them:
 
