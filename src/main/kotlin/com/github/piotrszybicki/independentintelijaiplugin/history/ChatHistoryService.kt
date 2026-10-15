@@ -59,6 +59,7 @@ data class StoredChat(
     val agent: AgentSession? = null,
     val returns: List<AgentReturn>? = null,
     val conversationTools: ConversationTools? = null,
+    val promptHistory: List<String>? = null,
 )
 
 data class ChatSummary(
