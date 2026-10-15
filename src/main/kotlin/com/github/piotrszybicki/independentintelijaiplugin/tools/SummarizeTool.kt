@@ -57,8 +57,6 @@ class SummarizeTool(
             "word for word, such as code you are about to edit: the summary is all you get back, " +
             "and the original is not kept for you. The user still sees the full output in the IDE."
 
-    override val interruptible = false
-
     override val inputSchema: JsonObject =
         JsonObject().apply {
             addProperty("type", "object")
