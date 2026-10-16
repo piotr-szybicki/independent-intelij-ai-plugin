@@ -317,10 +317,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private var turn: Future<*>? = null
 
         private val input = ChatInputPane("Ask AI about this project…")
+        private val promptHistory = PromptHistory()
 
         private val sendButton =
             JButton("Send").apply {
-                toolTipText = "Send message (Enter; Shift+Enter for a new line)"
+                toolTipText = "Send message (Enter; Shift+Enter for a new line; Up/Down for prompt history)"
             }
 
         private val attachButton =
@@ -468,13 +469,25 @@ class ChatToolWindowFactory : ToolWindowFactory {
             input.addKeyListener(
                 object : KeyAdapter() {
                     override fun keyPressed(e: KeyEvent) {
-                        if (e.keyCode != KeyEvent.VK_ENTER) return
-                        if (e.isShiftDown) {
-                            e.consume()
-                            input.replaceSelection("\n")
-                        } else {
-                            e.consume()
-                            send()
+                        when {
+                            e.keyCode == KeyEvent.VK_ENTER && e.isShiftDown -> {
+                                e.consume()
+                                input.replaceSelection("\n")
+                            }
+                            e.keyCode == KeyEvent.VK_ENTER -> {
+                                e.consume()
+                                send()
+                            }
+                            e.modifiersEx == 0 && e.keyCode == KeyEvent.VK_UP ->
+                                promptHistory.previous(input.text)?.let {
+                                    e.consume()
+                                    showPrompt(it)
+                                }
+                            e.modifiersEx == 0 && e.keyCode == KeyEvent.VK_DOWN ->
+                                promptHistory.next()?.let {
+                                    e.consume()
+                                    showPrompt(it)
+                                }
                         }
                     }
                 },
@@ -566,6 +579,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             providerBar.setSelection(chat.configurationName, chat.model)
             setUsage(chat.usage ?: SessionUsage())
             contextMeter.restore(chat.context)
+            promptHistory.restore(chat.promptHistory)
             setContext(
                 if (contextMeter.anchor > 0) contextMeter.estimate(history, overheadChars = 0) else 0,
                 contextWindowTokens(),
@@ -612,6 +626,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatAttachments.clear()
             agentReturns.clear()
             invokedSkills.clear()
+            promptHistory.restore(null)
         }
 
         private fun snapshot(): StoredChat? {
@@ -630,7 +645,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 agent = agentSession,
                 returns = agentReturns.returns(),
                 conversationTools = conversationTools.takeIf { it.isCustom },
+                promptHistory = promptHistory.snapshot,
             )
+        }
+
+        private fun showPrompt(prompt: String) {
+            input.text = prompt
+            input.caretPosition = input.document.length
         }
 
         private fun contextWindowTokens(): Int =
@@ -1060,6 +1081,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val sizeBeforeTurn = history.size
             history.add(ChatMessage.text("user", messageText))
             showUserMessage(displayText)
+            promptHistory.record(text)
             input.text = ""
             chatAttachments.clear()
             agentReturns.clear()
