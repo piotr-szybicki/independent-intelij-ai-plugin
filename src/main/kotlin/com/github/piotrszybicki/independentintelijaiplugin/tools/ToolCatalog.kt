@@ -5,21 +5,6 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgen
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 
-enum class ToolCategory(
-    val displayName: String,
-) {
-    READ("Reading code"),
-    NAVIGATE("Navigating code"),
-
-    VCS("Version control"),
-
-    EDIT("Editing and fixing"),
-    RUN("Running code"),
-    DEBUG("Debugging"),
-
-    SUPPORT("Cutting output down"),
-}
-
 object ToolCatalog {
     class Entry(
         val name: String,

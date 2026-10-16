@@ -266,7 +266,7 @@ class SummarizeTool(
                 configurations.resolve(chatConfiguration, "")
             } else {
                 configurations.load().configurations.firstOrNull { it.name == named }
-                    ?: throw IllegalStateException(
+                    ?: error(
                         "\"${SummarizerConfig.SECTION}\" names the configuration \"$named\", which is " +
                             "not in ${AgentConfiguration.FILE_NAME}",
                     )

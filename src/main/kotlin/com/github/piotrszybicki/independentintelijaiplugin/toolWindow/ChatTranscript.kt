@@ -18,7 +18,10 @@ internal class ChatTranscript(
     private val project: Project,
     onCancel: () -> Unit,
     private val onContinue: () -> Unit = {},
-) {
+) : TranscriptMessages,
+    TranscriptFailure,
+    TranscriptTools,
+    TranscriptStatus {
     private val rows = mutableListOf<ChatRow>()
     private val placeholder = PlaceholderRow()
     private val thinkingRow = ThinkingRow(onCancel)
@@ -93,14 +96,14 @@ internal class ChatTranscript(
         fun closeApproval(label: String)
     }
 
-    fun addUserMessage(markdown: String) {
+    override fun addUserMessage(markdown: String) {
         endAiTurn()
         clearRequestFailure()
         lastToolGroup = null
         addRow(UserRow(markdown).also { lastUserRow = it })
     }
 
-    fun addHandoff(
+    override fun addHandoff(
         agentName: String,
         description: String,
         specName: String,
@@ -126,9 +129,9 @@ internal class ChatTranscript(
         )
     }
 
-    fun lastTurnMarkdown(): String = lastTurn?.finalMarkdown().orEmpty()
+    override fun lastTurnMarkdown(): String = lastTurn?.finalMarkdown().orEmpty()
 
-    fun markRequestFailed(onRetry: () -> Unit) {
+    override fun markRequestFailed(onRetry: () -> Unit) {
         val request = lastToolGroup ?: lastUserRow
         request?.markFailed(onRetry)
         failedRequest = request
@@ -140,7 +143,7 @@ internal class ChatTranscript(
         content.repaint()
     }
 
-    fun clearRequestFailure() {
+    override fun clearRequestFailure() {
         failedRequest?.clearFailure()
         failedRequest = null
         retryOffered?.clearRetry()
@@ -149,38 +152,38 @@ internal class ChatTranscript(
         content.repaint()
     }
 
-    fun addAssistantMessage(markdown: String) = intoAiTurn(AssistantRow(markdown))
+    override fun addAssistantMessage(markdown: String) = intoAiTurn(AssistantRow(markdown))
 
-    fun addToolCall(
+    override fun addToolCall(
         requestId: String,
         name: String,
         summary: String,
         details: String,
-        status: ToolStatus = ToolStatus.DONE,
+        status: ToolStatus,
     ): RunningTool = ToolRow(name, summary, details, status).also { intoToolGroup(requestId, it) }
 
-    fun startToolCall(
+    override fun startToolCall(
         requestId: String,
         name: String,
         summary: String,
         details: String,
     ): RunningTool = ToolRow(name, summary, details, ToolStatus.RUNNING).also { intoToolGroup(requestId, it) }
 
-    fun endAiTurn() {
+    override fun endAiTurn() {
         currentTurn = null
         pendingCost = null
         closeToolGroup()
     }
 
-    fun setTurnContinuable(offered: Boolean) {
+    override fun setTurnContinuable(offered: Boolean) {
         (currentTurn ?: lastTurn)?.setContinuable(offered)
         content.revalidate()
         content.repaint()
     }
 
-    fun setTurnCost(
+    override fun setTurnCost(
         text: String?,
-        tooltip: String? = null,
+        tooltip: String?,
     ) {
         val turn = currentTurn
         if (turn == null) {
@@ -194,7 +197,7 @@ internal class ChatTranscript(
 
     private var pendingCost: Pair<String, String?>? = null
 
-    fun addError(message: String) {
+    override fun addError(message: String) {
         closeToolGroup()
         addRow(ErrorRow(message).also { lastErrorRow = it })
     }
@@ -263,9 +266,9 @@ internal class ChatTranscript(
         scrollToBottom()
     }
 
-    fun setCancellable(cancellable: Boolean) = thinkingRow.setCancellable(cancellable)
+    override fun setCancellable(cancellable: Boolean) = thinkingRow.setCancellable(cancellable)
 
-    fun setThinking(thinking: Boolean) {
+    override fun setThinking(thinking: Boolean) {
         if (thinking) thinkingRow.setCancellable(true)
         if (thinking == (thinkingRow.parent != null)) return
         if (thinking) {
@@ -278,7 +281,7 @@ internal class ChatTranscript(
         if (thinking) scrollToBottom()
     }
 
-    fun clear() {
+    override fun clear() {
         rows.clear()
         currentTurn = null
         lastTurn = null

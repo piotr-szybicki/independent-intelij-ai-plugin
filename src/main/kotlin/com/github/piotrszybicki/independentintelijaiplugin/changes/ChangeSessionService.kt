@@ -24,7 +24,10 @@ import java.util.concurrent.atomic.AtomicInteger
 @Service(Service.Level.PROJECT)
 class ChangeSessionService(
     private val project: Project,
-) : Disposable {
+) : Disposable,
+    ChangeCapture,
+    ChangedFiles,
+    ChangeReview {
     fun interface Listener {
         fun onSessionChanged(changedFileCount: Int)
     }
@@ -66,11 +69,11 @@ class ChangeSessionService(
         )
     }
 
-    fun beginCapture() {
+    override fun beginCapture() {
         captureDepth.incrementAndGet()
     }
 
-    fun endCapture() {
+    override fun endCapture() {
         captureDepth.decrementAndGet()
     }
 
@@ -97,7 +100,7 @@ class ChangeSessionService(
         }, project.disposed)
     }
 
-    fun flushToDisk() {
+    override fun flushToDisk() {
         saveNow(synchronized(lock) { baselines.keys.toList() })
     }
 
@@ -127,15 +130,15 @@ class ChangeSessionService(
     val changedFileCount: Int
         get() = synchronized(lock) { baselines.size }
 
-    fun changedFiles(): List<VirtualFile> = synchronized(lock) { baselines.keys.toList() }
+    override fun changedFiles(): List<VirtualFile> = synchronized(lock) { baselines.keys.toList() }
 
-    fun changedPaths(): List<String> = changedFiles().map { PsiTargets.relativePath(project, it) }
+    override fun changedPaths(): List<String> = changedFiles().map { PsiTargets.relativePath(project, it) }
 
-    fun addListener(listener: Listener) {
+    override fun addListener(listener: Listener) {
         listeners.add(listener)
     }
 
-    fun removeListener(listener: Listener) {
+    override fun removeListener(listener: Listener) {
         listeners.remove(listener)
     }
 
@@ -146,7 +149,7 @@ class ChangeSessionService(
         }, project.disposed)
     }
 
-    fun acceptHunk(
+    override fun acceptHunk(
         file: VirtualFile,
         hunk: Hunk,
     ) {
@@ -170,7 +173,7 @@ class ChangeSessionService(
         settle(file, merged, document)
     }
 
-    fun rejectHunk(
+    override fun rejectHunk(
         file: VirtualFile,
         hunk: Hunk,
     ) {
@@ -228,13 +231,13 @@ class ChangeSessionService(
         notifyListeners()
     }
 
-    fun approveAll() {
+    override fun approveAll() {
         synchronized(lock) { baselines.clear() }
         display.clearAll()
         notifyListeners()
     }
 
-    fun revertAll(): List<String> {
+    override fun revertAll(): List<String> {
         val snapshot = synchronized(lock) { LinkedHashMap(baselines) }
         if (snapshot.isEmpty()) return emptyList()
 

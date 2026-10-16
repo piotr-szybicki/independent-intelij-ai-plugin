@@ -20,7 +20,7 @@ internal class ChatAttachments(
     private val project: Project,
     private val onStatus: (String) -> Unit,
     private val onRevalidate: () -> Unit,
-) {
+) : AttachmentEditor {
     data class PendingAttachment(
         val summary: String,
         val body: String,
@@ -45,7 +45,7 @@ internal class ChatAttachments(
 
     fun attachments(): List<PendingAttachment> = pending.toList()
 
-    fun attachFromEditor() {
+    override fun attachFromEditor() {
         val editor = FileEditorManager.getInstance(project).selectedTextEditor
         if (editor == null) {
             onStatus("Open a file in the editor to attach it.")
@@ -89,7 +89,7 @@ internal class ChatAttachments(
         )
     }
 
-    fun startSideChat(
+    override fun startSideChat(
         code: String,
         displayPath: String,
         extension: String,
@@ -101,7 +101,7 @@ internal class ChatAttachments(
         )
     }
 
-    fun add(
+    override fun add(
         body: String,
         summary: String,
     ) {
@@ -124,7 +124,7 @@ internal class ChatAttachments(
         refresh()
     }
 
-    fun clear() {
+    override fun clear() {
         pending.clear()
         refresh()
     }

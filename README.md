@@ -506,6 +506,8 @@ First run downloads the target IDE (~1 GB) and takes a while; later runs reuse i
 | Task | What it does |
 | --- | --- |
 | `./gradlew compileKotlin` | Fastest check that the sources build |
+| `./gradlew detekt` | Runs the aggregate static-analysis rules |
+| `./gradlew check` | Runs Detekt (including type-resolved checks), ktlint, and tests |
 | `./gradlew test` | Runs the test suite |
 | `./gradlew verifyPlugin` | Checks the plugin against IntelliJ Platform compatibility rules |
 

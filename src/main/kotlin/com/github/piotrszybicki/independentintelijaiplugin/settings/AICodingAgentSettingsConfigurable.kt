@@ -324,7 +324,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
     override fun apply() {
         val settings = AICodingAgentSettingsState.getInstance().state
         settings.activeConfiguration = selectedConfiguration()?.name.orEmpty()
-        settings.activeModel = modelCombo.selectedItem as? String ?: ""
+        settings.activeModel = (modelCombo.selectedItem as? String).orEmpty()
         settings.maxIterations = maxIterationsField.positiveIntOr(settings.maxIterations)
         settings.maxToolOutputTokens = maxToolOutputField.zeroOrPositiveIntOr(settings.maxToolOutputTokens)
         maxIterationsField.text = settings.maxIterations.toString()
@@ -401,7 +401,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
 
     private fun updateConfigurationSummary() {
         val selected = selectedConfiguration()
-        modelCombo.model = DefaultComboBoxModel((selected?.models ?: emptyList()).toTypedArray())
+        modelCombo.model = DefaultComboBoxModel(selected?.models.orEmpty().toTypedArray())
         modelCombo.isEnabled = selected?.models?.isNotEmpty() == true
         modelCombo.selectedItem =
             selected

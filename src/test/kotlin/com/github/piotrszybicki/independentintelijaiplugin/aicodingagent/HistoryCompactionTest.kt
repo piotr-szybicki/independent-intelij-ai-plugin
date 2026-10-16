@@ -130,7 +130,7 @@ class HistoryCompactionTest {
     fun `counts the system prompt and tool schemas against the window`() {
         val history = historyOf(turns = 10)
         val untouched = history.toList()
-        val overhead = HistoryCompaction.charsOf(historyOf(turns = 10))
+        val overhead = MessageChars.of(historyOf(turns = 10))
 
         assertTrue(HistoryCompaction.compact(history, WINDOW).isEmpty)
         assertEquals(untouched, history)

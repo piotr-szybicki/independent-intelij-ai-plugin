@@ -82,8 +82,7 @@ class McpHttpTransport(
         response.body().close()
     }
 
-    override fun close() {
-    }
+    override fun close() = Unit
 
     private fun post(
         message: JsonObject,

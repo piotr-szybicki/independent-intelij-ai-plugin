@@ -1,6 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
-class ContextMeter {
+class ContextMeter :
+    ContextTracking,
+    ContextStateStore {
     companion object {
         const val DEFAULT_TOKENS_PER_CHAR: Double = 1.0 / 4
 
@@ -17,7 +19,7 @@ class ContextMeter {
 
     val anchor: Int get() = anchorTokens
 
-    fun observe(
+    override fun observe(
         promptTokens: Int,
         outputTokens: Int,
         promptChars: Int,
@@ -34,23 +36,23 @@ class ContextMeter {
         tokensPerChar = ratio
     }
 
-    fun estimate(
+    override fun estimate(
         history: List<ChatMessage>,
         overheadChars: Int,
     ): Int {
         if (anchorTokens <= 0 || anchorMessages > history.size) {
-            return tokens(overheadChars + HistoryCompaction.charsOf(history))
+            return tokens(overheadChars + MessageChars.of(history))
         }
-        val since = HistoryCompaction.charsOf(history.subList(anchorMessages, history.size))
+        val since = MessageChars.of(history.subList(anchorMessages, history.size))
         return anchorTokens + tokens(since)
     }
 
-    fun invalidateAnchor() {
+    override fun invalidateAnchor() {
         anchorTokens = 0
         anchorMessages = 0
     }
 
-    fun reset() {
+    override fun reset() {
         invalidateAnchor()
         tokensPerChar = DEFAULT_TOKENS_PER_CHAR
     }
@@ -61,9 +63,9 @@ class ContextMeter {
         val tokensPerChar: Double = DEFAULT_TOKENS_PER_CHAR,
     )
 
-    fun snapshot(): State = State(anchorTokens, anchorMessages, tokensPerChar)
+    override fun snapshot(): State = State(anchorTokens, anchorMessages, tokensPerChar)
 
-    fun restore(state: State?) {
+    override fun restore(state: State?) {
         if (state == null) {
             reset()
             return

@@ -1,13 +1,11 @@
 package com.github.piotrszybicki.independentintelijaiplugin.cleanup
 
-import com.github.piotrszybicki.independentintelijaiplugin.tools.PsiTargets
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.VirtualFile
 
 /**
  * Tools | Remove Comments: strips comments out of the project -- Javadoc, line comments, or both.
@@ -95,18 +93,4 @@ class RemoveCommentsAction : AnAction() {
             if (report.skipped.isEmpty()) NotificationType.INFORMATION else NotificationType.WARNING,
         )
     }
-}
-
-/** Where a sweep runs: the selection when the dialog offered it and the user took it, else the project. */
-internal object SweepScope {
-    fun roots(
-        project: Project,
-        selection: List<VirtualFile>,
-        useSelection: Boolean,
-    ): List<VirtualFile> =
-        if (useSelection && selection.isNotEmpty()) {
-            selection
-        } else {
-            listOfNotNull(PsiTargets.resolveProjectFile(project, "."))
-        }
 }

@@ -149,11 +149,11 @@ internal class ChangesBar(
     private fun revertChanges() {
         val paths = session.changedPaths()
         if (paths.isEmpty()) return
-        if (!ChatDialogs.confirmRevert(project, paths)) return
+        if (!ChangeDialogs.confirmRevert(project, paths)) return
 
         val failed = session.revertAll()
         if (failed.isNotEmpty()) {
-            ChatDialogs.showRevertFailure(project, failed)
+            ChangeDialogs.showRevertFailure(project, failed)
         }
     }
 }

@@ -5,6 +5,7 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
+import java.util.Locale
 
 class ReadLibraryClassTool(
     private val project: Project,
@@ -121,7 +122,7 @@ class ReadLibraryClassTool(
         val width = lastLine.toString().length
         val body =
             (start..lastLine).joinToString("\n") { line ->
-                "%${width}d  %s".format(line, range.lines[line - 1])
+                "%${width}d  %s".format(Locale.ROOT, line, range.lines[line - 1])
             }
 
         val header =

@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.intellij.platform")
     id("org.jetbrains.changelog")
+    id("dev.detekt") version "2.0.0-alpha.6"
     id("org.jlleitschuh.gradle.ktlint") version "13.1.0"
 }
 
@@ -28,6 +29,21 @@ tasks.withType<JavaCompile>().configureEach {
     options.release = 25
 }
 
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom("config/detekt/detekt.yml")
+}
+
+tasks.named("check") {
+    // The source-set tasks add type resolution, which enables rules that the
+    // aggregate detekt task cannot evaluate (for example NamedArguments).
+    dependsOn("detektMain", "detektTest")
+}
+
+tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
+    dependsOn(":detekt-rules:assemble")
+}
+
 tasks.register<JavaExec>("runHelloWorld") {
     group = "application"
     description = "Runs the Hello World application."
@@ -35,6 +51,8 @@ tasks.register<JavaExec>("runHelloWorld") {
     mainClass.set("MainKt")
 }
 dependencies {
+    detektPlugins(project(":detekt-rules"))
+
     testImplementation("junit:junit:4.13.2")
 
     implementation("org.commonmark:commonmark:0.29.0")

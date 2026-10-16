@@ -16,7 +16,7 @@ import java.time.Instant
 import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 
-object ModelUsageDatabase {
+object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
     private val fallback = Logger.getInstance(ModelUsageDatabase::class.java)
 
     const val TABLE = "model_requests"
@@ -39,7 +39,7 @@ object ModelUsageDatabase {
 
     private var dropped = 0
 
-    fun recordRequest(
+    override fun recordRequest(
         conversationId: String,
         requestId: String,
         protocol: String,
@@ -71,7 +71,7 @@ object ModelUsageDatabase {
         }
     }
 
-    fun recordResponse(
+    override fun recordResponse(
         conversationId: String,
         requestId: String,
         responseId: String,
@@ -104,7 +104,7 @@ object ModelUsageDatabase {
         }
     }
 
-    fun recordFailure(
+    override fun recordFailure(
         conversationId: String,
         requestId: String,
         durationMillis: Long,
@@ -127,7 +127,7 @@ object ModelUsageDatabase {
         }
     }
 
-    fun recordUsage(
+    override fun recordUsage(
         conversationId: String,
         requestId: String,
         model: String,
@@ -185,19 +185,18 @@ object ModelUsageDatabase {
         )
     }
 
-    fun recordToolCall(
-        conversationId: String,
-        requestId: String,
-        ordinal: Int,
-        toolUseId: String,
-        toolName: String,
-        arguments: String,
-        result: String,
-        outcome: String,
-        argumentTokens: Int,
-        resultTokens: Int,
-        durationMillis: Long,
-    ) {
+    override fun recordToolCall(record: ToolCallRecord) {
+        val conversationId = record.conversationId
+        val requestId = record.requestId
+        val ordinal = record.ordinal
+        val toolUseId = record.toolUseId
+        val toolName = record.toolName
+        val arguments = record.arguments
+        val result = record.result
+        val outcome = record.outcome
+        val argumentTokens = record.argumentTokens
+        val resultTokens = record.resultTokens
+        val durationMillis = record.durationMillis
         if (requestId.isBlank()) return
 
         val document = asJson(arguments)
@@ -375,7 +374,7 @@ object ModelUsageDatabase {
 
     private fun open(url: String): Connection =
         driver.connect(url, Properties())
-            ?: throw IllegalStateException("the MySQL driver does not recognise this URL")
+            ?: error("the MySQL driver does not recognise this URL")
 
     private fun closeQuietly() {
         runCatching { connection?.close() }
@@ -478,7 +477,7 @@ object ModelUsageDatabase {
         runCatching { JsonParser.parseString(body) }.getOrNull()?.takeIf { !it.isJsonNull }?.toString()
             ?: JsonPrimitive(body).toString()
 
-    fun test(url: String): String {
+    override fun test(url: String): String {
         val target = runCatching { JdbcUrl.prepare(url, TIMEOUTS) }.getOrElse { return "Bad URL: ${it.message}" }
         if (target.isEmpty()) return "No database URL is configured."
 
@@ -516,7 +515,7 @@ object ModelUsageDatabase {
     }
 
     @Synchronized
-    fun close() {
+    override fun close() {
         closeQuietly()
     }
 }
