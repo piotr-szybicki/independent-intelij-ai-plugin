@@ -80,6 +80,6 @@ class GitDiffTool(
 
         val diff = result.outputAsJoinedString
         if (diff.isBlank()) return "No differences."
-        return GitRepositories.capped(diff, MAX_CHARS, "pass a narrower path")
+        return CappedText.format(diff, MAX_CHARS, "pass a narrower path")
     }
 }

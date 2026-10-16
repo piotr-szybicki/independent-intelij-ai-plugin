@@ -13,6 +13,7 @@ import java.awt.FlowLayout
 import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.util.Locale
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
@@ -156,8 +157,8 @@ internal class ToolRow(
         val approve =
             CardButton(
                 "Approve output",
-                "Send all ${"%,d".format(tokens)} tokens of this output to the model as $toolName's " +
-                    "result, over the ${"%,d".format(limit)}-token limit",
+                "Send all ${"%,d".format(Locale.ROOT, tokens)} tokens of this output to the model as $toolName's " +
+                    "result, over the ${"%,d".format(Locale.ROOT, limit)}-token limit",
             ) {
                 if (onApprove()) approveButton?.settle("Approved")
             }

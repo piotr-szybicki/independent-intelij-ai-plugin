@@ -64,7 +64,7 @@ object HistoryCompaction {
         tokensPerChar: Double = ContextMeter.DEFAULT_TOKENS_PER_CHAR,
         summarizer: Summarizer? = null,
     ): Result {
-        var chars = charsOf(history) + overheadChars.coerceAtLeast(0)
+        var chars = MessageChars.of(history) + overheadChars.coerceAtLeast(0)
         val before = tokensIn(chars, tokensPerChar)
         if (contextWindowTokens <= 0) return Result(0, before, before)
 
@@ -87,7 +87,7 @@ object HistoryCompaction {
         }
 
         val summarized = if (chars > targetChars && summarizer != null) summarize(history, summarizer) else 0
-        if (summarized > 0) chars = charsOf(history) + overheadChars.coerceAtLeast(0)
+        if (summarized > 0) chars = MessageChars.of(history) + overheadChars.coerceAtLeast(0)
 
         return Result(evicted, before, tokensIn(chars, tokensPerChar), summarized)
     }
@@ -117,7 +117,7 @@ object HistoryCompaction {
         return cut
     }
 
-    fun estimateTokens(messages: List<ChatMessage>): Int = charsOf(messages) / CHARS_PER_TOKEN
+    fun estimateTokens(messages: List<ChatMessage>): Int = MessageChars.of(messages) / CHARS_PER_TOKEN
 
     fun overheadTokens(
         system: String?,
@@ -134,8 +134,6 @@ object HistoryCompaction {
         }
         return chars
     }
-
-    internal fun charsOf(messages: List<ChatMessage>): Int = messages.sumOf { it.content.toString().length }
 
     private fun summaryBoundary(history: List<ChatMessage>): Int {
         for (i in history.size - PROTECTED_TAIL_MESSAGES downTo MIN_SUMMARISABLE_MESSAGES) {

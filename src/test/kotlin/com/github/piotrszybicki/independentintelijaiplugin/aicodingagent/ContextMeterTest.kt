@@ -17,7 +17,7 @@ class ContextMeterTest {
         val estimate = meter.estimate(history, overheadChars = 0)
 
         assertEquals(
-            (HistoryCompaction.charsOf(history) * ContextMeter.DEFAULT_TOKENS_PER_CHAR).toInt(),
+            (MessageChars.of(history) * ContextMeter.DEFAULT_TOKENS_PER_CHAR).toInt(),
             estimate,
         )
     }

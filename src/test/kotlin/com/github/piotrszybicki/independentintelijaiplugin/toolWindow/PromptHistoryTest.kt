@@ -33,7 +33,7 @@ class PromptHistoryTest {
         history.restore(listOf("older", "newer"))
         history.record("   ")
 
-        assertEquals(listOf("older", "newer"), history.snapshot())
+        assertEquals(listOf("older", "newer"), history.snapshot)
         assertEquals("newer", history.previous(""))
     }
 

@@ -22,16 +22,16 @@ internal object LibraryClasses {
         val libraryName: String?,
     )
 
-    sealed class Resolution {
+    sealed interface Resolution {
         class Found(
             val candidate: Candidate,
-        ) : Resolution()
+        ) : Resolution
 
         class Ambiguous(
             val candidates: List<Candidate>,
-        ) : Resolution()
+        ) : Resolution
 
-        object NotFound : Resolution()
+        object NotFound : Resolution
     }
 
     fun resolve(

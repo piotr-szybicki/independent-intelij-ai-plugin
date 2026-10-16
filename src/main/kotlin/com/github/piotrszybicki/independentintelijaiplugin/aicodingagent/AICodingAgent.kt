@@ -1,6 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase
+import com.github.piotrszybicki.independentintelijaiplugin.logging.ToolCallRecord
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.diagnostic.Logger
@@ -17,11 +18,25 @@ class AICodingAgent(
         val toolUseId: String,
     )
 
-    interface Listener {
+    interface Listener :
+        ResponseListener,
+        ToolListener,
+        LimitListener
+
+    interface ResponseListener {
         fun onAssistantText(text: String)
 
         fun onThinking(summary: String) {}
 
+        fun onUsage(usage: AICodingAgentUsage) {}
+
+        fun onContext(
+            usedTokens: Int,
+            windowTokens: Int,
+        ) {}
+    }
+
+    interface ToolListener {
         fun onToolCall(
             call: ToolCallId,
             name: String,
@@ -37,15 +52,6 @@ class AICodingAgent(
             interruptible: Boolean,
         ) {}
 
-        fun onUsage(usage: AICodingAgentUsage) {}
-
-        fun onMaxTokens(
-            limit: Int,
-            suggested: Int,
-        ): Int?
-
-        fun onMaxIterations(used: Int): Boolean = false
-
         fun onToolOutputTooLarge(
             name: String,
             toolUseId: String,
@@ -53,13 +59,17 @@ class AICodingAgent(
             tokens: Int,
             limit: Int,
         ) {}
+    }
+
+    interface LimitListener {
+        fun onMaxTokens(
+            limit: Int,
+            suggested: Int,
+        ): Int?
+
+        fun onMaxIterations(used: Int): Boolean = false
 
         fun onCompacted(result: HistoryCompaction.Result) {}
-
-        fun onContext(
-            usedTokens: Int,
-            windowTokens: Int,
-        ) {}
     }
 
     companion object {
@@ -197,7 +207,7 @@ class AICodingAgent(
 
                 if (isCancelled()) return
                 val sentMessages = history.size
-                val sentChars = HistoryCompaction.charsOf(history) + overheadChars
+                val sentChars = MessageChars.of(history) + overheadChars
                 val turn =
                     AICodingAgentClient.sendMessage(
                         endpoint,
@@ -306,17 +316,19 @@ class AICodingAgent(
 
                     val arguments = input.toString()
                     ModelUsageDatabase.recordToolCall(
-                        conversationId = conversationId,
-                        requestId = turn.requestId,
-                        ordinal = ordinal,
-                        toolUseId = toolUseId,
-                        toolName = toolName,
-                        arguments = arguments,
-                        result = resultText,
-                        outcome = outcome.name,
-                        argumentTokens = TokenCounter.count(arguments),
-                        resultTokens = resultTokens,
-                        durationMillis = elapsed,
+                        ToolCallRecord(
+                            conversationId = conversationId,
+                            requestId = turn.requestId,
+                            ordinal = ordinal,
+                            toolUseId = toolUseId,
+                            toolName = toolName,
+                            arguments = arguments,
+                            result = resultText,
+                            outcome = outcome.name,
+                            argumentTokens = TokenCounter.count(arguments),
+                            resultTokens = resultTokens,
+                            durationMillis = elapsed,
+                        ),
                     )
 
                     toolResults.add(

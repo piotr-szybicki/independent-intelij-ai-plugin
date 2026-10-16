@@ -7,12 +7,6 @@ import com.intellij.openapi.diagnostic.Logger
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
-data class McpToolDescriptor(
-    val name: String,
-    val description: String,
-    val inputSchema: JsonObject,
-)
-
 class McpClient(
     private val config: McpServerConfig,
     private val workingDir: File?,

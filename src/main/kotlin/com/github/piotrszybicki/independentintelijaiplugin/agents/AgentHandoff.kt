@@ -15,9 +15,3 @@ data class AgentHandoff(
         const val CANCELLED = "cancelled"
     }
 }
-
-data class AgentSession(
-    val agentName: String,
-    val parentChatId: String?,
-    val specPath: String?,
-)

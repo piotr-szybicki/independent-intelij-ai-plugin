@@ -17,7 +17,9 @@ import java.nio.file.Paths
 @Service(Service.Level.PROJECT)
 class AgentConfigurations(
     private val project: Project,
-) {
+) : ConfigurationFile,
+    ConfigurationSections,
+    ConfigurationResolution {
     data class Loaded(
         val configurations: List<AgentConfiguration>,
         val error: String?,
@@ -61,7 +63,7 @@ class AgentConfigurations(
             return "\$${AgentConfiguration.PATH_ENV_VAR} names $configured, which is not there."
         }
 
-    fun createIfMissing(): Path? {
+    override fun createIfMissing(): Path? {
         val file = path ?: return null
         if (Files.exists(file)) return file
         if (isExternal) {
@@ -81,10 +83,10 @@ class AgentConfigurations(
         return file
     }
 
-    fun virtualFile(): VirtualFile? =
+    override fun virtualFile(): VirtualFile? =
         createIfMissing()?.let { LocalFileSystem.getInstance().refreshAndFindFileByIoFile(it.toFile()) }
 
-    fun rewrite(
+    override fun rewrite(
         configurations: List<AgentConfiguration>,
         database: UsageDatabaseConfig,
         findInFiles: FindInFilesConfig,
@@ -126,7 +128,7 @@ class AgentConfigurations(
         }
     }
 
-    fun text(): String? {
+    override fun text(): String? {
         val file = path?.takeIf { Files.exists(it) } ?: return null
         val onDisk = runCatching { Files.readString(file) }.getOrNull()
         val virtualFile = LocalFileSystem.getInstance().findFileByIoFile(file.toFile()) ?: return onDisk
@@ -135,7 +137,7 @@ class AgentConfigurations(
         } ?: onDisk
     }
 
-    fun load(): Loaded {
+    override fun load(): Loaded {
         val file = path ?: return Loaded(emptyList(), "this project has no directory on disk")
         if (!Files.exists(file)) return Loaded(emptyList(), notThere())
         return try {
@@ -154,7 +156,7 @@ class AgentConfigurations(
 
     private fun notThere(): String = unavailableReason ?: "${AgentConfiguration.FILE_NAME} is not in the project root"
 
-    fun usageDatabase(): LoadedDatabase {
+    override fun usageDatabase(): LoadedDatabase {
         val file = path ?: return LoadedDatabase(UsageDatabaseConfig.OFF, null)
         if (!Files.exists(file)) return LoadedDatabase(UsageDatabaseConfig.OFF, null)
         return try {
@@ -166,7 +168,7 @@ class AgentConfigurations(
         }
     }
 
-    fun findInFiles(): LoadedFindInFiles {
+    override fun findInFiles(): LoadedFindInFiles {
         val file = path ?: return LoadedFindInFiles(FindInFilesConfig.DEFAULT, null)
         if (!Files.exists(file)) return LoadedFindInFiles(FindInFilesConfig.DEFAULT, null)
         return try {
@@ -181,7 +183,7 @@ class AgentConfigurations(
         }
     }
 
-    fun agents(): LoadedAgents {
+    override fun agents(): LoadedAgents {
         val file = path ?: return LoadedAgents(AgentRosterConfig.EMPTY, null)
         if (!Files.exists(file)) return LoadedAgents(AgentRosterConfig.EMPTY, null)
         return try {
@@ -196,7 +198,7 @@ class AgentConfigurations(
         }
     }
 
-    fun summarizer(): LoadedSummarizer {
+    override fun summarizer(): LoadedSummarizer {
         val file = path ?: return LoadedSummarizer(SummarizerConfig.DEFAULT, null)
         if (!Files.exists(file)) return LoadedSummarizer(SummarizerConfig.DEFAULT, null)
         return try {
@@ -211,7 +213,7 @@ class AgentConfigurations(
         }
     }
 
-    fun conversationDefaults(): LoadedConversationDefaults {
+    override fun conversationDefaults(): LoadedConversationDefaults {
         val file = path ?: return LoadedConversationDefaults(ConversationDefaultsConfig.DEFAULT, null)
         if (!Files.exists(file)) return LoadedConversationDefaults(ConversationDefaultsConfig.DEFAULT, null)
         return try {
@@ -229,7 +231,7 @@ class AgentConfigurations(
         }
     }
 
-    fun resolve(
+    override fun resolve(
         configurationName: String,
         modelName: String,
     ): AgentConfiguration {

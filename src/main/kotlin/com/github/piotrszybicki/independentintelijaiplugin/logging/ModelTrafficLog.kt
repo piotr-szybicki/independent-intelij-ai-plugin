@@ -58,7 +58,11 @@ object ModelTrafficLog {
                 .withZone(ZoneId.systemDefault())
 
         override fun format(record: LogRecord): String {
-            val thrown = record.thrown?.stackTraceToString()?.let { "\n$it" } ?: ""
+            val thrown =
+                record.thrown
+                    ?.stackTraceToString()
+                    ?.let { "\n$it" }
+                    .orEmpty()
             return "${timestamp.format(Instant.ofEpochMilli(record.millis))} " +
                 "[${record.level.name}] ${record.message.orEmpty()}$thrown\n"
         }

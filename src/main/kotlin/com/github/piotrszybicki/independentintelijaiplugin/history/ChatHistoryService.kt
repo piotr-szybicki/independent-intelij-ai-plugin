@@ -1,12 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.history
 
-import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentHandoff
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
-import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ChatMessage
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ContextMeter
-import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.SessionUsage
-import com.github.piotrszybicki.independentintelijaiplugin.settings.ConversationTools
 import com.google.gson.Gson
 import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.components.Service
@@ -18,61 +12,11 @@ import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.util.UUID
 
-data class StoredRow(
-    val kind: String,
-    val text: String = "",
-    val name: String = "",
-    val summary: String = "",
-    val details: String = "",
-    val status: String? = null,
-    val requestId: String? = null,
-    val handoff: AgentHandoff? = null,
-) {
-    companion object {
-        const val USER = "user"
-        const val ASSISTANT = "assistant"
-        const val TOOL = "tool"
-        const val ERROR = "error"
-
-        const val HANDOFF = "handoff"
-
-        const val THINKING = "thinking"
-
-        const val COST = "cost"
-
-        const val FAILED = "failed"
-        const val CANCELLED = "cancelled"
-    }
-}
-
-data class StoredChat(
-    val id: String,
-    val title: String,
-    val createdAt: Long,
-    val updatedAt: Long,
-    val messages: List<ChatMessage>,
-    val transcript: List<StoredRow>,
-    val usage: SessionUsage? = null,
-    val context: ContextMeter.State? = null,
-    val configurationName: String? = null,
-    val model: String? = null,
-    val agent: AgentSession? = null,
-    val returns: List<AgentReturn>? = null,
-    val conversationTools: ConversationTools? = null,
-    val promptHistory: List<String>? = null,
-)
-
-data class ChatSummary(
-    val id: String,
-    val title: String,
-    val updatedAt: Long,
-    val agentName: String? = null,
-)
-
 @Service(Service.Level.PROJECT)
 class ChatHistoryService(
     project: Project,
-) {
+) : ChatHistoryIndex,
+    ChatStore {
     private val log = Logger.getInstance(ChatHistoryService::class.java)
     private val gson = Gson()
     private val lock = Any()
@@ -85,11 +29,11 @@ class ChatHistoryService(
         val chats: MutableList<ChatSummary>,
     )
 
-    fun chats(): List<ChatSummary> = synchronized(lock) { readIndex().chats.toList() }
+    override fun chats(): List<ChatSummary> = synchronized(lock) { readIndex().chats.toList() }
 
-    fun activeId(): String? = synchronized(lock) { readIndex().activeId }
+    override fun activeId(): String? = synchronized(lock) { readIndex().activeId }
 
-    fun setActiveId(id: String?) {
+    override fun setActiveId(id: String?) {
         synchronized(lock) {
             runCatching {
                 val index = readIndex()
@@ -99,7 +43,7 @@ class ChatHistoryService(
         }
     }
 
-    fun load(id: String): StoredChat? =
+    override fun load(id: String): StoredChat? =
         synchronized(lock) {
             runCatching {
                 gson
@@ -108,9 +52,9 @@ class ChatHistoryService(
             }.onFailure { log.warn("Could not read chat $id: ${it.message}") }.getOrNull()
         }
 
-    fun save(
+    override fun save(
         chat: StoredChat,
-        active: Boolean = true,
+        active: Boolean,
     ) {
         if (chat.messages.isEmpty() || chat.transcript.isEmpty()) return
         synchronized(lock) {
@@ -129,7 +73,7 @@ class ChatHistoryService(
         }
     }
 
-    fun addReturn(
+    override fun addReturn(
         chatId: String,
         returned: AgentReturn,
     ): Boolean {
@@ -143,7 +87,7 @@ class ChatHistoryService(
         }
     }
 
-    fun delete(id: String) {
+    override fun delete(id: String) {
         synchronized(lock) {
             runCatching {
                 Files.deleteIfExists(fileFor(id))
@@ -155,7 +99,7 @@ class ChatHistoryService(
         }
     }
 
-    fun deleteAll() {
+    override fun deleteAll() {
         synchronized(lock) {
             runCatching {
                 chatIdsOnDisk().forEach { id -> Files.deleteIfExists(fileFor(id)) }

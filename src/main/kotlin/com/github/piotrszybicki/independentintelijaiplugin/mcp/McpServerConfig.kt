@@ -3,10 +3,6 @@ package com.github.piotrszybicki.independentintelijaiplugin.mcp
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 
-class McpConfigException(
-    message: String,
-) : Exception(message)
-
 data class McpServerConfig(
     val name: String,
     val command: String? = null,

@@ -9,6 +9,7 @@ import com.intellij.psi.ElementDescriptionUtil
 import com.intellij.psi.PsiElement
 import com.intellij.usageView.UsageViewLongNameLocation
 import com.intellij.usageView.UsageViewTypeLocation
+import java.util.Locale
 
 class GetSymbolInfoTool(
     private val project: Project,
@@ -141,7 +142,7 @@ class GetSymbolInfoTool(
         val width = lastLine.toString().length
         val body =
             (startLine..lastLine)
-                .joinToString("\n") { n -> "%${width}d  %s".format(n, lines[n - 1]) }
+                .joinToString("\n") { n -> "%${width}d  %s".format(Locale.ROOT, n, lines[n - 1]) }
                 .take(MAX_CHARS)
 
         return buildString {

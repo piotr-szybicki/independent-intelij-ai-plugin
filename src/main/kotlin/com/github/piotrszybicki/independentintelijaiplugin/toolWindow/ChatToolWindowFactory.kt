@@ -4,6 +4,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentDefinition
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentFiles
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentHandoff
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentPath
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentToolPolicy
@@ -31,6 +32,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigu
 import com.github.piotrszybicki.independentintelijaiplugin.settings.ConversationTools
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillDefinition
+import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillPath
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunShellCommandTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.SummarizeTool
@@ -62,6 +64,7 @@ import java.awt.event.FocusEvent
 import java.awt.event.KeyAdapter
 import java.awt.event.KeyEvent
 import java.nio.file.Path
+import java.util.Locale
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.BorderFactory
@@ -158,7 +161,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
     private class ChatPanel(
         private val project: Project,
-    ) : Disposable {
+    ) : Disposable,
+        ChatPanelActions,
+        ChatSideConversation {
         private val history = mutableListOf<ChatMessage>()
         private val rows = mutableListOf<StoredRow>()
         private var runningTool: ChatTranscript.RunningTool? = null
@@ -505,7 +510,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             restoreLastChat()
         }
 
-        fun refreshProviderBar() = providerBar.refresh()
+        override fun refreshProviderBar() = providerBar.refresh()
 
         override fun dispose() {
             panels.remove(project)
@@ -517,7 +522,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             if (isOpened(project)) restoreLastChatNow()
         }
 
-        fun restoreLastChatNow() {
+        override fun restoreLastChatNow() {
             if (!restoreStarted.compareAndSet(false, true)) return
             ApplicationManager.getApplication().executeOnPooledThread {
                 val chat = chatHistory.activeId()?.let { chatHistory.load(it) } ?: return@executeOnPooledThread
@@ -527,7 +532,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
         }
 
-        fun startNewChat() {
+        override fun startNewChat() {
             if (!sendButton.isEnabled) return
             saveCurrentChat(active = false)
             resetConversation()
@@ -535,7 +540,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             input.text = ""
         }
 
-        fun showHistory(e: AnActionEvent) {
+        override fun showHistory(e: AnActionEvent) {
             ChatHistoryPopup.show(
                 project = project,
                 service = chatHistory,
@@ -640,7 +645,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 agent = agentSession,
                 returns = agentReturns.returns(),
                 conversationTools = conversationTools.takeIf { it.isCustom },
-                promptHistory = promptHistory.snapshot(),
+                promptHistory = promptHistory.snapshot,
             )
         }
 
@@ -707,7 +712,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val summary = "freed ~${formatTokens(result.freedTokens)} tokens from $what"
             val details =
                 buildString {
-                    append("The conversation had grown to roughly ${"%,d".format(result.beforeTokens)} tokens, ")
+                    append(
+                        "The conversation had grown to roughly ${"%,d".format(
+                            Locale.ROOT,
+                            result.beforeTokens,
+                        )} tokens, ",
+                    )
                     if (result.evicted > 0) {
                         append("so the output of the ${result.evicted} oldest tool call(s) was replaced with a note ")
                         append("saying what had been there")
@@ -721,7 +731,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                         append("the model was asked to summarise the ${result.summarizedMessages} oldest ")
                         append("message(s) and the summary was put in their place")
                     }
-                    append(", bringing it to about ${"%,d".format(result.afterTokens)}.\n\n")
+                    append(", bringing it to about ${"%,d".format(Locale.ROOT, result.afterTokens)}.\n\n")
                     if (result.summarized) {
                         append("Summarising cost an extra request, and it is lossy: exact file contents, ")
                         append("line numbers and wording from the early part of the conversation are no longer ")
@@ -856,7 +866,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     StoredRow.HANDOFF,
                     name = definition.name,
                     summary = definition.description,
-                    text = AgentFiles.displayPath(project, path),
+                    text = AgentPath.display(project, path),
                     handoff = handoff,
                 )
             showHandoff(index, handoff, definition.description)
@@ -879,7 +889,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             transcript.addHandoff(
                 agentName = handoff.agentName,
                 description = description,
-                specName = AgentFiles.displayPath(project, path),
+                specName = AgentPath.display(project, path),
                 state = handoff.state,
                 onOpenSpec = { openAgentFile(path) },
                 onProceed = { proceedWithHandoff(index) },
@@ -912,7 +922,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val spec = AgentFiles.read(path)?.takeIf { it.isNotBlank() }
             if (spec == null) {
                 showError(
-                    "${AgentFiles.displayPath(project, path)} is empty or could not be read, " +
+                    "${AgentPath.display(project, path)} is empty or could not be read, " +
                         "so nothing was handed over.",
                 )
                 return false
@@ -953,7 +963,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             input.text = ""
             chatAttachments.clear()
 
-            val displayPath = AgentFiles.displayPath(project, path)
+            val displayPath = AgentPath.display(project, path)
             history.add(ChatMessage.text("user", spec))
             showUserMessage("**Specification for @${definition.name}** — `$displayPath`\n\n$spec")
             startTurn(0)
@@ -983,7 +993,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             AgentFiles.open(project, path)
             statusLabel.text =
-                "Returned to the chat that started this agent — edit ${AgentFiles.displayPath(project, path)} " +
+                "Returned to the chat that started this agent — edit ${AgentPath.display(project, path)} " +
                 "there before sending it."
             return true
         }
@@ -995,7 +1005,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private fun invokedSkillBlocks(): List<PrependedBlock> =
             invokedSkills.map { skill ->
-                val path = SkillCatalog.displayPath(project, skill.file)
+                val path = SkillPath.display(project, skill.file)
                 PrependedBlock(
                     marker = "🧭 `/${skill.name}`",
                     body =
@@ -1020,7 +1030,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val unreadable = mutableListOf<String>()
             for (returned in pending) {
                 val path = Path.of(returned.path)
-                val name = AgentFiles.displayPath(project, path)
+                val name = AgentPath.display(project, path)
                 val text = AgentFiles.read(path)?.takeIf { it.isNotBlank() }
                 if (text == null) {
                     unreadable += name
@@ -1320,8 +1330,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             limit: Int,
         ) {
             showError(
-                "Stopped: $toolName returned ${"%,d".format(tokens)} tokens, over the " +
-                    "${"%,d".format(limit)}-token limit, so it was not sent to the model.",
+                "Stopped: $toolName returned ${"%,d".format(Locale.ROOT, tokens)} tokens, over the " +
+                    "${"%,d".format(Locale.ROOT, limit)}-token limit, so it was not sent to the model.",
             )
             transcript.setTurnContinuable(true)
 
@@ -1363,14 +1373,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val approvedTokens = TokenCounter.count(text)
             if (withheldCards.isEmpty()) {
                 showError(
-                    "Approved $toolName's output (${"%,d".format(approvedTokens)} tokens). " +
+                    "Approved $toolName's output (${"%,d".format(Locale.ROOT, approvedTokens)} tokens). " +
                         "All required outputs are approved; continuing automatically.",
                 )
                 continueTurn()
             } else {
                 val remaining = withheldCards.size
                 showError(
-                    "Approved $toolName's output (${"%,d".format(approvedTokens)} tokens). " +
+                    "Approved $toolName's output (${"%,d".format(Locale.ROOT, approvedTokens)} tokens). " +
                         "$remaining approval${if (remaining == 1) "" else "s"} remaining.",
                 )
             }
@@ -1445,11 +1455,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 } else {
                     buildString {
                         append("<html>Tokens used in this chat, over ${total.requests} request(s):<br><br>")
-                        append("Input, billed in full: ${"%,d".format(total.inputTokens)}<br>")
-                        append("Written to the cache: ${"%,d".format(total.cacheWriteTokens)}<br>")
-                        append("Read from the cache: ${"%,d".format(total.cacheReadTokens)}<br>")
-                        append("Input in total: ${"%,d".format(total.totalInputTokens)}<br>")
-                        append("Output: ${"%,d".format(total.outputTokens)}<br><br>")
+                        append("Input, billed in full: ${"%,d".format(Locale.ROOT, total.inputTokens)}<br>")
+                        append("Written to the cache: ${"%,d".format(Locale.ROOT, total.cacheWriteTokens)}<br>")
+                        append("Read from the cache: ${"%,d".format(Locale.ROOT, total.cacheReadTokens)}<br>")
+                        append("Input in total: ${"%,d".format(Locale.ROOT, total.totalInputTokens)}<br>")
+                        append("Output: ${"%,d".format(Locale.ROOT, total.outputTokens)}<br><br>")
                         append("A request that failed is not counted.</html>")
                     }
                 }
@@ -1481,8 +1491,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 }
             contextLabel.toolTipText =
                 buildString {
-                    append("<html>Context in use: ${"%,d".format(used)} tokens")
-                    if (window > 0) append(" of ${"%,d".format(window)}")
+                    append("<html>Context in use: ${"%,d".format(Locale.ROOT, used)} tokens")
+                    if (window > 0) append(" of ${"%,d".format(Locale.ROOT, window)}")
                     append(".<br><br>")
                     append("What the next request would send: the system prompt, the tool ")
                     append("descriptions and the whole conversation. Unlike the token counts beside ")
@@ -1535,7 +1545,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             return extend
         }
 
-        fun startSideChat(
+        override fun startSideChat(
             code: String,
             displayPath: String,
             extension: String,
@@ -1556,8 +1566,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             fun formatTokens(count: Int): String =
                 when {
                     count < 1_000 -> count.toString()
-                    count < 1_000_000 -> "%.1fk".format(count / 1_000.0)
-                    else -> "%.2fM".format(count / 1_000_000.0)
+                    count < 1_000_000 -> "%.1fk".format(Locale.ROOT, count / 1_000.0)
+                    else -> "%.2fM".format(Locale.ROOT, count / 1_000_000.0)
                 }
         }
     }

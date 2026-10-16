@@ -93,9 +93,12 @@ class ConsoleDigestTest {
     fun `front-codes long similar lines under a shared header`() {
         val text =
             listOf(
-                "at com.github.piotrszybicki.independentintelijaiplugin.tools.ConfigurationRunner.run(Runner.kt:47)",
-                "at com.github.piotrszybicki.independentintelijaiplugin.tools.RunConfigurationTool.execute(Tool.kt:88)",
-                "at com.github.piotrszybicki.independentintelijaiplugin.tools.StartDebugConfigurationTool.go(Dbg.kt:12)",
+                "at com.github.piotrszybicki.independentintelijaiplugin.tools." +
+                    "ConfigurationRunner.run(Runner.kt:47)",
+                "at com.github.piotrszybicki.independentintelijaiplugin.tools." +
+                    "RunConfigurationTool.execute(Tool.kt:88)",
+                "at com.github.piotrszybicki.independentintelijaiplugin.tools." +
+                    "StartDebugConfigurationTool.go(Dbg.kt:12)",
             ).joinToString("\n")
 
         val rendered = ConsoleDigest.of(text).lines()

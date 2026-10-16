@@ -8,10 +8,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
 
-class AgentConfigurationException(
-    message: String,
-) : Exception(message)
-
 data class AgentConfiguration(
     val name: String,
     val model: String,
@@ -28,7 +24,7 @@ data class AgentConfiguration(
     val apiVersion: String,
     val extraHeaders: Map<String, String>,
 ) {
-    val tokenEnvVar: String? get() = envVarName(token)
+    val tokenEnvVar: String? get() = EnvironmentToken.variableName(token)
 
     fun withModel(wanted: String): AgentConfiguration =
         if (wanted.isNotBlank() && wanted in models) copy(model = wanted) else this
@@ -187,22 +183,6 @@ data class AgentConfiguration(
                     extraHeaders = emptyMap(),
                 ),
             )
-
-        fun envVarName(token: String): String? {
-            val trimmed = token.trim()
-            if (!trimmed.startsWith("$")) return null
-            val body =
-                trimmed.drop(1).let {
-                    if (it.startsWith("{") &&
-                        it.endsWith("}")
-                    ) {
-                        it.drop(1).dropLast(1)
-                    } else {
-                        it
-                    }
-                }
-            return body.trim().takeIf { it.isNotBlank() }
-        }
 
         fun parseAll(text: String): List<AgentConfiguration> {
             if (text.isBlank()) return emptyList()

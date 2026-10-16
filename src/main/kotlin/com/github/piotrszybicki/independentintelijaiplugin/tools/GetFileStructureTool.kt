@@ -12,6 +12,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import java.util.Locale
 
 class GetFileStructureTool(
     private val project: Project,
@@ -107,7 +108,7 @@ class GetFileStructureTool(
         val maxDepth = (input.get("max_depth")?.asInt ?: DEFAULT_MAX_DEPTH).coerceIn(1, MAX_MAX_DEPTH)
         val maxItems = (input.get("max_items")?.asInt ?: DEFAULT_MAX_ITEMS).coerceIn(1, MAX_MAX_ITEMS)
 
-        val source = if (path != null) fromPath(path) else fromClassName(className!!)
+        val source = if (path != null) fromPath(path) else fromClassName(requireNotNull(className))
         val target =
             when (source) {
                 is Source.Error -> return source.message
@@ -144,12 +145,12 @@ class GetFileStructureTool(
                 val lineText =
                     when {
                         entry.startLine != null && entry.endLine != null -> {
-                            val start = "%${width}d".format(entry.startLine)
-                            val end = "%${width}d".format(entry.endLine)
+                            val start = "%${width}d".format(Locale.ROOT, entry.startLine)
+                            val end = "%${width}d".format(Locale.ROOT, entry.endLine)
                             if (entry.startLine == entry.endLine) start else "$start-$end"
                         }
-                        entry.startLine != null -> "%${width}d".format(entry.startLine)
-                        entry.endLine != null -> "%${width}d".format(entry.endLine)
+                        entry.startLine != null -> "%${width}d".format(Locale.ROOT, entry.startLine)
+                        entry.endLine != null -> "%${width}d".format(Locale.ROOT, entry.endLine)
                         else -> null
                     }
                 append(lineText?.padStart(columnWidth) ?: blankRange)
@@ -161,15 +162,15 @@ class GetFileStructureTool(
         }
     }
 
-    private sealed class Source {
+    private sealed interface Source {
         class Resolved(
             val file: PsiFile,
             val label: String,
-        ) : Source()
+        ) : Source
 
         class Error(
             val message: String,
-        ) : Source()
+        ) : Source
     }
 
     private fun fromPath(path: String): Source {

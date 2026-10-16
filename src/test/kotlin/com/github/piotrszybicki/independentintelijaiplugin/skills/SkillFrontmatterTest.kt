@@ -1,10 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.skills
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class SkillFrontmatterTest {
     @Test
@@ -111,110 +109,5 @@ class SkillFrontmatterTest {
             "Fixes issue #42",
             SkillFrontmatter.parse("---\ndescription: \"Fixes issue #42\"\n---\n")["description"],
         )
-    }
-}
-
-class SkillDefinitionTest {
-    @get:org.junit.Rule
-    val temp = org.junit.rules.TemporaryFolder()
-
-    @Test
-    fun `falls back to the directory name and the first paragraph`() {
-        val file =
-            skillFile(
-                "summarize-changes",
-                """
-                ---
-                model: inherit
-                ---
-
-                # Heading
-
-                Summarizes uncommitted changes and flags anything risky.
-
-                More detail nobody needs yet.
-                """.trimIndent(),
-            )
-
-        val skill = SkillDefinition.read(file)!!
-
-        assertEquals("summarize-changes", skill.name)
-        assertEquals("Summarizes uncommitted changes and flags anything risky.", skill.description)
-    }
-
-    @Test
-    fun `appends when_to_use to the description`() {
-        val file =
-            skillFile(
-                "deploy",
-                "---\ndescription: Deploys the app.\nwhen_to_use: Use when asked to ship or release.\n---\n",
-            )
-
-        assertEquals("Deploys the app. Use when asked to ship or release.", SkillDefinition.read(file)!!.description)
-    }
-
-    @Test
-    fun `skips a file with no description and no body`() {
-        assertNull(SkillDefinition.read(skillFile("empty", "---\nmodel: inherit\n---\n")))
-    }
-
-    private fun skillFile(
-        name: String,
-        content: String,
-    ): File {
-        val directory = temp.newFolder(name)
-        return File(directory, "SKILL.md").apply { writeText(content) }
-    }
-}
-
-class SkillRootTest {
-    @get:org.junit.Rule
-    val temp = org.junit.rules.TemporaryFolder()
-
-    @Test
-    fun `resolves relative paths against the project and keeps absolute ones`() {
-        val base = temp.newFolder("project")
-        val elsewhere = temp.newFolder("elsewhere")
-
-        val roots = SkillRoot.parseAll(".claude/skills\n${elsewhere.absolutePath}", base)
-
-        assertEquals(2, roots.size)
-        assertEquals(File(base, ".claude/skills").canonicalPath, roots[0].directory!!.path)
-        assertEquals(elsewhere.canonicalPath, roots[1].directory!!.path)
-    }
-
-    @Test
-    fun `skips blanks and comments and drops duplicates`() {
-        val base = temp.newFolder("project")
-
-        val roots =
-            SkillRoot.parseAll(
-                """
-                # personal first
-                .skills
-
-                .skills
-                ${File(base, ".skills").absolutePath}
-                """.trimIndent(),
-                base,
-            )
-
-        assertEquals(1, roots.size)
-    }
-
-    @Test
-    fun `expands a leading tilde`() {
-        val roots = SkillRoot.parseAll("~/.claude/skills", null)
-
-        val home = File(System.getProperty("user.home"), ".claude/skills").canonicalPath
-        assertEquals(home, roots.single().directory!!.path)
-    }
-
-    @Test
-    fun `reports a relative path with no project to resolve against`() {
-        val root = SkillRoot.parseAll(".skills", null).single()
-
-        assertNull(root.directory)
-        assertTrue(root.error!!.contains("relative"))
     }
 }

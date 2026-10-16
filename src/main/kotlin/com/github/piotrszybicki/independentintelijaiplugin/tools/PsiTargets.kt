@@ -13,8 +13,8 @@ import com.intellij.psi.PsiNamedElement
 import com.intellij.psi.util.PsiTreeUtil
 import java.io.File
 
-object PsiTargets {
-    fun resolveProjectPath(
+object PsiTargets : PsiPathResolver, PsiElementResolver {
+    override fun resolveProjectPath(
         project: Project,
         relativePath: String,
     ): File? {
@@ -27,7 +27,7 @@ object PsiTargets {
         return target
     }
 
-    fun resolveProjectFile(
+    override fun resolveProjectFile(
         project: Project,
         relativePath: String,
     ): VirtualFile? {
@@ -35,7 +35,7 @@ object PsiTargets {
         return LocalFileSystem.getInstance().findFileByIoFile(target)
     }
 
-    fun resolveElement(
+    override fun resolveElement(
         project: Project,
         relativePath: String,
         line: Int,
@@ -69,12 +69,12 @@ object PsiTargets {
         }
     }
 
-    fun resolveTarget(
+    override fun resolveTarget(
         project: Project,
         relativePath: String,
         line: Int,
         symbolName: String,
-        occurrence: Int = 1,
+        occurrence: Int,
     ): PsiElement? =
         ReadAction.computeBlocking<PsiElement?, RuntimeException> {
             val resolved =
@@ -86,7 +86,7 @@ object PsiTargets {
             resolved ?: resolveElement(project, relativePath, line, symbolName)
         }
 
-    fun resolvePsiFile(
+    override fun resolvePsiFile(
         project: Project,
         relativePath: String,
     ): PsiFile? =
@@ -95,7 +95,7 @@ object PsiTargets {
             PsiManager.getInstance(project).findFile(vf)
         }
 
-    fun isInProject(
+    override fun isInProject(
         project: Project,
         element: PsiElement,
     ): Boolean {
@@ -143,7 +143,7 @@ object PsiTargets {
 
     private fun isIdentifierChar(c: Char?): Boolean = c != null && (c.isLetterOrDigit() || c == '_' || c == '$')
 
-    fun relativePath(
+    override fun relativePath(
         project: Project,
         vf: VirtualFile,
     ): String {

@@ -30,7 +30,8 @@ internal class PromptHistory {
         resetNavigation()
     }
 
-    fun snapshot(): List<String> = prompts.toList()
+    val snapshot: List<String>
+        get() = prompts.toList()
 
     private fun resetNavigation() {
         position = prompts.size

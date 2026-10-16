@@ -109,7 +109,7 @@ class CreateFileTool(
     ): VirtualFile {
         val parent =
             VfsUtil.createDirectoryIfMissing(parentPath)
-                ?: throw IllegalStateException("could not create directory $parentPath")
+                ?: error("could not create directory $parentPath")
         return parent.createChildData(this, fileName)
     }
 }

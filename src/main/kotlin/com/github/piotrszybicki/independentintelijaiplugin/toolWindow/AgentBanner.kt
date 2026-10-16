@@ -12,7 +12,7 @@ import javax.swing.JPanel
 
 internal class AgentBanner(
     private val onOpenParent: (String) -> Unit,
-    private val onOpenSpec: () -> Unit,
+    onOpenSpec: () -> Unit,
 ) {
     private var session: AgentSession? = null
 

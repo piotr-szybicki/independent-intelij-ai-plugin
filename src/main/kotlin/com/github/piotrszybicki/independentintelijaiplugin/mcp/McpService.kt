@@ -11,7 +11,8 @@ import java.io.File
 @Service(Service.Level.PROJECT)
 class McpService(
     private val project: Project,
-) : Disposable {
+) : Disposable,
+    McpCatalog {
     data class ServerStatus(
         val name: String,
         val target: String,
@@ -31,7 +32,7 @@ class McpService(
     private var builtFrom: String? = null
 
     @Synchronized
-    fun tools(): List<AICodingAgentTool> {
+    override fun tools(): List<AICodingAgentTool> {
         val all = current().flatMap { it.tools }
         val enabled = AICodingAgentSettingsState.getInstance().state.enabledMcpTools
         if (enabled.isBlank()) return all
@@ -41,13 +42,13 @@ class McpService(
 
     /** Every tool every connected server offers, before the settings page's selection narrows it. */
     @Synchronized
-    fun allTools(): List<AICodingAgentTool> = current().flatMap { it.tools }
+    override fun allTools(): List<AICodingAgentTool> = current().flatMap { it.tools }
 
     @Synchronized
-    fun statuses(): List<ServerStatus> = current().map { it.status }
+    override fun statuses(): List<ServerStatus> = current().map { it.status }
 
     @Synchronized
-    fun reload() {
+    override fun reload() {
         connections?.forEach { runCatching { it.client?.close() } }
         connections = null
         builtFrom = null

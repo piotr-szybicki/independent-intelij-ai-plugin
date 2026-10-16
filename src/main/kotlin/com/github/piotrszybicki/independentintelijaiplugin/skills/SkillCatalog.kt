@@ -111,7 +111,7 @@ object SkillCatalog {
             appendLine("Skills the user has switched on for this chat:")
             for (skill in skills) {
                 appendLine("- ${skill.name}: ${skill.description}")
-                appendLine("  Instructions: ${displayPath(base, skill.file)}")
+                appendLine("  Instructions: ${SkillPath.display(base, skill.file)}")
             }
             appendLine()
             append(
@@ -126,22 +126,5 @@ object SkillCatalog {
                     "files beside it -- read those only when its instructions say to.",
             )
         }
-    }
-
-    /** How a skill's file is named to the model: project-relative where it can be, absolute otherwise. */
-    fun displayPath(
-        project: Project,
-        file: File,
-    ): String = displayPath(project.basePath?.let(::File), file)
-
-    private fun displayPath(
-        base: File?,
-        file: File,
-    ): String {
-        if (base == null) return file.path
-        val root = runCatching { base.canonicalFile }.getOrDefault(base.absoluteFile)
-        val prefix = root.path + File.separator
-        if (!file.path.startsWith(prefix)) return file.path
-        return file.path.removePrefix(prefix).replace(File.separatorChar, '/')
     }
 }

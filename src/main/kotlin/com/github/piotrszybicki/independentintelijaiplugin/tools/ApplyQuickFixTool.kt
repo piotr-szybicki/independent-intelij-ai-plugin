@@ -224,7 +224,7 @@ class ApplyQuickFixTool(
                 val action = descriptor.action
                 if (!action.isAvailable(project, editor, psiFile)) continue
                 val label = action.text
-                if (label.isNullOrBlank()) continue
+                if (label.isBlank()) continue
                 byLabel.putIfAbsent(label, Fix(label, descriptor))
             }
         }

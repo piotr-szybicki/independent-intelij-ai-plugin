@@ -81,6 +81,6 @@ class GitBlameTool(
 
         val blame = result.outputAsJoinedString
         if (blame.isBlank()) return "No blame output -- $path may not be committed yet."
-        return GitRepositories.capped(blame, MAX_CHARS, "pass start_line and end_line")
+        return CappedText.format(blame, MAX_CHARS, "pass start_line and end_line")
     }
 }

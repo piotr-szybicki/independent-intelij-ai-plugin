@@ -12,7 +12,6 @@ class ListDirectoryTool(
     companion object {
         private const val DEFAULT_MAX_ENTRIES = 200
         private const val MAX_MAX_ENTRIES = 2000
-        private const val DEFAULT_MAX_DEPTH = 1
         private const val MAX_MAX_DEPTH = 25
     }
 

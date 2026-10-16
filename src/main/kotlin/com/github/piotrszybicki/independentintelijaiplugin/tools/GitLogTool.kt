@@ -87,6 +87,6 @@ class GitLogTool(
 
         val log = result.outputAsJoinedString
         if (log.isBlank()) return "No commits found."
-        return GitRepositories.capped(log, MAX_CHARS, "lower the limit")
+        return CappedText.format(log, MAX_CHARS, "lower the limit")
     }
 }

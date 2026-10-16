@@ -235,7 +235,7 @@ class OpenAiProtocolTest {
         assertEquals(56, turn.usage?.input_tokens)
         assertEquals(7, turn.usage?.output_tokens)
         assertEquals(64, turn.usage?.cache_read_input_tokens)
-        assertEquals(120, turn.usage?.input_tokens!! + turn.usage?.cache_read_input_tokens!!)
+        assertEquals(120, turn.usage?.input_tokens!! + turn.usage.cache_read_input_tokens)
     }
 
     @Test

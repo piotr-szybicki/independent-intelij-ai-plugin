@@ -12,6 +12,7 @@ import java.nio.file.Path
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicLong
 
 object ModelExchangeLog {
@@ -38,7 +39,8 @@ object ModelExchangeLog {
     @Volatile
     private var broken = false
 
-    fun newRequestId(): String = "${idStamp.format(Instant.now())}-${"%05d".format(sequence.incrementAndGet())}"
+    fun newRequestId(): String =
+        "${idStamp.format(Instant.now())}-${"%05d".format(Locale.ROOT, sequence.incrementAndGet())}"
 
     fun recordRequest(
         conversationId: String,

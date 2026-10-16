@@ -1,0 +1,104 @@
+# Keep this file focused on project-specific policy. Detekt's maintained defaults
+# supply the broader correctness, naming, performance, potential-bug, and style rules.
+config:
+  validation: true
+  warningsAsErrors: true
+
+project-rules:
+  OneTopLevelClassOrObjectPerFile:
+    active: true
+
+complexity:
+  CognitiveComplexMethod:
+    active: false
+
+  ComplexInterface:
+    active: true
+    allowedDefinitions: 10
+    includeStaticDeclarations: true
+    includePrivateDeclarations: true
+
+  CyclomaticComplexMethod:
+    allowedComplexity: 35
+
+  ComplexCondition:
+    allowedConditions: 4
+
+  LargeClass:
+    # IntelliJ UI adapters are necessarily declarative and line-heavy. Structural
+    # size is enforced by the artifact and function-surface rules instead.
+    active: false
+
+  LongMethod:
+    active: false
+
+  LongParameterList:
+    allowedFunctionParameters: 8
+    allowedConstructorParameters: 10
+    ignoreDefaultParameters: true
+    ignoreDataClasses: true
+
+  NamedArguments:
+    active: false
+
+  NestedBlockDepth:
+    allowedDepth: 5
+
+  NestedScopeFunctions:
+    active: false
+
+  StringLiteralDuplication:
+    active: false
+
+  TooManyFunctions:
+    # Limit each callable API surface. Private helpers remain an implementation
+    # detail; file-level artifact size is enforced independently above.
+    allowedFunctionsPerFile: 4
+    allowedFunctionsPerClass: 4
+    allowedFunctionsPerInterface: 4
+    allowedFunctionsPerObject: 4
+    allowedFunctionsPerEnum: 4
+    ignorePrivate: true
+    ignoreInternal: false
+    ignoreOverridden: true
+
+style:
+  LoopWithTooManyJumpStatements:
+    active: false
+
+  MagicNumber:
+    # UI dimensions and protocol limits are clearer at their call sites in this
+    # project; this check produced noise without finding defects.
+    active: false
+
+  MaxLineLength:
+    maxLineLength: 120
+    excludePackageStatements: true
+    excludeImportStatements: true
+    excludeRawStrings: true
+
+  ReturnCount:
+    # Guard clauses reduce nesting and are encouraged in this project.
+    max: 7
+    excludeGuardClauses: true
+
+  ThrowsCount:
+    max: 7
+
+exceptions:
+  SwallowedException:
+    # Boundary code intentionally converts provider, process, and persistence
+    # failures into user-facing results.
+    active: false
+
+  TooGenericExceptionCaught:
+    active: false
+
+naming:
+  ConstructorParameterNaming:
+    # Wire DTOs deliberately mirror snake_case JSON field names.
+    parameterPattern: '[a-z][A-Za-z0-9_]*'
+
+  NoNameShadowing:
+    active: false
+

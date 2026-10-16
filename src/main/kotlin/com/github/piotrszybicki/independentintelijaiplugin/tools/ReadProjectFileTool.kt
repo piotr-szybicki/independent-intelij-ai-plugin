@@ -6,6 +6,7 @@ import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
+import java.util.Locale
 
 class ReadProjectFileTool(
     private val project: Project,
@@ -88,7 +89,7 @@ class ReadProjectFileTool(
         val width = lastLine.toString().length
         val body =
             (start..lastLine).joinToString("\n") { line ->
-                "%${width}d  %s".format(line, range.lines[line - 1])
+                "%${width}d  %s".format(Locale.ROOT, line, range.lines[line - 1])
             }
 
         val header = "$relativePath: lines $start-$lastLine of ${range.lineCount}"

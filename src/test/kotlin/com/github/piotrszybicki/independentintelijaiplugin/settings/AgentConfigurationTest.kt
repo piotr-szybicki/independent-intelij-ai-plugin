@@ -261,16 +261,16 @@ class AgentConfigurationTest {
 
     @Test
     fun `a token starting with a dollar names an environment variable`() {
-        assertEquals("AI_API_KEY", AgentConfiguration.envVarName("\$AI_API_KEY"))
-        assertEquals("AI_API_KEY", AgentConfiguration.envVarName("\${AI_API_KEY}"))
-        assertEquals("AI_API_KEY", AgentConfiguration.envVarName("  \$AI_API_KEY  "))
+        assertEquals("AI_API_KEY", EnvironmentToken.variableName("\$AI_API_KEY"))
+        assertEquals("AI_API_KEY", EnvironmentToken.variableName("\${AI_API_KEY}"))
+        assertEquals("AI_API_KEY", EnvironmentToken.variableName("  \$AI_API_KEY  "))
     }
 
     @Test
     fun `anything else is the token itself`() {
-        assertNull(AgentConfiguration.envVarName("sk-ant-0123"))
-        assertNull(AgentConfiguration.envVarName(""))
-        assertNull(AgentConfiguration.envVarName("$"))
+        assertNull(EnvironmentToken.variableName("sk-ant-0123"))
+        assertNull(EnvironmentToken.variableName(""))
+        assertNull(EnvironmentToken.variableName("$"))
     }
 
     @Test

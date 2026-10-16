@@ -17,15 +17,15 @@ import java.util.concurrent.TimeUnit
 object GitRepositories {
     private const val REFRESH_TIMEOUT_SECONDS = 10L
 
-    sealed class Resolved {
+    sealed interface Resolved {
         class Ok(
             val repository: GitRepository,
             val pathInRepo: String?,
-        ) : Resolved()
+        ) : Resolved
 
         class Error(
             val message: String,
-        ) : Resolved()
+        ) : Resolved
     }
 
     fun resolve(
@@ -94,15 +94,5 @@ object GitRepositories {
         val updated = CountDownLatch(1)
         ChangeListManager.getInstance(project).invokeAfterUpdate(true) { updated.countDown() }
         return updated.await(REFRESH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-    }
-
-    fun capped(
-        text: String,
-        maxChars: Int,
-        narrowWith: String,
-    ): String {
-        if (text.length <= maxChars) return text
-        return text.take(maxChars).substringBeforeLast('\n') +
-            "\n\n[TRUNCATED at $maxChars characters -- $narrowWith to see the rest]"
     }
 }

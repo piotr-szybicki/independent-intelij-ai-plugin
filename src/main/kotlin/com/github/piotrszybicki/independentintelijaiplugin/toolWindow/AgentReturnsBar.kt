@@ -1,6 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
-import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentFiles
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentPath
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.project.Project
@@ -85,7 +85,7 @@ internal class AgentReturnsBar(
 
     private fun chip(returned: AgentReturn): JComponent {
         val path = Path.of(returned.path)
-        val name = AgentFiles.displayPath(project, path)
+        val name = AgentPath.display(project, path)
 
         val chip =
             RoundedPanel(

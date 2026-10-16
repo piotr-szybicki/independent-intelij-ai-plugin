@@ -10,7 +10,6 @@ import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessOutputType
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.util.Key
@@ -18,11 +17,6 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.execution.ParametersListUtil
 import org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider
 import java.io.File
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardOpenOption
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -393,61 +387,5 @@ class RunShellCommandTool(
                 return if (environmentShell.isNullOrBlank()) listOf("/bin/sh") else listOf(environmentShell)
             }
         }
-    }
-}
-
-internal class CommandOutputFile private constructor(
-    val path: Path,
-) : AutoCloseable {
-    private val lock = Any()
-    private val writer =
-        Files.newBufferedWriter(
-            path,
-            StandardCharsets.UTF_8,
-            StandardOpenOption.CREATE_NEW,
-            StandardOpenOption.WRITE,
-        )
-    private var closed = false
-
-    fun append(text: String) {
-        synchronized(lock) {
-            if (closed) return
-            writer.append(text)
-            writer.flush()
-        }
-    }
-
-    fun digest(projectPath: String?): String =
-        synchronized(lock) {
-            if (!closed) writer.flush()
-            val digest = ConsoleDigest(projectPath)
-            Files.newBufferedReader(path, StandardCharsets.UTF_8).use { reader ->
-                val buffer = CharArray(8192)
-                while (true) {
-                    val count = reader.read(buffer)
-                    if (count < 0) break
-                    digest.append(String(buffer, 0, count))
-                }
-            }
-            digest.snapshot()
-        }
-
-    override fun close() {
-        synchronized(lock) {
-            if (closed) return
-            closed = true
-            writer.close()
-        }
-    }
-
-    companion object {
-        fun create(project: Project): CommandOutputFile {
-            val directory =
-                Path.of(PathManager.getSystemPath(), "aiCodingAgentChat", "commands", project.locationHash)
-            Files.createDirectories(directory)
-            return CommandOutputFile(directory.resolve("${System.currentTimeMillis()}-${UUID.randomUUID()}.log"))
-        }
-
-        internal fun at(path: Path): CommandOutputFile = CommandOutputFile(path)
     }
 }
