@@ -90,6 +90,8 @@ internal class ChangesBar(
 
     private fun changedFileRow(file: VirtualFile): JComponent {
         var hovered = false
+        val deleted = session.isDeleted(file)
+        val path = PsiTargets.relativePath(project, file)
         val row =
             RoundedPanel(
                 BorderLayout(JBUI.scale(6), 0),
@@ -98,14 +100,18 @@ internal class ChangesBar(
             ).apply {
                 border = JBUI.Borders.empty(JBUI.scale(2), JBUI.scale(4))
                 cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-                toolTipText = "Open ${PsiTargets.relativePath(project, file)}"
+                toolTipText = if (deleted) "$path was deleted" else "Open $path"
             }
 
         row.add(
-            JBLabel(file.name, file.fileType.icon, SwingConstants.LEFT).apply { font = JBFont.small() },
+            JBLabel(
+                if (deleted) "${file.name} (deleted)" else file.name,
+                file.fileType.icon,
+                SwingConstants.LEFT,
+            ).apply { font = JBFont.small() },
             BorderLayout.WEST,
         )
-        val folder = PsiTargets.relativePath(project, file).substringBeforeLast('/', "")
+        val folder = path.substringBeforeLast('/', "")
         if (folder.isNotEmpty()) {
             row.add(
                 JBLabel(folder).apply {

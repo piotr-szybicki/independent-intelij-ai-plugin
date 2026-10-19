@@ -1,6 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
+import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
@@ -53,7 +54,9 @@ class DeleteFileTool(
                 null,
                 Runnable {
                     try {
-                        vf.delete(this)
+                        ChangeSessionService.getInstance(project).trackDeletion(vf) {
+                            vf.delete(this)
+                        }
                     } catch (e: Exception) {
                         error = "Error: cannot delete $path: ${e.message}"
                     }
@@ -62,7 +65,6 @@ class DeleteFileTool(
         }
         error?.let { return it }
 
-        return "Deleted $path. This cannot be undone from the chat's Revert button; " +
-            "the contents are recoverable from Local History."
+        return "Deleted $path. The deletion is waiting for approval and can be undone with Revert."
     }
 }
