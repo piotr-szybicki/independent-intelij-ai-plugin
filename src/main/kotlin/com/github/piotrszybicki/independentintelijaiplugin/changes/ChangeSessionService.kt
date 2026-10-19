@@ -35,6 +35,7 @@ class ChangeSessionService(
     private val log = Logger.getInstance(ChangeSessionService::class.java)
     private val lock = Any()
     private val baselines = LinkedHashMap<VirtualFile, String>()
+    private val deletions = LinkedHashMap<VirtualFile, DeletedFile>()
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val captureDepth = AtomicInteger(0)
     private val display: ChangeDisplay =
@@ -75,6 +76,85 @@ class ChangeSessionService(
 
     override fun endCapture() {
         captureDepth.decrementAndGet()
+    }
+
+    fun trackDeletion(
+        file: VirtualFile,
+        delete: () -> Unit,
+    ) {
+        val deleted = snapshotForDeletion(file)
+        delete()
+
+        synchronized(lock) {
+            baselines.remove(file)
+            deletions[file] = deleted
+        }
+        display.clear(file)
+        notifyListeners()
+    }
+
+    private fun snapshotForDeletion(file: VirtualFile): DeletedFile {
+        val baseline = synchronized(lock) { baselines[file] }
+        val document = FileDocumentManager.getInstance().getDocument(file)
+        val contents =
+            when {
+                baseline != null -> baseline.toByteArray(file.charset)
+                document != null -> document.text.toByteArray(file.charset)
+                else -> file.contentsToByteArray()
+            }
+        return DeletedFile(
+            file = file,
+            parent = requireNotNull(file.parent) { "Cannot track deletion of a file without a parent" },
+            relativePath = PsiTargets.relativePath(project, file),
+            contents = contents,
+        )
+    }
+
+    private data class DeletedFile(
+        val file: VirtualFile,
+        val parent: VirtualFile,
+        val relativePath: String,
+        val contents: ByteArray,
+    )
+
+    fun isDeleted(file: VirtualFile): Boolean = synchronized(lock) { file in deletions }
+
+    private fun restoreDeletion(deleted: DeletedFile): Boolean {
+        if (!deleted.parent.isValid || deleted.parent.findChild(deleted.file.name) != null) return false
+
+        return runCatching {
+            val restored = deleted.parent.createChildData(this, deleted.file.name)
+            restored.setBinaryContent(deleted.contents)
+        }.onFailure { error ->
+            log.warn("Could not restore ${deleted.relativePath}: ${error.message}")
+        }.isSuccess
+    }
+
+    private fun changedFilesSnapshot(): List<VirtualFile> =
+        synchronized(lock) {
+            buildList {
+                addAll(baselines.keys)
+                addAll(deletions.keys)
+            }
+        }
+
+    private fun changedPathsSnapshot(): List<String> =
+        synchronized(lock) {
+            buildList {
+                baselines.keys.mapTo(this) { PsiTargets.relativePath(project, it) }
+                deletions.values.mapTo(this) { it.relativePath }
+            }
+        }
+
+    private fun clearTrackedChanges() {
+        val files =
+            synchronized(lock) {
+                (baselines.keys + deletions.keys).also {
+                    baselines.clear()
+                    deletions.clear()
+                }
+            }
+        files.forEach(display::clear)
     }
 
     private fun captureBaseline(document: Document) {
@@ -128,11 +208,11 @@ class ChangeSessionService(
     }
 
     val changedFileCount: Int
-        get() = synchronized(lock) { baselines.size }
+        get() = synchronized(lock) { baselines.size + deletions.size }
 
-    override fun changedFiles(): List<VirtualFile> = synchronized(lock) { baselines.keys.toList() }
+    override fun changedFiles(): List<VirtualFile> = changedFilesSnapshot()
 
-    override fun changedPaths(): List<String> = changedFiles().map { PsiTargets.relativePath(project, it) }
+    override fun changedPaths(): List<String> = changedPathsSnapshot()
 
     override fun addListener(listener: Listener) {
         listeners.add(listener)
@@ -232,14 +312,14 @@ class ChangeSessionService(
     }
 
     override fun approveAll() {
-        synchronized(lock) { baselines.clear() }
-        display.clearAll()
+        clearTrackedChanges()
         notifyListeners()
     }
 
     override fun revertAll(): List<String> {
         val snapshot = synchronized(lock) { LinkedHashMap(baselines) }
-        if (snapshot.isEmpty()) return emptyList()
+        val deletedSnapshot = synchronized(lock) { deletions.values.toList() }
+        if (snapshot.isEmpty() && deletedSnapshot.isEmpty()) return emptyList()
 
         val failed = mutableListOf<String>()
         val documentManager = FileDocumentManager.getInstance()
@@ -259,6 +339,9 @@ class ChangeSessionService(
                         document.setText(baseline)
                     }
                 }
+                for (deleted in deletedSnapshot) {
+                    if (!restoreDeletion(deleted)) failed.add(deleted.relativePath)
+                }
             },
         )
 
@@ -268,14 +351,16 @@ class ChangeSessionService(
             log.warn("Could not revert ${failed.size} file(s): ${failed.joinToString()}")
         }
 
-        synchronized(lock) { baselines.clear() }
-        display.clearAll()
+        clearTrackedChanges()
         notifyListeners()
         return failed
     }
 
     override fun dispose() {
-        synchronized(lock) { baselines.clear() }
+        synchronized(lock) {
+            baselines.clear()
+            deletions.clear()
+        }
         listeners.clear()
     }
 
