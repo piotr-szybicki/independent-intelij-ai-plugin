@@ -5,4 +5,5 @@ data class ChatSummary(
     val title: String,
     val updatedAt: Long,
     val agentName: String? = null,
+    val parentChatId: String? = null,
 )

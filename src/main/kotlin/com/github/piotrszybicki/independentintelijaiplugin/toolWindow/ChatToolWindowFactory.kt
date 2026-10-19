@@ -21,6 +21,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.TokenCo
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ToolResults
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeTrackingTool
+import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryHierarchy
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryService
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredRow
@@ -851,6 +852,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 statusLabel.text = "Wait for the current reply to finish before handing over."
                 return
             }
+            if (currentConversationLevel() >= MAX_CONVERSATION_LEVELS) {
+                statusLabel.text =
+                    "Agent handoffs are limited to $MAX_CONVERSATION_LEVELS conversation levels. " +
+                    "Return to a parent chat to start another agent."
+                return
+            }
 
             val reply = transcript.lastTurnMarkdown()
             val path = AgentFiles.spec(project, definition, reply)
@@ -878,6 +885,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 } else {
                     "Edit the spec, then press Proceed to start @${definition.name}."
                 }
+        }
+
+        private fun currentConversationLevel(): Int {
+            val chats = chatHistory.chats()
+            ChatHistoryHierarchy.levelOf(chatId, chats)?.let { return it }
+            val parentChatId = agentSession?.parentChatId ?: return 1
+            return ChatHistoryHierarchy.levelOf(parentChatId, chats)?.plus(1) ?: MAX_CONVERSATION_LEVELS
         }
 
         private fun showHandoff(
@@ -995,6 +1009,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             statusLabel.text =
                 "Returned to the chat that started this agent — edit ${AgentPath.display(project, path)} " +
                 "there before sending it."
+            openChat(parentChatId)
             return true
         }
 
@@ -1562,6 +1577,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         private companion object {
             private const val CONTEXT_FULL = 0.85
+            private const val MAX_CONVERSATION_LEVELS = 3
 
             fun formatTokens(count: Int): String =
                 when {

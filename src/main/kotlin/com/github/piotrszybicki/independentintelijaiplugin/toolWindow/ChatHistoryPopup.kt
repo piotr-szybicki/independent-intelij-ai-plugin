@@ -1,5 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryEntry
+import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryHierarchy
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistoryService
 import com.github.piotrszybicki.independentintelijaiplugin.history.ChatSummary
 import com.intellij.icons.AllIcons
@@ -35,43 +37,49 @@ internal object ChatHistoryPopup {
                 .showInBestPositionFor(dataContext)
             return
         }
+        val entries = ChatHistoryHierarchy.arrange(chats)
 
         val renderer =
-            object : ColoredListCellRenderer<ChatSummary>() {
+            object : ColoredListCellRenderer<ChatHistoryEntry>() {
                 override fun customizeCellRenderer(
-                    list: JList<out ChatSummary>,
-                    value: ChatSummary,
+                    list: JList<out ChatHistoryEntry>,
+                    value: ChatHistoryEntry,
                     index: Int,
                     selected: Boolean,
                     hasFocus: Boolean,
                 ) {
-                    icon = if (value.id == currentId) AllIcons.Actions.Forward else EmptyIcon.ICON_16
-                    value.agentName?.let {
+                    val chat = value.chat
+                    icon = if (chat.id == currentId) AllIcons.Actions.Forward else EmptyIcon.ICON_16
+                    if (value.depth > 0) {
+                        append("    ".repeat(value.depth - 1))
+                        append("\u21B3  ", SimpleTextAttributes.GRAYED_ATTRIBUTES)
+                    }
+                    chat.agentName?.let {
                         append("@$it  ", SimpleTextAttributes(SimpleTextAttributes.STYLE_BOLD, ChatColors.accent))
                     }
-                    append(value.title)
+                    append(chat.title)
                     append(
-                        "  ${DateFormatUtil.formatPrettyDateTime(value.updatedAt)}",
+                        "  ${DateFormatUtil.formatPrettyDateTime(chat.updatedAt)}",
                         SimpleTextAttributes.GRAYED_ATTRIBUTES,
                     )
                 }
             }
 
-        var selected: ChatSummary? = chats.firstOrNull { it.id == currentId }
+        var selected: ChatHistoryEntry? = entries.firstOrNull { it.chat.id == currentId }
         var popup: JBPopup? = null
 
         val builder =
             JBPopupFactory
                 .getInstance()
-                .createPopupChooserBuilder(chats)
+                .createPopupChooserBuilder(entries)
                 .setTitle("Chat History")
                 .setMovable(true)
                 .setResizable(true)
                 .setRenderer(renderer)
                 .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
-                .setNamerForFiltering { listOfNotNull(it.agentName, it.title).joinToString(" ") }
+                .setNamerForFiltering { listOfNotNull(it.chat.agentName, it.chat.title).joinToString(" ") }
                 .setItemSelectedCallback { selected = it }
-                .setItemChosenCallback { onOpen(it.id) }
+                .setItemChosenCallback { onOpen(it.chat.id) }
                 .setSettingButton(
                     InplaceButton("Delete All Chats", AllIcons.Actions.GC) {
                         popup?.cancel()
@@ -86,8 +94,8 @@ internal object ChatHistoryPopup {
                 ) {
                     val victim = selected
                     if (victim != null) {
-                        service.delete(victim.id)
-                        if (victim.id == currentId) onCurrentDeleted()
+                        service.delete(victim.chat.id)
+                        if (victim.chat.id == currentId) onCurrentDeleted()
                         popup?.cancel()
                     }
                 }
