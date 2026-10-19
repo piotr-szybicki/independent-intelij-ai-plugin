@@ -27,6 +27,7 @@ class ChatHistoryService(
     private data class Index(
         var activeId: String?,
         val chats: MutableList<ChatSummary>,
+        val version: Int = INDEX_VERSION,
     )
 
     override fun chats(): List<ChatSummary> = synchronized(lock) { readIndex().chats.toList() }
@@ -64,7 +65,15 @@ class ChatHistoryService(
 
                 val index = readIndex()
                 index.chats.removeAll { it.id == chat.id }
-                index.chats.add(ChatSummary(chat.id, chat.title, chat.updatedAt, chat.agent?.agentName))
+                index.chats.add(
+                    ChatSummary(
+                        id = chat.id,
+                        title = chat.title,
+                        updatedAt = chat.updatedAt,
+                        agentName = chat.agent?.agentName,
+                        parentChatId = chat.agent?.parentChatId,
+                    ),
+                )
                 index.chats.sortByDescending { it.updatedAt }
                 index.activeId = if (active) chat.id else index.activeId?.takeIf { it != chat.id }
                 prune(index)
@@ -115,17 +124,28 @@ class ChatHistoryService(
             runCatching { gson.fromJson(Files.readString(directory.resolve(INDEX_FILE)), Index::class.java) }
                 .getOrNull()
         val chats = parsed?.chats ?: return rebuildIndex()
+        if (parsed.version < INDEX_VERSION) return rebuildIndex(parsed.activeId)
         return Index(parsed.activeId, chats)
     }
 
-    private fun rebuildIndex(): Index {
+    private fun rebuildIndex(activeId: String? = null): Index {
         val summaries =
             chatIdsOnDisk()
-                .mapNotNull { id -> load(id)?.let { ChatSummary(it.id, it.title, it.updatedAt, it.agent?.agentName) } }
-                .sortedByDescending { it.updatedAt }
+                .mapNotNull { id ->
+                    load(id)?.let { chat ->
+                        ChatSummary(
+                            id = chat.id,
+                            title = chat.title,
+                            updatedAt = chat.updatedAt,
+                            agentName = chat.agent?.agentName,
+                            parentChatId = chat.agent?.parentChatId,
+                        )
+                    }
+                }.sortedByDescending { it.updatedAt }
 
-        val index = Index(null, summaries.toMutableList())
-        if (summaries.isNotEmpty()) runCatching { writeIndex(index) }
+        val retainedActiveId = activeId?.takeIf { candidate -> summaries.any { it.id == candidate } }
+        val index = Index(retainedActiveId, summaries.toMutableList())
+        if (summaries.isNotEmpty() || Files.exists(directory.resolve(INDEX_FILE))) runCatching { writeIndex(index) }
         return index
     }
 
@@ -160,6 +180,7 @@ class ChatHistoryService(
     companion object {
         private const val INDEX_ID = "index"
         private const val INDEX_FILE = "$INDEX_ID.json"
+        private const val INDEX_VERSION = 2
 
         private const val MAX_CHATS = 50
 
