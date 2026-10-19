@@ -506,10 +506,24 @@ First run downloads the target IDE (~1 GB) and takes a while; later runs reuse i
 | Task | What it does |
 | --- | --- |
 | `./gradlew compileKotlin` | Fastest check that the sources build |
+| `./gradlew cpdCheck` | Finds duplicated Kotlin code with PMD CPD |
 | `./gradlew detekt` | Runs the aggregate static-analysis rules |
-| `./gradlew check` | Runs Detekt (including type-resolved checks), ktlint, and tests |
+| `./gradlew check` | Runs CPD, Detekt (including type-resolved checks), ktlint, and tests |
 | `./gradlew test` | Runs the test suite |
 | `./gradlew verifyPlugin` | Checks the plugin against IntelliJ Platform compatibility rules |
+
+PMD CPD scans production Kotlin in the plugin and the custom Detekt module. Its defaults live in
+`gradle.properties`: `cpdMinimumTokens` controls the smallest reported clone, `cpdIncludeTests` adds
+test sources, `cpdIgnoreIdentifiers` finds copies with renamed variables, `cpdIgnoreLiterals` finds
+copies with changed literal values, and `cpdFailOnViolation` controls whether duplicates fail the
+task. Override them per run, for example:
+
+```bash
+./gradlew cpdCheck -PcpdMinimumTokens=80 -PcpdIncludeTests=true
+```
+
+For an exceptional block that should not participate in comparison, surround it with `// CPD-OFF`
+and `// CPD-ON` comments.
 
 `signPlugin` and `publishPlugin` come from the Gradle plugin but are **not configured** in this
 project — publishing to JetBrains Marketplace needs signing certificates and a deployment token added

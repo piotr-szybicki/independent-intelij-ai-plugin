@@ -1,7 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -26,74 +25,23 @@ class FindImplementationsTool(
             "abstract class, methods overriding a method (Go to Implementation). find_usages will " +
             "not find these. Point it at the declaration or any use; returns file:line."
     override val inputSchema: JsonObject =
-        JsonObject().apply {
-            addProperty("type", "object")
-            add(
-                "properties",
-                JsonObject().apply {
-                    add(
-                        "path",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty(
-                                "description",
-                                "File path relative to the project root, at a line where the " +
-                                    "symbol is declared or used",
-                            )
-                        },
-                    )
-                    add(
-                        "line",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty("description", "1-based line number of the declaration or the use")
-                        },
-                    )
-                    add(
-                        "symbol",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty("description", "The name as it appears on that line -- just the identifier")
-                        },
-                    )
-                    add(
-                        "occurrence",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty(
-                                "description",
-                                "Which appearance of the name on that line to use, 1-based. Defaults to 1.",
-                            )
-                        },
-                    )
-                    add(
-                        "max_results",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty(
-                                "description",
-                                "Stop after this many. Defaults to $DEFAULT_MAX_RESULTS, maximum $MAX_MAX_RESULTS.",
-                            )
-                        },
-                    )
-                },
-            )
-            add(
-                "required",
-                JsonArray().apply {
-                    add("path")
-                    add("line")
-                    add("symbol")
-                },
-            )
-        }
+        PsiTargetSchema.create(
+            symbolDescription = "The name as it appears on that line -- just the identifier",
+            includeOccurrence = true,
+            extraProperties =
+                mapOf(
+                    "max_results" to
+                        Pair(
+                            "integer",
+                            "Stop after this many. Defaults to $DEFAULT_MAX_RESULTS, maximum $MAX_MAX_RESULTS.",
+                        ),
+                ),
+        )
 
     override fun execute(input: JsonObject): String {
-        val path = input.get("path")?.asString ?: return "Error: missing 'path'"
-        val line = input.get("line")?.asInt ?: return "Error: missing 'line'"
-        val symbol = input.get("symbol")?.asString ?: return "Error: missing 'symbol'"
-        val occurrence = input.get("occurrence")?.asInt ?: 1
-        if (occurrence < 1) return "Error: occurrence must be 1 or greater"
+        val targetInput = runCatching { PsiTargetInput.from(input) }.getOrElse { return "Error: ${it.message}" }
+        val (path, line, symbol) = targetInput
+        val occurrence = targetInput.occurrence
 
         val maxResults =
             (input.get("max_results")?.asInt ?: DEFAULT_MAX_RESULTS)

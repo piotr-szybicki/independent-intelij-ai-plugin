@@ -1,7 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.project.Project
@@ -27,68 +26,18 @@ class GetSymbolInfoTool(
             "from libraries and the JDK. Cheaper than reading a file for one signature; use it " +
             "before find_usages or rename_symbol when the target is ambiguous."
     override val inputSchema: JsonObject =
-        JsonObject().apply {
-            addProperty("type", "object")
-            add(
-                "properties",
-                JsonObject().apply {
-                    add(
-                        "path",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty(
-                                "description",
-                                "File path relative to the project root, at a line where the " +
-                                    "symbol is used or declared",
-                            )
-                        },
-                    )
-                    add(
-                        "line",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty("description", "1-based line number, matching what read_project_file returns")
-                        },
-                    )
-                    add(
-                        "symbol",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty(
-                                "description",
-                                "The name as it appears on that line -- just the identifier, not the whole expression",
-                            )
-                        },
-                    )
-                    add(
-                        "occurrence",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty(
-                                "description",
-                                "Which appearance of the name on that line to resolve, 1-based, " +
-                                    "left to right. Defaults to 1.",
-                            )
-                        },
-                    )
-                },
-            )
-            add(
-                "required",
-                JsonArray().apply {
-                    add("path")
-                    add("line")
-                    add("symbol")
-                },
-            )
-        }
+        PsiTargetSchema.create(
+            symbolDescription =
+                "The name as it appears on that line -- just the identifier, not the whole expression",
+            pathDescription = "File path relative to the project root, at a line where the symbol is used or declared",
+            lineDescription = "1-based line number, matching what read_project_file returns",
+            includeOccurrence = true,
+        )
 
     override fun execute(input: JsonObject): String {
-        val path = input.get("path")?.asString ?: return "Error: missing 'path'"
-        val line = input.get("line")?.asInt ?: return "Error: missing 'line'"
-        val symbol = input.get("symbol")?.asString ?: return "Error: missing 'symbol'"
-        val occurrence = input.get("occurrence")?.asInt ?: 1
-        if (occurrence < 1) return "Error: occurrence must be 1 or greater"
+        val targetInput = runCatching { PsiTargetInput.from(input) }.getOrElse { return "Error: ${it.message}" }
+        val (path, line, symbol) = targetInput
+        val occurrence = targetInput.occurrence
 
         val target =
             PsiTargets.resolveTarget(project, path, line, symbol, occurrence)

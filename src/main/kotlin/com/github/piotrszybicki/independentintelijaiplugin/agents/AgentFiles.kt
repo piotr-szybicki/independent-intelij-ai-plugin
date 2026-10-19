@@ -1,8 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.agents
 
+import com.github.piotrszybicki.independentintelijaiplugin.files.EditorBackedFileReader
 import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -62,20 +62,13 @@ object AgentFiles {
         return true
     }
 
-    fun read(path: Path): String? {
-        var text: String? = null
-        WriteIntentReadAction.run {
-            val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
-            val documents = FileDocumentManager.getInstance()
-            val document = file?.let { documents.getDocument(it) } ?: return@run
-            runCatching { documents.saveDocument(document) }
-                .onFailure { LOG.warn("Could not save $path before sending it; using the editor's copy", it) }
-            text = document.text
-        }
-        return text ?: runCatching { Files.readString(path) }
-            .onFailure { LOG.warn("Could not read $path", it) }
-            .getOrNull()
-    }
+    fun read(path: Path): String? =
+        EditorBackedFileReader.read(
+            path,
+            LOG,
+            "Could not save $path before sending it; using the editor's copy",
+            "Could not read $path",
+        )
 
     private fun specBody(
         agent: AgentDefinition,

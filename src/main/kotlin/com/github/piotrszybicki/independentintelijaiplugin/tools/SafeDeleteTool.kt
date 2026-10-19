@@ -1,7 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -20,47 +19,7 @@ class SafeDeleteTool(
             "still in use. Point it at the declaration or any use; either way the declaration is " +
             "removed. Library and SDK symbols cannot be deleted."
     override val inputSchema: JsonObject =
-        JsonObject().apply {
-            addProperty("type", "object")
-            add(
-                "properties",
-                JsonObject().apply {
-                    add(
-                        "path",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty(
-                                "description",
-                                "File path relative to the project root, at a line where the " +
-                                    "symbol is declared or used",
-                            )
-                        },
-                    )
-                    add(
-                        "line",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty("description", "1-based line number of the declaration or the use")
-                        },
-                    )
-                    add(
-                        "symbol",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty("description", "Name of the symbol to delete")
-                        },
-                    )
-                },
-            )
-            add(
-                "required",
-                JsonArray().apply {
-                    add("path")
-                    add("line")
-                    add("symbol")
-                },
-            )
-        }
+        PsiTargetSchema.create(symbolDescription = "Name of the symbol to delete")
 
     private data class DeleteInfo(
         val file: VirtualFile,
@@ -70,9 +29,8 @@ class SafeDeleteTool(
     )
 
     override fun execute(input: JsonObject): String {
-        val path = input.get("path")?.asString ?: return "Error: missing 'path'"
-        val line = input.get("line")?.asInt ?: return "Error: missing 'line'"
-        val symbol = input.get("symbol")?.asString ?: return "Error: missing 'symbol'"
+        val targetInput = runCatching { PsiTargetInput.from(input) }.getOrElse { return "Error: ${it.message}" }
+        val (path, line, symbol) = targetInput
 
         val element =
             PsiTargets.resolveTarget(project, path, line, symbol)
