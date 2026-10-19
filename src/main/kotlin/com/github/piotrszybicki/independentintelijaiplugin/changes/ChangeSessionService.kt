@@ -17,9 +17,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import com.intellij.openapi.vcs.VcsFileListenerContextHelper
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.vcsUtil.VcsUtil
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -85,14 +83,7 @@ class ChangeSessionService(
         delete: () -> Unit,
     ) {
         val deleted = snapshotForDeletion(file)
-        val vcsContext = VcsFileListenerContextHelper.getInstance(project)
-        vcsContext.ignoreDeleted(listOf(VcsUtil.getFilePath(file)))
-        try {
-            delete()
-        } catch (error: Exception) {
-            vcsContext.clearContext()
-            throw error
-        }
+        delete()
 
         synchronized(lock) {
             baselines.remove(file)
