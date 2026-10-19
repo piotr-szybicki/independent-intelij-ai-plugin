@@ -1,7 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.tools
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
-import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ReadAction
@@ -17,60 +16,15 @@ class RenameSymbolTool(
         "Renames a symbol and all its usages across the project. Point it at the declaration or " +
             "any use. Library and SDK symbols cannot be renamed."
     override val inputSchema: JsonObject =
-        JsonObject().apply {
-            addProperty("type", "object")
-            add(
-                "properties",
-                JsonObject().apply {
-                    add(
-                        "path",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty(
-                                "description",
-                                "File path relative to the project root, at a line where the " +
-                                    "symbol is declared or used",
-                            )
-                        },
-                    )
-                    add(
-                        "line",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty("description", "1-based line number of the declaration or the use")
-                        },
-                    )
-                    add(
-                        "symbol",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty("description", "Current name of the symbol to rename")
-                        },
-                    )
-                    add(
-                        "new_name",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty("description", "New name for the symbol")
-                        },
-                    )
-                },
-            )
-            add(
-                "required",
-                JsonArray().apply {
-                    add("path")
-                    add("line")
-                    add("symbol")
-                    add("new_name")
-                },
-            )
-        }
+        PsiTargetSchema.create(
+            symbolDescription = "Current name of the symbol to rename",
+            extraProperties = mapOf("new_name" to ("string" to "New name for the symbol")),
+            extraRequired = listOf("new_name"),
+        )
 
     override fun execute(input: JsonObject): String {
-        val path = input.get("path")?.asString ?: return "Error: missing 'path'"
-        val line = input.get("line")?.asInt ?: return "Error: missing 'line'"
-        val symbol = input.get("symbol")?.asString ?: return "Error: missing 'symbol'"
+        val targetInput = runCatching { PsiTargetInput.from(input) }.getOrElse { return "Error: ${it.message}" }
+        val (path, line, symbol) = targetInput
         val newName = input.get("new_name")?.asString ?: return "Error: missing 'new_name'"
 
         val element =

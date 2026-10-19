@@ -1,8 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import com.github.piotrszybicki.independentintelijaiplugin.files.EditorBackedFileReader
 import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -51,20 +51,13 @@ internal object WithheldOutput {
         return true
     }
 
-    fun read(path: Path): String? {
-        var text: String? = null
-        WriteIntentReadAction.run {
-            val file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
-            val documents = FileDocumentManager.getInstance()
-            val document = file?.let { documents.getDocument(it) } ?: return@run
-            runCatching { documents.saveDocument(document) }
-                .onFailure { LOG.warn("Could not save $path before sending it; sending the editor's copy", it) }
-            text = document.text
-        }
-        return text ?: runCatching { Files.readString(path) }
-            .onFailure { LOG.warn("Could not read the edited output from $path", it) }
-            .getOrNull()
-    }
+    fun read(path: Path): String? =
+        EditorBackedFileReader.read(
+            path,
+            LOG,
+            "Could not save $path before sending it; sending the editor's copy",
+            "Could not read the edited output from $path",
+        )
 
     private fun findFile(path: Path): VirtualFile? {
         var file: VirtualFile? = null

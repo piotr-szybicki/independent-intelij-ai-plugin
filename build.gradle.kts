@@ -10,6 +10,19 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint") version "13.1.0"
 }
 
+val pmdCpd =
+    configurations.create("pmdCpd") {
+        isCanBeConsumed = false
+        isCanBeResolved = true
+    }
+
+val pmdVersion = "7.28.0"
+val cpdMinimumTokens = providers.gradleProperty("cpdMinimumTokens").orElse("100").map(String::toInt)
+val cpdIncludeTests = providers.gradleProperty("cpdIncludeTests").orElse("false").map(String::toBoolean)
+val cpdIgnoreIdentifiers = providers.gradleProperty("cpdIgnoreIdentifiers").orElse("false").map(String::toBoolean)
+val cpdIgnoreLiterals = providers.gradleProperty("cpdIgnoreLiterals").orElse("false").map(String::toBoolean)
+val cpdFailOnViolation = providers.gradleProperty("cpdFailOnViolation").orElse("true").map(String::toBoolean)
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
@@ -37,11 +50,48 @@ detekt {
 tasks.named("check") {
     // The source-set tasks add type resolution, which enables rules that the
     // aggregate detekt task cannot evaluate (for example NamedArguments).
-    dependsOn("detektMain", "detektTest")
+    dependsOn("cpdCheck", "detektMain", "detektTest")
 }
 
 tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
     dependsOn(":detekt-rules:assemble")
+}
+
+tasks.register<JavaExec>("cpdCheck") {
+    group = "verification"
+    description = "Detects duplicated Kotlin code with PMD CPD."
+    classpath = pmdCpd
+    mainClass.set("net.sourceforge.pmd.cli.PmdCli")
+
+    val sourceDirectories =
+        listOf(
+            layout.projectDirectory.dir("src/main/kotlin"),
+            layout.projectDirectory.dir("detekt-rules/src/main/kotlin"),
+        ) +
+            if (cpdIncludeTests.get()) {
+                listOf(
+                    layout.projectDirectory.dir("src/test/kotlin"),
+                    layout.projectDirectory.dir("detekt-rules/src/test/kotlin"),
+                )
+            } else {
+                emptyList()
+            }
+
+    args(
+        "cpd",
+        "--minimum-tokens",
+        cpdMinimumTokens.get(),
+        "--language",
+        "kotlin",
+        "--format",
+        "text",
+        "--relativize-paths-with",
+        layout.projectDirectory.asFile,
+    )
+    sourceDirectories.forEach { args("--dir", it.asFile) }
+    if (cpdIgnoreIdentifiers.get()) args("--ignore-identifiers")
+    if (cpdIgnoreLiterals.get()) args("--ignore-literals")
+    if (!cpdFailOnViolation.get()) args("--no-fail-on-violation")
 }
 
 tasks.register<JavaExec>("runHelloWorld") {
@@ -52,6 +102,8 @@ tasks.register<JavaExec>("runHelloWorld") {
 }
 dependencies {
     detektPlugins(project(":detekt-rules"))
+    pmdCpd("net.sourceforge.pmd:pmd-cli:$pmdVersion")
+    pmdCpd("net.sourceforge.pmd:pmd-kotlin:$pmdVersion")
 
     testImplementation("junit:junit:4.13.2")
 
