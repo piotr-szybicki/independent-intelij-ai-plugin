@@ -60,6 +60,7 @@ object AgentCatalog {
         buildList {
             if (policy.takesAll) add("*")
             addAll(policy.allowed.orEmpty().sorted())
+            addAll(policy.additions.sorted().map { "+$it" })
             addAll(policy.denied.sorted().map { "-$it" })
         }
 

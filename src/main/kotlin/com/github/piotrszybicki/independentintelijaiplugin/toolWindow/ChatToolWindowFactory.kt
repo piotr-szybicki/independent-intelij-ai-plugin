@@ -471,6 +471,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 object : KeyAdapter() {
                     override fun keyPressed(e: KeyEvent) {
                         when {
+                            e.keyCode == KeyEvent.VK_ENTER &&
+                                ComposerSubmitSuppression.consumeSuppressedSubmit(input) ->
+                                e.consume()
                             e.keyCode == KeyEvent.VK_ENTER && e.isShiftDown -> {
                                 e.consume()
                                 input.replaceSelection("\n")

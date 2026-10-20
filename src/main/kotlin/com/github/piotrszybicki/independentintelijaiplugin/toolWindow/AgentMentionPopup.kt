@@ -86,6 +86,7 @@ internal class AgentMentionPopup(
                 .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
                 .setNamerForFiltering { "${it.name} ${it.description}" }
                 .setItemChosenCallback { agent ->
+                    ComposerSubmitSuppression.suppressNextSubmit(input)
                     MentionPopupSupport.removeMarker(input, MENTION, offset)
                     onChosen(agent)
                 }.setAdText("Keep typing to filter, Enter hands over, Escape leaves the @ alone")

@@ -11,10 +11,13 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.xdebugger.XDebuggerManager
 import com.intellij.xdebugger.XDebuggerUtil
+import com.intellij.xdebugger.breakpoints.SuspendPolicy
+import com.intellij.xdebugger.breakpoints.XBreakpoint
 import com.intellij.xdebugger.breakpoints.XBreakpointManager
 import com.intellij.xdebugger.breakpoints.XBreakpointProperties
 import com.intellij.xdebugger.breakpoints.XLineBreakpoint
 import com.intellij.xdebugger.breakpoints.XLineBreakpointType
+import com.intellij.xdebugger.evaluation.EvaluationMode
 
 class ToggleBreakpointTool(
     private val project: Project,
@@ -23,7 +26,8 @@ class ToggleBreakpointTool(
     override val description =
         "Adds or removes a line breakpoint in a project file. Line numbers are 1-based, as " +
             "read_project_file returns them. Adding requires an executable statement, not a blank " +
-            "line, comment or declaration."
+            "line, comment or declaration. On add, suspend=false creates a non-suspending log " +
+            "breakpoint; condition, log_message and log_expression configure when and what it logs."
     override val inputSchema: JsonObject =
         JsonObject().apply {
             addProperty("type", "object")
@@ -61,6 +65,50 @@ class ToggleBreakpointTool(
                             )
                         },
                     )
+                    add(
+                        "suspend",
+                        JsonObject().apply {
+                            addProperty("type", "boolean")
+                            addProperty(
+                                "description",
+                                "Add only: whether the breakpoint suspends execution. Defaults to true. " +
+                                    "Set false for a log breakpoint that continues without stopping.",
+                            )
+                        },
+                    )
+                    add(
+                        "condition",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Add only: an expression in the debuggee's language. The breakpoint " +
+                                    "triggers only when it evaluates to true.",
+                            )
+                        },
+                    )
+                    add(
+                        "log_message",
+                        JsonObject().apply {
+                            addProperty("type", "boolean")
+                            addProperty(
+                                "description",
+                                "Add only: when true, logs IntelliJ's standard breakpoint-hit message. " +
+                                    "Defaults to false; use log_expression for custom text or values.",
+                            )
+                        },
+                    )
+                    add(
+                        "log_expression",
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                "Add only: an expression in the debuggee's language whose value is " +
+                                    "evaluated and written to the debugger console each time it triggers.",
+                            )
+                        },
+                    )
                 },
             )
             add(
@@ -90,15 +138,29 @@ class ToggleBreakpointTool(
         val line0 = line - 1
         val manager = XDebuggerManager.getInstance(project).breakpointManager
         val existing = existingAt(manager, vf, line0)
+        val options =
+            BreakpointOptions(
+                suspend = input.get("suspend")?.asBoolean ?: true,
+                condition = input.get("condition")?.asString?.takeIf { it.isNotBlank() },
+                logMessage = input.get("log_message")?.asBoolean ?: false,
+                logExpression = input.get("log_expression")?.asString?.takeIf { it.isNotBlank() },
+            )
 
         return if (action ==
             "add"
         ) {
-            add(manager, vf, path, line, line0, existing)
+            add(manager, vf, path, line, line0, existing, options)
         } else {
             remove(manager, path, line, existing)
         }
     }
+
+    private data class BreakpointOptions(
+        val suspend: Boolean,
+        val condition: String?,
+        val logMessage: Boolean,
+        val logExpression: String?,
+    )
 
     private fun add(
         manager: XBreakpointManager,
@@ -107,6 +169,7 @@ class ToggleBreakpointTool(
         line: Int,
         line0: Int,
         existing: List<XLineBreakpoint<*>>,
+        options: BreakpointOptions,
     ): String {
         existing.firstOrNull()?.let { return "A breakpoint is already set at $path:$line (${it.type.title})." }
 
@@ -125,7 +188,7 @@ class ToggleBreakpointTool(
         ApplicationManager.getApplication().invokeAndWait {
             WriteAction.run<RuntimeException> {
                 try {
-                    added = addLineBreakpoint(manager, type, vf, line0)
+                    added = addLineBreakpoint(manager, type, vf, line0).also { configure(it, options) }
                 } catch (e: Exception) {
                     failure = e
                 }
@@ -133,8 +196,40 @@ class ToggleBreakpointTool(
         }
         failure?.let { return "Error: could not add the breakpoint at $path:$line: ${it.message}" }
 
-        return "Added a ${added?.type?.title ?: type.title} breakpoint at $path:$line."
+        return describeAdded(added, type, path, line, options)
     }
+
+    private fun configure(
+        breakpoint: XBreakpoint<*>,
+        options: BreakpointOptions,
+    ) {
+        if (!options.suspend) breakpoint.setSuspendPolicy(SuspendPolicy.NONE)
+        breakpoint.setLogMessage(options.logMessage)
+        options.condition?.let { breakpoint.setConditionExpression(expression(it)) }
+        options.logExpression?.let { breakpoint.setLogExpressionObject(expression(it)) }
+    }
+
+    private fun expression(text: String) =
+        XDebuggerUtil.getInstance().createExpression(text, null, null, EvaluationMode.EXPRESSION)
+
+    private fun describeAdded(
+        added: XLineBreakpoint<*>?,
+        type: XLineBreakpointType<*>,
+        path: String,
+        line: Int,
+        options: BreakpointOptions,
+    ): String =
+        buildString {
+            append("Added a ${added?.type?.title ?: type.title} breakpoint at $path:$line")
+            val details =
+                buildList {
+                    add(if (options.suspend) "suspending" else "non-suspending")
+                    options.condition?.let { add("condition: $it") }
+                    if (options.logMessage) add("standard hit message enabled")
+                    options.logExpression?.let { add("log expression: $it") }
+                }
+            append(" (${details.joinToString("; ")}).")
+        }
 
     private fun remove(
         manager: XBreakpointManager,
