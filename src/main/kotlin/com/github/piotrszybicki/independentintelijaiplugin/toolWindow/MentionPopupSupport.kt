@@ -51,5 +51,4 @@ internal object MentionPopupSupport {
             if (input.document.getText(offset, 1) == marker) input.document.remove(offset, 1)
         }
     }
-
 }
