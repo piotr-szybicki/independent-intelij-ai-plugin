@@ -81,6 +81,13 @@ project root, written with three example entries the first time a project is ope
         "get_comment", "get_file_problems",
         "git_status", "git_diff", "git_log", "git_blame"
       ]
+    },
+    {
+      "name": "debug-agent",
+      "tools": [
+        "+run_shell_command", "+toggle_breakpoint", "+start_debug_configuration",
+        "+await_breakpoint", "+debugger_action", "+evaluate_expression"
+      ]
     }
   ],
   "configurations": [
@@ -393,10 +400,11 @@ in the `agents` section of `independent-ai-plugin-settings.json` or an `AGENT.md
 them yours to write and change without rebuilding anything. Type `@` in an empty project and the
 dropdown says so rather than offering something you never asked for.
 
-The two worth starting from, and the two this repository's own settings file carries, are
+The three worth starting from, and the three this repository's own agent setup carries, are
 **`coding-agent`** — implements the spec and reports what it changed and what it verified — and
 **`review-agent`**, which judges the code against the spec and is given reading and navigation tools
-only, so there is nothing for it to edit with. Both are written out in full in the section below;
+only, so there is nothing for it to edit with. **`debug-agent`** inherits the main chat's tools and
+adds shell execution and all debugger controls. They are written out in full in the section below;
 copy them into your own file and edit from there.
 
 #### What an agent may call
@@ -449,6 +457,8 @@ its tool list, `skills` its starting skills, and `description`, `prompt`, `spec-
 `configuration` and `model` replace theirs when they are not empty. Left-out fields keep whatever the
 `AGENT.md` said, so overriding just the tools is two lines. `"tools": []` or no `tools` at all means
 *inherit the settings page*, `["*"]` means every tool there is, and a `-name` entry takes one away.
+A `+name` entry keeps the main chat's selected tools and adds that named tool, which is useful for an
+agent that needs a capability such as shell execution or debugging without getting every optional tool.
 
 **Fill In Defaults** on the settings page writes the section out at the values it is already running
 on — the quickest way to see every agent's real tool list and start editing from it. Prompts and spec

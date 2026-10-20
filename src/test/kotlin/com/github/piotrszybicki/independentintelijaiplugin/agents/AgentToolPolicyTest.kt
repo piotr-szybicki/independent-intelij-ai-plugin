@@ -1,5 +1,8 @@
 package com.github.piotrszybicki.independentintelijaiplugin.agents
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
+import com.google.gson.JsonObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -59,4 +62,31 @@ class AgentToolPolicyTest {
             assertFalse(it, policy.keeps(it))
         }
     }
+
+    @Test
+    fun `a plus tool extends the main chat tools without replacing them`() {
+        val policy = AgentToolPolicy.parse("+run_shell_command, +toggle_breakpoint")
+        val everything = listOf(tool("read_project_file"), tool("run_shell_command"), tool("toggle_breakpoint"))
+        val enabled = listOf(tool("read_project_file"))
+
+        assertTrue(policy.keeps("run_shell_command"))
+        assertFalse(policy.keeps("read_project_file"))
+        assertEquals(
+            listOf("read_project_file", "run_shell_command", "toggle_breakpoint"),
+            policy.select(everything, enabled).map { it.name },
+        )
+        assertEquals(
+            "whatever the main chat has, plus run_shell_command, toggle_breakpoint",
+            policy.describe(),
+        )
+    }
+
+    private fun tool(name: String) =
+        object : AICodingAgentTool {
+            override val name = name
+            override val description = ""
+            override val inputSchema = JsonObject()
+
+            override fun execute(input: JsonObject): String = ""
+        }
 }
