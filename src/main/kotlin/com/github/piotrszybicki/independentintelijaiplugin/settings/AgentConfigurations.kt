@@ -11,9 +11,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 @Service(Service.Level.PROJECT)
-class AgentConfigurations(
-    private val project: Project,
-) : ConfigurationFile,
+class AgentConfigurations :
+    ConfigurationFile,
     ConfigurationSections,
     ConfigurationResolution {
     data class Loaded(

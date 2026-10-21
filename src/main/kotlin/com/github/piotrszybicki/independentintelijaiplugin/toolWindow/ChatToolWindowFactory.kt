@@ -310,6 +310,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun addSkill(skill: SkillDefinition) {
             applyConversationTools(conversationTools.withSkill(skill.name))
             if (invokedSkills.none { it.name == skill.name }) invokedSkills += skill
+            invokedSkillsBar.add(skill)
             statusLabel.text = "/${skill.name} will be used for the next message, and stays available after it."
             saveCurrentChat(active = true)
         }
@@ -398,6 +399,18 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 composer.repaint()
             }
 
+        private val invokedSkillsBar =
+            InvokedSkillsBar(
+                onRemove = { skill ->
+                    invokedSkills.removeAll { it.name == skill.name }
+                    statusLabel.text = "/${skill.name} removed from the next message."
+                },
+                onRevalidate = {
+                    composer.revalidate()
+                    composer.repaint()
+                },
+            )
+
         private val agentReturns =
             AgentReturnsBar(project, { openAgentFile(it) }) {
                 composer.revalidate()
@@ -461,7 +474,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     },
                     BorderLayout.NORTH,
                 )
-                add(chatAttachments.component, BorderLayout.CENTER)
+                add(
+                    JPanel(BorderLayout(0, JBUI.scale(5))).apply {
+                        isOpaque = false
+                        add(invokedSkillsBar.component, BorderLayout.NORTH)
+                        add(chatAttachments.component, BorderLayout.CENTER)
+                    },
+                    BorderLayout.CENTER,
+                )
             }
 
         private val composer: JPanel =
@@ -658,6 +678,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatAttachments.clear()
             agentReturns.clear()
             invokedSkills.clear()
+            invokedSkillsBar.clear()
             promptHistory.restore(null)
         }
 
@@ -1238,6 +1259,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatAttachments.clear()
             agentReturns.clear()
             invokedSkills.clear()
+            invokedSkillsBar.clear()
 
             startTurn(sizeBeforeTurn)
         }

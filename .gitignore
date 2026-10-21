@@ -5,5 +5,6 @@
 .kotlin
 .cache
 build
+bin
 debug.log
 independent-ai-plugin-settings.json

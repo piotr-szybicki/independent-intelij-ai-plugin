@@ -14,10 +14,10 @@ import javax.swing.ListSelectionModel
 import javax.swing.event.DocumentEvent
 
 /**
- * The / at the start of a message, which switches a skill on for this chat -- the same thing the
- * checkbox in [com.github.piotrszybicki.independentintelijaiplugin.settings.ConversationToolsDialog]
- * does, reachable without leaving the keyboard. Only the first non-blank character of the message
- * opens it, so a path typed mid-sentence is left alone.
+ * A / that starts a word in the composer, which switches a skill on for this chat -- the same
+ * thing the checkbox in [com.github.piotrszybicki.independentintelijaiplugin.settings.ConversationToolsDialog]
+ * does, reachable without leaving the keyboard. This makes `use /skill-name` work while leaving
+ * slashes embedded in a path or word alone.
  */
 internal class SkillMentionPopup(
     private val project: Project,
@@ -34,8 +34,8 @@ internal class SkillMentionPopup(
         offset: Int,
     ): Boolean {
         if (offset == 0) return true
-        val before = runCatching { e.document.getText(0, offset) }.getOrNull() ?: return false
-        return before.isBlank()
+        val previous = runCatching { e.document.getText(offset - 1, 1) }.getOrNull() ?: return false
+        return previous.singleOrNull()?.isWhitespace() == true
     }
 
     private fun show(offset: Int) {
@@ -88,7 +88,7 @@ internal class SkillMentionPopup(
                 .setSelectionMode(ListSelectionModel.SINGLE_SELECTION)
                 .setNamerForFiltering { "${it.name} ${it.description}" }
                 .setItemChosenCallback { skill ->
-                    MentionPopupSupport.removeMarker(input, MENTION, offset)
+                    MentionPopupSupport.replaceMarker(input, MENTION, "/${skill.name}", offset)
                     onChosen(skill)
                 }.setAdText("Keep typing to filter, Enter switches it on, Escape leaves the / alone")
                 .createPopup()
