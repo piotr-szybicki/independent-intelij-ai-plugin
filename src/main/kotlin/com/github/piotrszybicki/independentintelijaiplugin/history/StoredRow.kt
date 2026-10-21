@@ -11,6 +11,10 @@ data class StoredRow(
     val status: String? = null,
     val requestId: String? = null,
     val handoff: AgentHandoff? = null,
+    // The model history immediately before a user prompt. It makes the prompt a durable restore point.
+    val checkpointHistorySize: Int? = null,
+    // The text the user typed, before attachments and skill instructions were prepended for the model.
+    val promptDraft: String? = null,
 ) {
     companion object {
         const val USER = "user"

@@ -113,8 +113,10 @@ class AgentConfigurations(
 
     private fun notThere(): String =
         path?.let { "\$${AgentConfiguration.PATH_ENV_VAR} names $it, which is not there." }
-            ?: (AgentConfiguration.environmentProblem(System.getenv(AgentConfiguration.PATH_ENV_VAR))
-                ?: AgentConfiguration.SETUP_INSTRUCTIONS)
+            ?: (
+                AgentConfiguration.environmentProblem(System.getenv(AgentConfiguration.PATH_ENV_VAR))
+                    ?: AgentConfiguration.SETUP_INSTRUCTIONS
+            )
 
     private fun configurationError(): String? =
         listOf(

@@ -1,7 +1,10 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 internal interface TranscriptMessages {
-    fun addUserMessage(markdown: String)
+    fun addUserMessage(
+        markdown: String,
+        onRestore: (() -> Unit)? = null,
+    )
 
     fun addHandoff(
         agentName: String,

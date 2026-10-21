@@ -709,9 +709,59 @@ class ChatToolWindowFactory : ToolWindowFactory {
             if (background) ApplicationManager.getApplication().executeOnPooledThread(write) else write.run()
         }
 
-        private fun showUserMessage(markdown: String) {
-            rows += StoredRow(StoredRow.USER, text = markdown)
-            transcript.addUserMessage(markdown)
+        private fun showUserMessage(
+            markdown: String,
+            checkpointHistorySize: Int? = null,
+            promptDraft: String? = null,
+        ) {
+            rows +=
+                StoredRow(
+                    StoredRow.USER,
+                    text = markdown,
+                    checkpointHistorySize = checkpointHistorySize,
+                    promptDraft = promptDraft,
+                )
+            transcript.addUserMessage(
+                markdown,
+                checkpointHistorySize?.let { checkpoint -> { restoreCheckpoint(checkpoint) } },
+            )
+        }
+
+        private fun restoreCheckpoint(checkpointHistorySize: Int) {
+            if (!sendButton.isEnabled) {
+                statusLabel.text = "Wait for the current reply to finish before restoring a checkpoint."
+                return
+            }
+
+            val rowIndex =
+                rows.indexOfFirst {
+                    it.kind == StoredRow.USER && it.checkpointHistorySize == checkpointHistorySize
+                }
+            val checkpoint = rows.getOrNull(rowIndex) ?: return
+            if (checkpointHistorySize > history.size) {
+                showError("This checkpoint is no longer available because the older conversation was compacted.")
+                return
+            }
+            if (!ChatDialogs.confirmRestoreCheckpoint(project)) return
+
+            rollbackHistoryTo(checkpointHistorySize)
+            rows.subList(rowIndex, rows.size).clear()
+            runningTool = null
+            runningToolIndex = -1
+            withheldCards.clear()
+            raisedMaxTokens = 0
+            contextMeter.reset()
+            beginTurnCost()
+            transcript.clear()
+            rows.forEachIndexed(::render)
+            setContext(
+                if (history.isEmpty()) 0 else contextMeter.estimate(history, overheadChars = 0),
+                contextWindowTokens(),
+            )
+            showPrompt(checkpoint.promptDraft ?: checkpoint.text)
+            input.requestFocusInWindow()
+            statusLabel.text = "Restored conversation to this prompt. Edit it and send it again."
+            saveCurrentChat(active = true)
         }
 
         private fun showAssistantMessage(markdown: String) {
@@ -855,7 +905,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
         ) {
             when (row.kind) {
                 StoredRow.HANDOFF -> row.handoff?.let { showHandoff(index, it, row.summary) }
-                StoredRow.USER -> transcript.addUserMessage(row.text)
+                StoredRow.USER ->
+                    transcript.addUserMessage(
+                        row.text,
+                        row.checkpointHistorySize?.let { checkpoint -> { restoreCheckpoint(checkpoint) } },
+                    )
                 StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
                 StoredRow.TOOL ->
                     transcript.addToolCall(
@@ -1052,8 +1106,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatAttachments.clear()
 
             val displayPath = AgentPath.display(project, path)
+            val checkpointHistorySize = history.size
             history.add(ChatMessage.text("user", spec))
-            showUserMessage("**Specification for @${definition.name}** — `$displayPath`\n\n$spec")
+            showUserMessage(
+                "**Specification for @${definition.name}** — `$displayPath`\n\n$spec",
+                checkpointHistorySize = checkpointHistorySize,
+                promptDraft = spec,
+            )
             startTurn(0)
             statusLabel.text = "@${definition.name} is working from $displayPath."
         }
@@ -1169,7 +1228,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             val sizeBeforeTurn = history.size
             history.add(ChatMessage.text("user", messageText))
-            showUserMessage(displayText)
+            showUserMessage(
+                displayText,
+                checkpointHistorySize = sizeBeforeTurn,
+                promptDraft = text,
+            )
             promptHistory.record(text)
             input.text = ""
             chatAttachments.clear()

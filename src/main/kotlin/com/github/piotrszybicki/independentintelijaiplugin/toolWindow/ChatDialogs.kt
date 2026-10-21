@@ -8,6 +8,17 @@ import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 
 internal object ChatDialogs {
+    fun confirmRestoreCheckpoint(project: Project): Boolean =
+        Messages.showYesNoDialog(
+            project,
+            "This removes this prompt and everything after it from the conversation. The prompt will " +
+                "be placed in the composer so you can edit and send it again.",
+            "Restore Conversation Here",
+            "Restore and Edit",
+            "Cancel",
+            Messages.getWarningIcon(),
+        ) == Messages.YES
+
     fun promptForMissingApiKey(
         project: Project,
         configuration: AgentConfiguration,

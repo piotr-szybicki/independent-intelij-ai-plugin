@@ -9,7 +9,12 @@ import com.intellij.openapi.project.Project
 object AgentCatalog {
     /** Every agent is defined in the JSON configuration named by INTELIJ_AI_SETTINGS. */
     fun all(project: Project): List<AgentDefinition> =
-        AgentConfigurations.getInstance(project).agents().roster.agents.map(::definition)
+        AgentConfigurations
+            .getInstance(project)
+            .agents()
+            .roster
+            .agents
+            .map(::definition)
 
     fun rosterFor(project: Project): AgentRosterConfig = AgentConfigurations.getInstance(project).agents().roster
 
