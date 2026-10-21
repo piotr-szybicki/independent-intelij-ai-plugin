@@ -19,6 +19,19 @@ class ConfiguredPathTest {
     }
 
     @Test
+    fun `a missing environment variable is a configuration problem`() {
+        assertEquals(
+            "${AgentConfiguration.PATH_ENV_VAR} is not set.",
+            AgentConfiguration.environmentProblem(null),
+        )
+    }
+
+    @Test
+    fun `a usable environment path has no environment problem`() {
+        assertNull(AgentConfiguration.environmentProblem(folder.newFile("settings.json").toString()))
+    }
+
+    @Test
     fun `a file path is used as it is`() {
         val file = folder.newFile("providers.json").toPath()
 
@@ -33,13 +46,10 @@ class ConfiguredPathTest {
     }
 
     @Test
-    fun `a directory resolves to the file inside it`() {
+    fun `a directory is not a configuration file`() {
         val directory = folder.newFolder("settings").toPath()
 
-        assertEquals(
-            directory.resolve(AgentConfiguration.FILE_NAME),
-            AgentConfiguration.configuredPath(directory.toString()),
-        )
+        assertNull(AgentConfiguration.configuredPath(directory.toString()))
     }
 
     @Test
@@ -54,10 +64,8 @@ class ConfiguredPathTest {
     }
 
     @Test
-    fun `a relative path is made absolute`() {
-        val resolved = AgentConfiguration.configuredPath("providers.json")
-
-        assertEquals(Paths.get("providers.json").toAbsolutePath().normalize(), resolved)
+    fun `a relative path is not accepted`() {
+        assertNull(AgentConfiguration.configuredPath("providers.json"))
     }
 
     @Test
@@ -71,10 +79,7 @@ class ConfiguredPathTest {
     }
 
     @Test
-    fun `a bare tilde is the file in the home directory`() {
-        assertEquals(
-            Paths.get(System.getProperty("user.home")).resolve(AgentConfiguration.FILE_NAME),
-            AgentConfiguration.configuredPath("~"),
-        )
+    fun `a bare tilde is not a configuration file`() {
+        assertNull(AgentConfiguration.configuredPath("~"))
     }
 }

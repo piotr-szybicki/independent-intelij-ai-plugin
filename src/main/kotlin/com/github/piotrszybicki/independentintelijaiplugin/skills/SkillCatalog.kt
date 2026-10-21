@@ -26,7 +26,10 @@ object SkillCatalog {
 
     fun scan(project: Project): Scan {
         val text = AICodingAgentSettingsState.getInstance().state.skillPaths
-        return scan(SkillRoot.parseAll(text, project.basePath?.let(::File)))
+        val base = project.basePath?.let(::File)
+        val projectSkills = SkillRoot.parseAll(".skills", base)
+        val configured = SkillRoot.parseAll(text, base)
+        return scan((projectSkills + configured).distinctBy { it.directory?.path ?: it.configured })
     }
 
     fun scan(roots: List<SkillRoot>): Scan {
@@ -85,7 +88,10 @@ object SkillCatalog {
         val enabled = AICodingAgentSettingsState.getInstance().state.enabledSkills
         if (enabled.isBlank()) return scanned
         val enabledSet = enabled.split(",").mapTo(mutableSetOf()) { it.trim() }
-        return scanned.filter { it.name in enabledSet }
+        val selected = scanned.filter { it.name in enabledSet }
+        if (selected.isNotEmpty() || scanned.isEmpty()) return selected
+        LOG.info("Saved enabled-skill names no longer match any discovered skill; using the project catalog")
+        return scanned
     }
 
     /**

@@ -51,4 +51,18 @@ internal object MentionPopupSupport {
             if (input.document.getText(offset, 1) == marker) input.document.remove(offset, 1)
         }
     }
+
+    fun replaceMarker(
+        input: JTextPane,
+        marker: String,
+        replacement: String,
+        offset: Int,
+    ) {
+        runCatching {
+            if (input.document.getText(offset, 1) != marker) return@runCatching
+            input.document.remove(offset, 1)
+            input.document.insertString(offset, replacement, null)
+            input.caretPosition = offset + replacement.length
+        }
+    }
 }

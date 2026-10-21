@@ -1,23 +1,18 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 import com.intellij.openapi.application.ReadAction
-import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.openapi.vfs.VirtualFile
-import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 
 @Service(Service.Level.PROJECT)
-class AgentConfigurations(
-    private val project: Project,
-) : ConfigurationFile,
+class AgentConfigurations :
+    ConfigurationFile,
     ConfigurationSections,
     ConfigurationResolution {
     data class Loaded(
@@ -51,36 +46,29 @@ class AgentConfigurations(
     )
 
     val path: Path?
-        get() = configuredPath() ?: project.basePath?.let { Paths.get(it, AgentConfiguration.FILE_NAME) }
+        get() = configuredPath()
 
-    val isExternal: Boolean
-        get() = configuredPath() != null
+    val isReadOnly: Boolean
+        get() = true
 
     val unavailableReason: String?
         get() {
-            val configured = configuredPath() ?: return null
-            if (Files.exists(configured)) return null
-            return "\$${AgentConfiguration.PATH_ENV_VAR} names $configured, which is not there."
+            val raw = System.getenv(AgentConfiguration.PATH_ENV_VAR)
+            val setupInstructions = AgentConfiguration.SETUP_INSTRUCTIONS
+            AgentConfiguration.environmentProblem(raw)?.let { return "$it $setupInstructions" }
+
+            val configured = configuredPath() ?: return setupInstructions
+            if (!Files.isRegularFile(configured) || !Files.isReadable(configured)) {
+                return "\$${AgentConfiguration.PATH_ENV_VAR} names $configured, " +
+                    "which is not a readable regular file. " +
+                    setupInstructions
+            }
+            return configurationError()?.let { "$it $setupInstructions" }
         }
 
     override fun createIfMissing(): Path? {
         val file = path ?: return null
-        if (Files.exists(file)) return file
-        if (isExternal) {
-            LOG.info("\$${AgentConfiguration.PATH_ENV_VAR} names $file, which is not there; not creating it")
-            return null
-        }
-        val failure =
-            save(
-                AgentConfiguration.render(
-                    AgentConfiguration.STARTER,
-                    UsageDatabaseConfig.OFF,
-                    FindInFilesConfig.DEFAULT,
-                ),
-            )
-        if (failure != null) return null
-        LOG.info("wrote a starter configuration file to $file")
-        return file
+        return file.takeIf { Files.isRegularFile(it) }
     }
 
     override fun virtualFile(): VirtualFile? =
@@ -94,39 +82,7 @@ class AgentConfigurations(
         summarizer: SummarizerConfig,
         conversationDefaults: ConversationDefaultsConfig,
     ): String? =
-        save(
-            AgentConfiguration.render(
-                configurations,
-                database,
-                findInFiles,
-                agents,
-                summarizer,
-                conversationDefaults,
-            ),
-        )
-
-    private fun save(text: String): String? {
-        configuredPath()?.let {
-            return "$it is only read, never written, because \$${AgentConfiguration.PATH_ENV_VAR} " +
-                "names it -- edit it yourself"
-        }
-        val basePath = project.basePath ?: return "this project has no directory on disk"
-        return try {
-            WriteAction.runAndWait<IOException> {
-                val directory =
-                    LocalFileSystem.getInstance().refreshAndFindFileByPath(basePath)
-                        ?: throw IOException("the project directory $basePath is not on disk")
-                val file =
-                    directory.findChild(AgentConfiguration.FILE_NAME)
-                        ?: directory.createChildData(this, AgentConfiguration.FILE_NAME)
-                VfsUtil.saveText(file, text)
-            }
-            null
-        } catch (e: IOException) {
-            LOG.warn("could not write ${AgentConfiguration.FILE_NAME} in $basePath", e)
-            "${AgentConfiguration.FILE_NAME} could not be written: ${e.message}"
-        }
-    }
+        "Configuration is read from \$${AgentConfiguration.PATH_ENV_VAR} only and is never written by the plugin."
 
     override fun text(): String? {
         val file = path?.takeIf { Files.exists(it) } ?: return null
@@ -138,7 +94,7 @@ class AgentConfigurations(
     }
 
     override fun load(): Loaded {
-        val file = path ?: return Loaded(emptyList(), "this project has no directory on disk")
+        val file = path ?: return Loaded(emptyList(), unavailableReason ?: "A configuration file is required.")
         if (!Files.exists(file)) return Loaded(emptyList(), notThere())
         return try {
             val configurations = AgentConfiguration.parseAll(text().orEmpty())
@@ -154,7 +110,22 @@ class AgentConfigurations(
         }
     }
 
-    private fun notThere(): String = unavailableReason ?: "${AgentConfiguration.FILE_NAME} is not in the project root"
+    private fun notThere(): String =
+        path?.let { "\$${AgentConfiguration.PATH_ENV_VAR} names $it, which is not there." }
+            ?: (
+                AgentConfiguration.environmentProblem(System.getenv(AgentConfiguration.PATH_ENV_VAR))
+                    ?: AgentConfiguration.SETUP_INSTRUCTIONS
+            )
+
+    private fun configurationError(): String? =
+        listOf(
+            load().error,
+            usageDatabase().error,
+            findInFiles().error,
+            agents().error,
+            summarizer().error,
+            conversationDefaults().error,
+        ).firstOrNull { it != null }
 
     override fun usageDatabase(): LoadedDatabase {
         val file = path ?: return LoadedDatabase(UsageDatabaseConfig.OFF, null)
@@ -235,9 +206,10 @@ class AgentConfigurations(
         configurationName: String,
         modelName: String,
     ): AgentConfiguration {
+        val loaded = load()
         val configuration =
-            select(load().configurations, configurationName)
-                ?: AgentConfiguration.fallback()
+            select(loaded.configurations, configurationName)
+                ?: error(loaded.error ?: "No configuration is available.")
         return configuration.withModel(modelName)
     }
 

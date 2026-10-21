@@ -8,6 +8,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentPath
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentToolPolicy
+import com.github.piotrszybicki.independentintelijaiplugin.agents.DelegateToAgentTool
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgent
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
@@ -150,11 +151,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
             border = JBUI.Borders.empty(16)
             add(
                 JBLabel(
-                    "<html><b>AICodingAgent is not available.</b><br/><br/>" +
+                    "<html><b>AICodingAgent needs configuration.</b><br/><br/>" +
                         StringUtil.escapeXmlEntities(reason) + "<br/><br/>" +
-                        "Create the file at that path, or unset <code>${AgentConfiguration.PATH_ENV_VAR}</code> " +
-                        "and restart the IDE to use <code>${AgentConfiguration.FILE_NAME}</code> in the " +
-                        "project root.</html>",
+                        "<b>To configure it:</b><br/>" +
+                        "1. Create a JSON configuration file with a <code>configurations</code> array.<br/>" +
+                        "2. Set <code>${AgentConfiguration.PATH_ENV_VAR}</code> to that file's absolute path.<br/>" +
+                        "3. Restart the IDE.</html>",
                 ).apply { verticalAlignment = SwingConstants.TOP },
                 BorderLayout.CENTER,
             )
@@ -205,7 +207,29 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
                         .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
                 }
-            return ChangeTrackingTool.wrapAll(selected, session)
+            val tracked = ChangeTrackingTool.wrapAll(selected, session)
+            if (activeAgent != null) return tracked
+            return tracked +
+                DelegateToAgentTool(
+                    agents = { AgentCatalog.all(project) },
+                    prepare = ::prepareAgentHandoff,
+                )
+        }
+
+        private fun agentRosterPrompt(): String {
+            if (activeAgent != null) return ""
+            val agents = AgentCatalog.all(project).filter { it.prompt.isNotBlank() }
+            if (agents.isEmpty()) return ""
+
+            return buildString {
+                appendLine("Specialist agents available for a reviewed hand-off:")
+                agents.forEach { appendLine("- @${it.name}: ${it.description}") }
+                append(
+                    "Use delegate_to_agent when a bounded task would benefit from one of these " +
+                        "specialists. It prepares a draft specification only. Tell the user that they " +
+                        "must review the hand-off card and press Proceed before the agent starts.",
+                )
+            }
         }
 
         private class DefaultTools(
@@ -286,6 +310,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun addSkill(skill: SkillDefinition) {
             applyConversationTools(conversationTools.withSkill(skill.name))
             if (invokedSkills.none { it.name == skill.name }) invokedSkills += skill
+            invokedSkillsBar.add(skill)
             statusLabel.text = "/${skill.name} will be used for the next message, and stays available after it."
             saveCurrentChat(active = true)
         }
@@ -303,7 +328,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val agent =
             AICodingAgent(
                 tools = { agentTools() },
-                environment = { ProjectEnvironment.describe(project) },
+                environment = {
+                    listOf(ProjectEnvironment.describe(project), agentRosterPrompt())
+                        .filter { it.isNotBlank() }
+                        .joinToString("\n\n")
+                },
                 skills = { SkillCatalog.describe(project, conversationTools.activeSkills) },
             )
 
@@ -370,6 +399,18 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 composer.repaint()
             }
 
+        private val invokedSkillsBar =
+            InvokedSkillsBar(
+                onRemove = { skill ->
+                    invokedSkills.removeAll { it.name == skill.name }
+                    statusLabel.text = "/${skill.name} removed from the next message."
+                },
+                onRevalidate = {
+                    composer.revalidate()
+                    composer.repaint()
+                },
+            )
+
         private val agentReturns =
             AgentReturnsBar(project, { openAgentFile(it) }) {
                 composer.revalidate()
@@ -433,7 +474,14 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     },
                     BorderLayout.NORTH,
                 )
-                add(chatAttachments.component, BorderLayout.CENTER)
+                add(
+                    JPanel(BorderLayout(0, JBUI.scale(5))).apply {
+                        isOpaque = false
+                        add(invokedSkillsBar.component, BorderLayout.NORTH)
+                        add(chatAttachments.component, BorderLayout.CENTER)
+                    },
+                    BorderLayout.CENTER,
+                )
             }
 
         private val composer: JPanel =
@@ -544,13 +592,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
             input.text = ""
         }
 
-        override fun showHistory(e: AnActionEvent) {
+        override fun showHistory(event: AnActionEvent) {
             ChatHistoryPopup.show(
                 project = project,
                 service = chatHistory,
                 chats = chatHistory.chats(),
                 currentId = chatId,
-                dataContext = e.dataContext,
+                dataContext = event.dataContext,
                 onOpen = ::openChat,
                 onCurrentDeleted = { resetConversation() },
             )
@@ -630,6 +678,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatAttachments.clear()
             agentReturns.clear()
             invokedSkills.clear()
+            invokedSkillsBar.clear()
             promptHistory.restore(null)
         }
 
@@ -681,9 +730,59 @@ class ChatToolWindowFactory : ToolWindowFactory {
             if (background) ApplicationManager.getApplication().executeOnPooledThread(write) else write.run()
         }
 
-        private fun showUserMessage(markdown: String) {
-            rows += StoredRow(StoredRow.USER, text = markdown)
-            transcript.addUserMessage(markdown)
+        private fun showUserMessage(
+            markdown: String,
+            checkpointHistorySize: Int? = null,
+            promptDraft: String? = null,
+        ) {
+            rows +=
+                StoredRow(
+                    StoredRow.USER,
+                    text = markdown,
+                    checkpointHistorySize = checkpointHistorySize,
+                    promptDraft = promptDraft,
+                )
+            transcript.addUserMessage(
+                markdown,
+                checkpointHistorySize?.let { checkpoint -> { restoreCheckpoint(checkpoint) } },
+            )
+        }
+
+        private fun restoreCheckpoint(checkpointHistorySize: Int) {
+            if (!sendButton.isEnabled) {
+                statusLabel.text = "Wait for the current reply to finish before restoring a checkpoint."
+                return
+            }
+
+            val rowIndex =
+                rows.indexOfFirst {
+                    it.kind == StoredRow.USER && it.checkpointHistorySize == checkpointHistorySize
+                }
+            val checkpoint = rows.getOrNull(rowIndex) ?: return
+            if (checkpointHistorySize > history.size) {
+                showError("This checkpoint is no longer available because the older conversation was compacted.")
+                return
+            }
+            if (!ChatDialogs.confirmRestoreCheckpoint(project)) return
+
+            rollbackHistoryTo(checkpointHistorySize)
+            rows.subList(rowIndex, rows.size).clear()
+            runningTool = null
+            runningToolIndex = -1
+            withheldCards.clear()
+            raisedMaxTokens = 0
+            contextMeter.reset()
+            beginTurnCost()
+            transcript.clear()
+            rows.forEachIndexed(::render)
+            setContext(
+                if (history.isEmpty()) 0 else contextMeter.estimate(history, overheadChars = 0),
+                contextWindowTokens(),
+            )
+            showPrompt(checkpoint.promptDraft ?: checkpoint.text)
+            input.requestFocusInWindow()
+            statusLabel.text = "Restored conversation to this prompt. Edit it and send it again."
+            if (rows.isEmpty()) chatHistory.delete(chatId) else saveCurrentChat(active = true)
         }
 
         private fun showAssistantMessage(markdown: String) {
@@ -827,7 +926,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
         ) {
             when (row.kind) {
                 StoredRow.HANDOFF -> row.handoff?.let { showHandoff(index, it, row.summary) }
-                StoredRow.USER -> transcript.addUserMessage(row.text)
+                StoredRow.USER ->
+                    transcript.addUserMessage(
+                        row.text,
+                        row.checkpointHistorySize?.let { checkpoint -> { restoreCheckpoint(checkpoint) } },
+                    )
                 StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
                 StoredRow.TOOL ->
                     transcript.addToolCall(
@@ -888,6 +991,49 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 } else {
                     "Edit the spec, then press Proceed to start @${definition.name}."
                 }
+        }
+
+        /*
+         * Unlike beginHandoff, this is called from a model tool while a reply is running. The
+         * model supplies the complete spec, but the resulting card stays in DRAFT until the user
+         * explicitly presses Proceed.
+         */
+        private fun prepareAgentHandoff(
+            definition: AgentDefinition,
+            task: String,
+        ): String {
+            var allowed = false
+            ApplicationManager.getApplication().invokeAndWait {
+                allowed = currentConversationLevel() < MAX_CONVERSATION_LEVELS
+            }
+            if (!allowed) {
+                return "Error: agent hand-offs are limited to $MAX_CONVERSATION_LEVELS conversation levels."
+            }
+
+            val path =
+                AgentFiles.spec(project, definition, task)
+                    ?: return "Error: the specification for @${definition.name} could not be written to .cache."
+
+            var result = ""
+            ApplicationManager.getApplication().invokeAndWait {
+                val handoff = AgentHandoff(definition.name, path.toString(), chatId)
+                val index = rows.size
+                rows +=
+                    StoredRow(
+                        StoredRow.HANDOFF,
+                        name = definition.name,
+                        summary = definition.description,
+                        text = AgentPath.display(project, path),
+                        handoff = handoff,
+                    )
+                showHandoff(index, handoff, definition.description)
+                AgentFiles.open(project, path)
+                saveCurrentChat(active = true)
+                result =
+                    "Prepared a draft hand-off to @${definition.name}. The user must review the " +
+                    "specification and press Proceed before that agent starts."
+            }
+            return result
         }
 
         private fun currentConversationLevel(): Int {
@@ -981,8 +1127,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
             chatAttachments.clear()
 
             val displayPath = AgentPath.display(project, path)
+            val checkpointHistorySize = history.size
             history.add(ChatMessage.text("user", spec))
-            showUserMessage("**Specification for @${definition.name}** — `$displayPath`\n\n$spec")
+            showUserMessage(
+                "**Specification for @${definition.name}** — `$displayPath`\n\n$spec",
+                checkpointHistorySize = checkpointHistorySize,
+                promptDraft = spec,
+            )
             startTurn(0)
             statusLabel.text = "@${definition.name} is working from $displayPath."
         }
@@ -1098,12 +1249,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             val sizeBeforeTurn = history.size
             history.add(ChatMessage.text("user", messageText))
-            showUserMessage(displayText)
+            showUserMessage(
+                displayText,
+                checkpointHistorySize = sizeBeforeTurn,
+                promptDraft = text,
+            )
             promptHistory.record(text)
             input.text = ""
             chatAttachments.clear()
             agentReturns.clear()
             invokedSkills.clear()
+            invokedSkillsBar.clear()
 
             startTurn(sizeBeforeTurn)
         }
@@ -1552,7 +1708,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private fun askToExtendIterations(used: Int): Boolean {
-            val extend = ChatDialogs.confirmExtendIterations(project, used)
+            val extend = ToolCallLimitDialog.confirmExtendIterations(project, used)
             showError(
                 if (extend) {
                     "Tool-call limit reached — continuing."

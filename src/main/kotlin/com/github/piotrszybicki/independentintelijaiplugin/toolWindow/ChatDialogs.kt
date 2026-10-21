@@ -8,6 +8,17 @@ import com.intellij.openapi.ui.InputValidator
 import com.intellij.openapi.ui.Messages
 
 internal object ChatDialogs {
+    fun confirmRestoreCheckpoint(project: Project): Boolean =
+        Messages.showYesNoDialog(
+            project,
+            "This removes this prompt and everything after it from the conversation. The prompt will " +
+                "be placed in the composer so you can edit and send it again.",
+            "Restore Conversation Here",
+            "Restore and Edit",
+            "Cancel",
+            Messages.getWarningIcon(),
+        ) == Messages.YES
+
     fun promptForMissingApiKey(
         project: Project,
         configuration: AgentConfiguration,
@@ -77,24 +88,5 @@ internal object ChatDialogs {
                 },
             )
         return typed?.trim()?.toIntOrNull()?.takeIf { it > 0 }
-    }
-
-    fun confirmExtendIterations(
-        project: Project,
-        used: Int,
-    ): Boolean {
-        val answer =
-            Messages.showYesNoDialog(
-                project,
-                "The assistant has made $used rounds of tool calls on this message and is still " +
-                    "going.\n\nKeep going? It carries on from where it is, so nothing done so far " +
-                    "is lost, and you will be asked again if it runs on. You can also raise Tool " +
-                    "calls per message in Settings.",
-                "Tool-Call Limit Reached",
-                "Keep Going",
-                "Stop Here",
-                Messages.getQuestionIcon(),
-            )
-        return answer == Messages.YES
     }
 }

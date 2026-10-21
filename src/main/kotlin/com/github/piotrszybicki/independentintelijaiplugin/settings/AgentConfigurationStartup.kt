@@ -17,14 +17,13 @@ class AgentConfigurationStartup : ProjectActivity {
                 .getNotificationGroup(NOTIFICATION_GROUP)
                 .createNotification(
                     "AICodingAgent is not available",
-                    StringUtil.escapeXmlEntities(reason) + "<br/><br/>Create the file at that path, or unset " +
-                        "<code>${AgentConfiguration.PATH_ENV_VAR}</code> and restart the IDE to use " +
-                        "<code>${AgentConfiguration.FILE_NAME}</code> in the project root.",
+                    StringUtil.escapeXmlEntities(reason) + "<br/><br/>" +
+                        "Create a JSON configuration file with a <code>configurations</code> array, set " +
+                        "<code>${AgentConfiguration.PATH_ENV_VAR}</code> to its absolute path, then restart the IDE.",
                     NotificationType.ERROR,
                 ).notify(project)
             return
         }
-        configurations.createIfMissing()
     }
 
     private companion object {

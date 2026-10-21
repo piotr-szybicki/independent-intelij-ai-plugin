@@ -169,7 +169,7 @@ class FindInFilesTool(
                         project,
                         Processor { usage ->
                             val file =
-                                ReadAction.compute<VirtualFile?, RuntimeException> { usage.virtualFile }
+                                ReadAction.computeBlocking<VirtualFile?, RuntimeException> { usage.virtualFile }
                                     ?: return@Processor true
                             synchronized(found) {
                                 if (file !in files && files.size >= maxFiles) {

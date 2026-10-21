@@ -54,7 +54,8 @@ internal class AgentMentionPopup(
                 .getInstance()
                 .createMessage(
                     "No agents are defined. Write one into the \"${AgentRosterConfig.SECTION}\" section " +
-                        "of ${AgentConfiguration.FILE_NAME}, or as .agents/<name>/AGENT.md.",
+                        "of the ${AgentConfiguration.FILE_NAME} selected by " +
+                        "${AgentConfiguration.PATH_ENV_VAR}.",
                 ).show(at)
             return
         }

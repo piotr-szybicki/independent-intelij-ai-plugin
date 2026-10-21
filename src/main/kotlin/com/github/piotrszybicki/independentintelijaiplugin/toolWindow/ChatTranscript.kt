@@ -96,11 +96,14 @@ internal class ChatTranscript(
         fun closeApproval(label: String)
     }
 
-    override fun addUserMessage(markdown: String) {
+    override fun addUserMessage(
+        markdown: String,
+        onRestore: (() -> Unit)?,
+    ) {
         endAiTurn()
         clearRequestFailure()
         lastToolGroup = null
-        addRow(UserRow(markdown).also { lastUserRow = it })
+        addRow(UserRow(markdown, onRestore).also { lastUserRow = it })
     }
 
     override fun addHandoff(
