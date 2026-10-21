@@ -93,12 +93,15 @@ internal class ProviderBar(
         refilling = true
         try {
             providers = AgentConfigurations.getInstance(project).load().configurations
-            val active =
-                AgentConfigurations.select(providers, configurationName)
-                    ?: AgentConfiguration.fallback()
-
             providerCombo.model = DefaultComboBoxModel(providers.map { it.name }.toTypedArray())
             providerCombo.isEnabled = providers.isNotEmpty()
+            val active = AgentConfigurations.select(providers, configurationName)
+            if (active == null) {
+                providerCombo.selectedItem = null
+                modelCombo.model = DefaultComboBoxModel()
+                modelCombo.isEnabled = false
+                return
+            }
             providerCombo.selectedItem = active.name
 
             modelCombo.model = DefaultComboBoxModel(active.models.toTypedArray())

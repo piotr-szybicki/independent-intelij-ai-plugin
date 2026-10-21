@@ -8,6 +8,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentPath
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentToolPolicy
+import com.github.piotrszybicki.independentintelijaiplugin.agents.DelegateToAgentTool
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgent
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
@@ -150,11 +151,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
             border = JBUI.Borders.empty(16)
             add(
                 JBLabel(
-                    "<html><b>AICodingAgent is not available.</b><br/><br/>" +
+                    "<html><b>AICodingAgent needs configuration.</b><br/><br/>" +
                         StringUtil.escapeXmlEntities(reason) + "<br/><br/>" +
-                        "Create the file at that path, or unset <code>${AgentConfiguration.PATH_ENV_VAR}</code> " +
-                        "and restart the IDE to use <code>${AgentConfiguration.FILE_NAME}</code> in the " +
-                        "project root.</html>",
+                        "<b>To configure it:</b><br/>" +
+                        "1. Create a JSON configuration file with a <code>configurations</code> array.<br/>" +
+                        "2. Set <code>${AgentConfiguration.PATH_ENV_VAR}</code> to that file's absolute path.<br/>" +
+                        "3. Restart the IDE.</html>",
                 ).apply { verticalAlignment = SwingConstants.TOP },
                 BorderLayout.CENTER,
             )
@@ -205,7 +207,29 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
                         .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
                 }
-            return ChangeTrackingTool.wrapAll(selected, session)
+            val tracked = ChangeTrackingTool.wrapAll(selected, session)
+            if (activeAgent != null) return tracked
+            return tracked +
+                DelegateToAgentTool(
+                    agents = { AgentCatalog.all(project) },
+                    prepare = ::prepareAgentHandoff,
+                )
+        }
+
+        private fun agentRosterPrompt(): String {
+            if (activeAgent != null) return ""
+            val agents = AgentCatalog.all(project).filter { it.prompt.isNotBlank() }
+            if (agents.isEmpty()) return ""
+
+            return buildString {
+                appendLine("Specialist agents available for a reviewed hand-off:")
+                agents.forEach { appendLine("- @${it.name}: ${it.description}") }
+                append(
+                    "Use delegate_to_agent when a bounded task would benefit from one of these " +
+                        "specialists. It prepares a draft specification only. Tell the user that they " +
+                        "must review the hand-off card and press Proceed before the agent starts.",
+                )
+            }
         }
 
         private class DefaultTools(
@@ -303,7 +327,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val agent =
             AICodingAgent(
                 tools = { agentTools() },
-                environment = { ProjectEnvironment.describe(project) },
+                environment = {
+                    listOf(ProjectEnvironment.describe(project), agentRosterPrompt())
+                        .filter { it.isNotBlank() }
+                        .joinToString("\n\n")
+                },
                 skills = { SkillCatalog.describe(project, conversationTools.activeSkills) },
             )
 
@@ -888,6 +916,49 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 } else {
                     "Edit the spec, then press Proceed to start @${definition.name}."
                 }
+        }
+
+        /*
+         * Unlike beginHandoff, this is called from a model tool while a reply is running. The
+         * model supplies the complete spec, but the resulting card stays in DRAFT until the user
+         * explicitly presses Proceed.
+         */
+        private fun prepareAgentHandoff(
+            definition: AgentDefinition,
+            task: String,
+        ): String {
+            var allowed = false
+            ApplicationManager.getApplication().invokeAndWait {
+                allowed = currentConversationLevel() < MAX_CONVERSATION_LEVELS
+            }
+            if (!allowed) {
+                return "Error: agent hand-offs are limited to $MAX_CONVERSATION_LEVELS conversation levels."
+            }
+
+            val path =
+                AgentFiles.spec(project, definition, task)
+                    ?: return "Error: the specification for @${definition.name} could not be written to .cache."
+
+            var result = ""
+            ApplicationManager.getApplication().invokeAndWait {
+                val handoff = AgentHandoff(definition.name, path.toString(), chatId)
+                val index = rows.size
+                rows +=
+                    StoredRow(
+                        StoredRow.HANDOFF,
+                        name = definition.name,
+                        summary = definition.description,
+                        text = AgentPath.display(project, path),
+                        handoff = handoff,
+                    )
+                showHandoff(index, handoff, definition.description)
+                AgentFiles.open(project, path)
+                saveCurrentChat(active = true)
+                result =
+                    "Prepared a draft hand-off to @${definition.name}. The user must review the " +
+                    "specification and press Proceed before that agent starts."
+            }
+            return result
         }
 
         private fun currentConversationLevel(): Int {

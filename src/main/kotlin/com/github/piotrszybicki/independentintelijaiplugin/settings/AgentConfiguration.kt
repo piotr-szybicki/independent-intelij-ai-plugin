@@ -73,6 +73,19 @@ data class AgentConfiguration(
 
         const val PATH_ENV_VAR = "INTELIJ_AI_SETTINGS"
 
+        fun environmentProblem(raw: String?): String? {
+            val trimmed = raw?.trim().orEmpty()
+            return when {
+                trimmed.isEmpty() -> "$PATH_ENV_VAR is not set."
+                configuredPath(trimmed) == null -> "$PATH_ENV_VAR does not name a usable path: $trimmed."
+                else -> null
+            }
+        }
+
+        const val SETUP_INSTRUCTIONS =
+            "Set INTELIJ_AI_SETTINGS to the absolute path of an independent-ai-plugin-settings.json file, " +
+                "then restart the IDE."
+
         fun configuredPath(raw: String?): Path? {
             val trimmed = raw?.trim().orEmpty()
             if (trimmed.isEmpty()) return null
@@ -83,10 +96,10 @@ data class AgentConfiguration(
                     trimmed.startsWith("~/") || trimmed.startsWith("~\\") -> home + trimmed.substring(1)
                     else -> trimmed
                 }
-            val path =
-                runCatching { Paths.get(expanded).toAbsolutePath().normalize() }.getOrNull()
-                    ?: return null
-            return if (Files.isDirectory(path)) path.resolve(FILE_NAME) else path
+            val candidate = runCatching { Paths.get(expanded) }.getOrNull() ?: return null
+            if (!candidate.isAbsolute) return null
+            val path = candidate.normalize()
+            return path.takeUnless { Files.isDirectory(it) }
         }
 
         const val DEFAULT_MODEL = "claude-sonnet-5"
@@ -131,21 +144,6 @@ data class AgentConfiguration(
                 apiVersion = DEFAULT_API_VERSION,
                 extraHeaders = emptyMap(),
             )
-
-        fun fallback(): AgentConfiguration {
-            val url = EndpointUrl.resolve(DEFAULT_ENDPOINT_URL)
-            if (url == DEFAULT_ENDPOINT_URL) return DEFAULT
-
-            val detected = ProviderProfile.detect(url)
-            val protocol = detected?.protocol ?: DEFAULT.protocol
-            return DEFAULT.copy(
-                url = url,
-                protocol = protocol,
-                authScheme = detected?.authScheme ?: DEFAULT.authScheme,
-                thinking = ProviderProfile.defaultThinking(protocol),
-                apiVersion = if (protocol == WireProtocol.ANTHROPIC_MESSAGES) DEFAULT_API_VERSION else "",
-            )
-        }
 
         val STARTER =
             listOf(
