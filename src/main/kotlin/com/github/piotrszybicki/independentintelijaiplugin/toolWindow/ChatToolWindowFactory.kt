@@ -761,7 +761,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             showPrompt(checkpoint.promptDraft ?: checkpoint.text)
             input.requestFocusInWindow()
             statusLabel.text = "Restored conversation to this prompt. Edit it and send it again."
-            saveCurrentChat(active = true)
+            if (rows.isEmpty()) chatHistory.delete(chatId) else saveCurrentChat(active = true)
         }
 
         private fun showAssistantMessage(markdown: String) {
