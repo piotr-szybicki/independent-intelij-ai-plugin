@@ -89,7 +89,6 @@ internal object ChatDialogs {
             )
         return typed?.trim()?.toIntOrNull()?.takeIf { it > 0 }
     }
-
 }
 
 internal object ToolCallLimitDialog {
