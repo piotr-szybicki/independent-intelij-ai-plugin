@@ -572,13 +572,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
             input.text = ""
         }
 
-        override fun showHistory(e: AnActionEvent) {
+        override fun showHistory(event: AnActionEvent) {
             ChatHistoryPopup.show(
                 project = project,
                 service = chatHistory,
                 chats = chatHistory.chats(),
                 currentId = chatId,
-                dataContext = e.dataContext,
+                dataContext = event.dataContext,
                 onOpen = ::openChat,
                 onCurrentDeleted = { resetConversation() },
             )
@@ -1686,7 +1686,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private fun askToExtendIterations(used: Int): Boolean {
-            val extend = ChatDialogs.confirmExtendIterations(project, used)
+            val extend = ToolCallLimitDialog.confirmExtendIterations(project, used)
             showError(
                 if (extend) {
                     "Tool-call limit reached — continuing."
