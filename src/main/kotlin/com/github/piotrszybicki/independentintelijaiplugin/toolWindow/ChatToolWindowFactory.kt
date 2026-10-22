@@ -818,7 +818,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     .map { it.trim() }
                     .firstOrNull { it.isNotEmpty() }
                     .orEmpty()
-            return if (line.length <= 90) line else line.take(89).trimEnd() + "ÔÇª"
+            return if (line.length <= 90) line else line.take(89).trimEnd() + "…"
         }
 
         private fun showCompaction(result: HistoryCompaction.Result) {
@@ -1146,7 +1146,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val checkpointHistorySize = history.size
             history.add(ChatMessage.text("user", spec))
             showUserMessage(
-                "**Specification for @${definition.name}** ÔÇö `$displayPath`\n\n$spec",
+                "**Specification for @${definition.name}** — `$displayPath`\n\n$spec",
                 checkpointHistorySize = checkpointHistorySize,
                 promptDraft = spec,
             )
@@ -1177,7 +1177,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             AgentFiles.open(project, path)
             statusLabel.text =
-                "Returned to the chat that started this agent ÔÇö edit ${AgentPath.display(project, path)} " +
+                "Returned to the chat that started this agent — edit ${AgentPath.display(project, path)} " +
                 "there before sending it."
             openChat(parentChatId)
             return true
@@ -1223,7 +1223,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 }
                 blocks +=
                     PrependedBlock(
-                        marker = "­ƒôÑ `@${returned.agentName} ÔÇö $name`",
+                        marker = "[Summary from @${returned.agentName} — $name]",
                         body = "A summary returned by @${returned.agentName}, from the chat that ran it:\n\n$text",
                     )
             }
@@ -1635,8 +1635,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     ""
                 } else {
                     buildString {
-                        append("Ôåæ ${formatTokens(total.totalInputTokens)}   Ôåô ${formatTokens(total.outputTokens)}")
-                        total.cacheHitRate?.let { append("   ÔÜí ${(it * 100).roundToInt()}%") }
+                        append(
+                            "Input ${formatTokens(total.totalInputTokens)}   " +
+                                "Output ${formatTokens(total.outputTokens)}",
+                        )
+                        total.cacheHitRate?.let { append("   Cache ${(it * 100).roundToInt()}%") }
                     }
                 }
             usageLabel.toolTipText =
@@ -1668,7 +1671,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val share = if (window > 0) used.toDouble() / window else null
             contextLabel.text =
                 buildString {
-                    append("Ôù▒ ${formatTokens(used)}")
+                    append("Context ${formatTokens(used)}")
                     if (window > 0) append(" / ${formatTokens(window)}")
                     share?.let { append("  ${(it * 100).roundToInt()}%") }
                 }
@@ -1716,8 +1719,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             showError(
                 when {
                     next == null -> "Response hit the max_tokens limit and is incomplete."
-                    next != limit -> "Response hit the $limit-token limit ÔÇö continuing at $next."
-                    else -> "Response hit the max_tokens limit ÔÇö continuing."
+                    next != limit -> "Response hit the $limit-token limit — continuing at $next."
+                    else -> "Response hit the max_tokens limit — continuing."
                 },
             )
             return next
@@ -1727,7 +1730,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val extend = ToolCallLimitDialog.confirmExtendIterations(project, used)
             showError(
                 if (extend) {
-                    "Tool-call limit reached ÔÇö continuing."
+                    "Tool-call limit reached — continuing."
                 } else {
                     "Stopped after $used rounds of tool calls. The reply is incomplete."
                 },
