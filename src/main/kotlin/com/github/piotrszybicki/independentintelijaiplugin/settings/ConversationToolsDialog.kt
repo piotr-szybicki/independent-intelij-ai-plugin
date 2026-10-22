@@ -204,7 +204,7 @@ class ConversationToolsDialog(
         val trimmed = description.trim()
         return StringUtil
             .escapeXmlEntities(
-                if (trimmed.length > 200) trimmed.take(200) + "ÔÇª" else trimmed,
+                if (trimmed.length > 200) trimmed.take(200) + "…" else trimmed,
             ).ifBlank { ifBlank }
     }
 
