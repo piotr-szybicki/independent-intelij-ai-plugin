@@ -6,6 +6,9 @@ data class AgentHandoff(
     val parentChatId: String,
     val childChatId: String? = null,
     val state: String = DRAFT,
+    val worktreePath: String? = null,
+    val worktreeBranch: String? = null,
+    val creationError: String? = null,
 ) {
     val isSettled: Boolean get() = state != DRAFT
 
@@ -13,5 +16,6 @@ data class AgentHandoff(
         const val DRAFT = "draft"
         const val PROCEEDED = "proceeded"
         const val CANCELLED = "cancelled"
+        const val FAILED = "failed"
     }
 }

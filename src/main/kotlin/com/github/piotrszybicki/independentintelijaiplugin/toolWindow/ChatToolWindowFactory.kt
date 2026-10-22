@@ -8,6 +8,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentPath
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentToolPolicy
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentWorktreeService
 import com.github.piotrszybicki.independentintelijaiplugin.agents.DelegateToAgentTool
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgent
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
@@ -1070,6 +1071,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 description = description,
                 specName = AgentPath.display(project, path),
                 state = handoff.state,
+                worktreePath = handoff.worktreePath,
+                worktreeBranch = handoff.worktreeBranch,
                 onOpenSpec = { openAgentFile(path) },
                 onProceed = { proceedWithHandoff(index) },
                 onCancel = { cancelHandoff(index) },
@@ -1108,13 +1111,57 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
 
             val childId = ChatHistoryService.newChatId()
-            val session = AgentSession(definition.name, chatId, handoff.specPath)
+            val worktree = AgentWorktreeService.create(project, definition.name, childId)
+            if (worktree !is AgentWorktreeService.Result.Created) {
+                val message = (worktree as AgentWorktreeService.Result.Failed).message
+                rows[index] = stored.copy(handoff = handoff.copy(state = AgentHandoff.FAILED, creationError = message))
+                saveCurrentChat(active = true)
+                showError("Could not create the worktree for @${definition.name}: $message")
+                return false
+            }
+            val session =
+                AgentSession(
+                    definition.name,
+                    chatId,
+                    handoff.specPath,
+                    worktree.path.toString(),
+                    worktree.branch,
+                )
             rows[index] =
                 stored.copy(
-                    handoff = handoff.copy(childChatId = childId, state = AgentHandoff.PROCEEDED),
+                    handoff =
+                        handoff.copy(
+                            childChatId = childId,
+                            state = AgentHandoff.PROCEEDED,
+                            worktreePath = worktree.path.toString(),
+                            worktreeBranch = worktree.branch,
+                            creationError = null,
+                        ),
                 )
-            saveCurrentChat(active = false)
-            startAgentChat(childId, definition, session, spec, path)
+            // Closing the project disposes this panel. Persist and capture history first.
+            saveCurrentChat(active = false, background = false)
+            val chats = chatHistory.chats().mapNotNull { chatHistory.load(it.id) }
+            val targetProject = AgentWorktreeService.openIfNeeded(project, worktree.path)
+            if (targetProject == null) {
+                rows[index] =
+                    stored.copy(
+                        handoff = handoff.copy(creationError = "Worktree switch was cancelled or failed"),
+                    )
+                saveCurrentChat(active = true, background = false)
+                showError("Could not open the worktree for @${definition.name}: ${worktree.path}")
+                return false
+            }
+            val targetHistory = ChatHistoryService.getInstance(targetProject)
+            chats.forEach { targetHistory.save(it, active = false) }
+            val toolWindow =
+                com.intellij.openapi.wm.ToolWindowManager
+                    .getInstance(targetProject)
+                    .getToolWindow(TOOL_WINDOW_ID) ?: return false
+            toolWindow.show {
+                val panel = panels[targetProject] ?: return@show
+                panel.restoreStarted.set(true)
+                panel.startAgentChat(childId, definition, session, spec, path)
+            }
             return true
         }
 

@@ -14,6 +14,8 @@ internal class AgentHandoffRow(
     description: String,
     private val specName: String,
     state: String,
+    private val worktreePath: String? = null,
+    private val worktreeBranch: String? = null,
     onOpenSpec: () -> Unit,
     onProceed: () -> Boolean,
     onCancel: () -> Unit,
@@ -95,8 +97,14 @@ internal class AgentHandoffRow(
         openChat.isVisible = state == AgentHandoff.PROCEEDED
         note.text =
             when (state) {
-                AgentHandoff.PROCEEDED -> "Handed off — $specName"
+                AgentHandoff.PROCEEDED ->
+                    buildString {
+                        append("Handed off — $specName")
+                        if (worktreePath != null) append("<br>Worktree: ${escape(worktreePath)}")
+                        if (worktreeBranch != null) append("<br>Branch: ${escape(worktreeBranch)}")
+                    }
                 AgentHandoff.CANCELLED -> "Cancelled — $specName"
+                AgentHandoff.FAILED -> "Failed — $specName"
                 else -> "Spec: $specName — edit it, then press Proceed"
             }
         revalidate()
