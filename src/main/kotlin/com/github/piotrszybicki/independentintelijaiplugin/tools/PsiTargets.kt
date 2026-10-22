@@ -19,12 +19,7 @@ object PsiTargets : PsiPathResolver, PsiElementResolver {
         relativePath: String,
     ): File? {
         val basePath = project.basePath ?: return null
-        val baseDir = File(basePath).canonicalFile
-        val target = File(baseDir, relativePath).canonicalFile
-        if (!target.path.startsWith(baseDir.path + File.separator) && target.path != baseDir.path) {
-            return null
-        }
-        return target
+        return ProjectPaths.resolve(File(basePath), relativePath)
     }
 
     override fun resolveProjectFile(

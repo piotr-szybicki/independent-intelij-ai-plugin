@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.settings
+﻿package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillDefinition
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog
@@ -109,6 +109,7 @@ class ConversationToolsDialog(
             }
 
         return JPanel(BorderLayout(0, JBUI.scale(6))).apply {
+            name = "conversationTools.root"
             border = JBUI.Borders.emptyBottom(4)
             add(top, BorderLayout.NORTH)
             add(tabs, BorderLayout.CENTER)
@@ -203,7 +204,7 @@ class ConversationToolsDialog(
         val trimmed = description.trim()
         return StringUtil
             .escapeXmlEntities(
-                if (trimmed.length > 200) trimmed.take(200) + "…" else trimmed,
+                if (trimmed.length > 200) trimmed.take(200) + "ÔÇª" else trimmed,
             ).ifBlank { ifBlank }
     }
 

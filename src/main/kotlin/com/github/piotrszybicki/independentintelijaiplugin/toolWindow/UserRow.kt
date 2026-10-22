@@ -7,11 +7,8 @@ import javax.swing.JPanel
 
 internal class UserRow(
     markdown: String,
-    onRestore: (() -> Unit)? = null,
 ) : ChatRow(BorderLayout()),
     FailedRequest {
-    private val hasRestore = onRestore != null
-
     private val body = HtmlTextPane()
 
     private var failed = false
@@ -23,18 +20,11 @@ internal class UserRow(
             onRetry?.invoke()
         }.apply { isVisible = false }
 
-    private val restore =
-        CardButton(
-            "Restore",
-            "Discard this prompt and everything after it, then edit the prompt again",
-        ) { onRestore?.invoke() }.apply { isVisible = hasRestore }
-
     private val footer =
         JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
             isOpaque = false
-            isVisible = hasRestore
+            isVisible = false
             add(retry.component)
-            add(restore.component)
         }
 
     private val bubble =
@@ -69,7 +59,7 @@ internal class UserRow(
         onRetry = null
         failed = false
         retry.isVisible = false
-        footer.isVisible = hasRestore
+        footer.isVisible = false
         revalidate()
         repaint()
     }

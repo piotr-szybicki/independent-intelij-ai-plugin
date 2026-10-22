@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
+﻿package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.intellij.ui.components.JBLabel
@@ -26,9 +26,14 @@ internal class AgentBanner(
         CardButton(
             "Back to the chat that started it",
             "Open the chat this agent was handed off from",
-        ) { session?.parentChatId?.let(onOpenParent) }
+        ) { session?.parentChatId?.let(onOpenParent) }.apply {
+            component.name = "chat.parentChatButton"
+        }
 
-    private val spec = CardButton("Spec", "Open the specification this agent was started with", onOpenSpec)
+    private val spec =
+        CardButton("Spec", "Open the specification this agent was started with", onOpenSpec).apply {
+            component.name = "chat.agentSpecButton"
+        }
 
     val component: JComponent =
         JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
@@ -59,7 +64,7 @@ internal class AgentBanner(
         if (session == null) {
             component.isVisible = false
         } else {
-            label.text = "Agent chat — @${session.agentName}"
+            label.text = "Agent chat ÔÇö @${session.agentName}"
             label.toolTipText = tools?.let { "Tools in this chat: $it" }
             parentChat.isVisible = session.parentChatId != null
             spec.isVisible = session.specPath != null

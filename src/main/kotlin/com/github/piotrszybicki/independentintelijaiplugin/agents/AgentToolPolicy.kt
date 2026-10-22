@@ -1,6 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.agents
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolNames
 
 data class AgentToolPolicy(
     val allowed: Set<String>?,
@@ -56,9 +57,9 @@ data class AgentToolPolicy(
             for (entry in names.map { it.trim() }.filter { it.isNotEmpty() }) {
                 when {
                     entry == "*" || entry.equals("all", ignoreCase = true) -> takesAll = true
-                    entry.startsWith("-") || entry.startsWith("!") -> denied += entry.drop(1).trim()
-                    entry.startsWith("+") -> additions += entry.drop(1).trim()
-                    else -> allowed += entry
+                    entry.startsWith("-") || entry.startsWith("!") -> denied += ToolNames.current(entry.drop(1).trim())
+                    entry.startsWith("+") -> additions += ToolNames.current(entry.drop(1).trim())
+                    else -> allowed += ToolNames.current(entry)
                 }
             }
             denied.remove("")

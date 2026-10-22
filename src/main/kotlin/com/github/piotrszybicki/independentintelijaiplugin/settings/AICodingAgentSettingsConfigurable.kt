@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.settings
+﻿package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase
 import com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory
@@ -35,16 +35,17 @@ class AICodingAgentSettingsConfigurable : Configurable {
     override fun createComponent(): JComponent =
         panel {
             row {
-                button("Reload Configuration") { reloadConfiguration() }
-                button("Test MySQL Connection") { testUsageDatabase() }
+                button("Reload Configuration") { reloadConfiguration() }.component.name =
+                    "settings.reloadConfigurationButton"
+                button("Test MySQL Connection") { testUsageDatabase() }.component.name =
+                    "settings.testMySqlButton"
             }
-            row {
-                cell(configurationStatus).align(AlignX.FILL)
-            }
-            row {
-                scrollCell(configurationText).align(AlignX.FILL)
-            }
-        }.also { reloadConfiguration() }
+            row { cell(configurationStatus).align(AlignX.FILL) }
+            row { scrollCell(configurationText).align(AlignX.FILL) }
+        }.also {
+            it.name = "settings.root"
+            reloadConfiguration()
+        }
 
     override fun isModified(): Boolean = false
 

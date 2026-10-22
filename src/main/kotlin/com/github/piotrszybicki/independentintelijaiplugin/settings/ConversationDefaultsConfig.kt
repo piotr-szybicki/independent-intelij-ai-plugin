@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolNames
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -58,7 +59,7 @@ data class ConversationDefaultsConfig(
             val section = element.asJsonObject
 
             return ConversationDefaultsConfig(
-                tools = section.names(TOOLS),
+                tools = section.names(TOOLS)?.map(ToolNames::current)?.distinct(),
                 mcpTools = section.names(MCP_TOOLS),
                 skills = section.names(SKILLS).orEmpty(),
             )

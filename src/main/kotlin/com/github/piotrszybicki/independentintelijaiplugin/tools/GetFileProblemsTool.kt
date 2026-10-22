@@ -4,20 +4,19 @@ import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodin
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.intellij.codeInsight.CodeSmellInfo
-import com.intellij.codeInsight.daemon.impl.DaemonCodeAnalyzerEx
-import com.intellij.codeInsight.daemon.impl.HighlightInfo
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
+import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.CodeSmellDetector
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.psi.PsiManager
+import com.intellij.psi.PsiDocumentManager
 
-class GetFileProblemsTool(
+internal class GetFileProblemsTool(
     private val project: Project,
+    private val resolveFile: (String) -> VirtualFile? = { PsiTargets.resolveProjectFile(project, it) },
 ) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_MAX_PROBLEMS = 100
@@ -38,8 +37,8 @@ class GetFileProblemsTool(
     override val description =
         "Runs the IDE's analysis on a file and returns errors and warnings as path:line:column " +
             "with the message. It analyses the unsaved in-memory file, so it sees edits a build " +
-            "would not -- call it after editing instead of building. Fix what it reports with " +
-            "apply_quick_fix where you can."
+            "would not. Used internally by analyse_and_fix."
+
     override val inputSchema: JsonObject =
         JsonObject().apply {
             addProperty("type", "object")
@@ -85,7 +84,7 @@ class GetFileProblemsTool(
         val relativePath = input.get("path")?.asString ?: return "Error: missing 'path' argument"
 
         val vf =
-            PsiTargets.resolveProjectFile(project, relativePath)
+            resolveFile(relativePath)
                 ?: return "Error: path is outside the project directory or does not exist: $relativePath"
         if (vf.isDirectory) return "Error: not a file: $relativePath"
 
@@ -102,7 +101,7 @@ class GetFileProblemsTool(
 
         val found =
             try {
-                collect(vf, minSeverity)
+                collect(vf)
             } catch (e: ProcessCanceledException) {
                 return "Error: the analysis of $relativePath was cancelled before it finished"
             } catch (e: Exception) {
@@ -141,58 +140,29 @@ class GetFileProblemsTool(
         val description: String,
     )
 
-    private fun collect(
-        vf: VirtualFile,
-        minSeverity: HighlightSeverity,
-    ): List<Problem> {
-        cachedHighlights(vf, minSeverity)?.let { return it }
-
+    private fun collect(vf: VirtualFile): List<Problem> {
         var result: List<CodeSmellInfo> = emptyList()
         var failure: Exception? = null
-        ApplicationManager.getApplication().invokeAndWait {
-            try {
-                result = CodeSmellDetector.getInstance(project).findCodeSmells(listOf(vf))
-            } catch (e: Exception) {
-                failure = e
+        val analyse =
+            Runnable {
+                try {
+                    val document =
+                        FileDocumentManager.getInstance().getDocument(vf)
+                            ?: error("Cannot open document for ${vf.path}")
+                    WriteAction.run<RuntimeException> {
+                        PsiDocumentManager.getInstance(project).commitDocument(document)
+                    }
+                    result = CodeSmellDetector.getInstance(project).findCodeSmells(listOf(vf))
+                } catch (e: Exception) {
+                    failure = e
+                }
             }
-        }
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) analyse.run() else application.invokeAndWait(analyse)
         failure?.let { throw it }
 
         return result.map { Problem(it.severity, it.startLine + 1, it.startColumn + 1, describe(it.description)) }
     }
-
-    private fun cachedHighlights(
-        vf: VirtualFile,
-        minSeverity: HighlightSeverity,
-    ): List<Problem>? =
-        ReadAction.computeBlocking<List<Problem>?, RuntimeException> {
-            val psiFile = PsiManager.getInstance(project).findFile(vf) ?: return@computeBlocking null
-            if (!DaemonCodeAnalyzerEx.getInstanceEx(project).isErrorAnalyzingFinished(psiFile)) {
-                return@computeBlocking null
-            }
-            val document = FileDocumentManager.getInstance().getDocument(vf) ?: return@computeBlocking null
-
-            val problems = mutableListOf<Problem>()
-            DaemonCodeAnalyzerEx.processHighlights(
-                document,
-                project,
-                minSeverity,
-                0,
-                document.textLength,
-            ) { info: HighlightInfo ->
-                val offset = info.startOffset.coerceIn(0, document.textLength)
-                val line = document.getLineNumber(offset)
-                problems +=
-                    Problem(
-                        info.severity,
-                        line + 1,
-                        offset - document.getLineStartOffset(line) + 1,
-                        describe(info.description ?: ""),
-                    )
-                true
-            }
-            problems
-        }
 
     private fun describe(raw: String): String {
         val text = raw.replace('\n', ' ').trim()
