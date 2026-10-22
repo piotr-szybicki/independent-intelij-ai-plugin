@@ -17,6 +17,7 @@
     <!-- SMTestProxy and friends moved out of the core platform into this bundled plugin in 2026.2. -->
     <depends>intellij.testRunner.plugin</depends>
 
+    <applicationService serviceImplementation="com.github.piotrszybicki.independentintelijaiplugin.BasicWiringService"/>
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow factoryClass="com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory" id="AICodingAgent"
                     anchor="right" icon="/icons/chatToolWindow.svg"/>
