@@ -29,8 +29,7 @@ object ToolCatalog {
             Entry("git_diff", ToolCategory.VCS, false, ::GitDiffTool),
             Entry("git_log", ToolCategory.VCS, false, ::GitLogTool),
             Entry("git_blame", ToolCategory.VCS, false, ::GitBlameTool),
-            Entry("get_file_problems", ToolCategory.EDIT, false, ::GetFileProblemsTool),
-            Entry("apply_quick_fix", ToolCategory.EDIT, false, ::ApplyQuickFixTool),
+            Entry("analyse_and_fix", ToolCategory.EDIT, false, ::AnalyseAndFixTool),
             Entry("edit_file_lines", ToolCategory.EDIT, false, ::EditFileLinesTool),
             Entry("create_file", ToolCategory.EDIT, false, ::CreateFileTool),
             Entry("move_file", ToolCategory.EDIT, false, ::MoveFileTool),
@@ -65,7 +64,7 @@ object ToolCatalog {
 
     fun parse(value: String): Set<String> {
         val known = entries.mapTo(mutableSetOf()) { it.name }
-        return value.split(',').map { it.trim() }.filterTo(mutableSetOf()) { it in known }
+        return value.split(',').map { ToolNames.current(it.trim()) }.filterTo(mutableSetOf()) { it in known }
     }
 
     fun format(names: Collection<String>): String = entries.filter { it.name in names }.joinToString(",") { it.name }

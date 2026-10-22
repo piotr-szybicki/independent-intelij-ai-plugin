@@ -17,6 +17,7 @@ import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.execution.ParametersListUtil
 import org.jetbrains.plugins.terminal.TerminalProjectOptionsProvider
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -81,7 +82,9 @@ class RunShellCommandTool(
                             addProperty("type", "string")
                             addProperty(
                                 "description",
-                                "Directory to run in, relative to the project root. Defaults to the project root.",
+                                "Directory to run in: a project-relative path or an absolute path " +
+                                    "inside the project. " +
+                                    "Omit or use '.' for the project root.",
                             )
                         },
                     )
@@ -120,8 +123,13 @@ class RunShellCommandTool(
             if (relativeDir.isNullOrBlank()) {
                 project.basePath?.let(::File) ?: return "Error: the project has no directory on disk"
             } else {
-                PsiTargets.resolveProjectPath(project, relativeDir)
-                    ?: return "Error: working_dir is outside the project directory: $relativeDir"
+                try {
+                    PsiTargets.resolveProjectPath(project, relativeDir)
+                } catch (e: IOException) {
+                    return "Error: invalid working_dir '$relativeDir': ${e.message}. " +
+                        "Omit working_dir or use '.' for the project root."
+                } ?: return "Error: working_dir is outside the project directory: $relativeDir. " +
+                    "Use a directory inside the project; omit working_dir or use '.' for the project root."
             }
         if (!workDir.isDirectory) return "Error: working_dir is not a directory: ${workDir.path}"
 

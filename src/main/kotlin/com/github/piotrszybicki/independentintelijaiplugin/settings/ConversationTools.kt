@@ -1,5 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolNames
+
 /*
  * One chat's own answer to "what may be called here".
  *
@@ -20,7 +22,7 @@ data class ConversationTools(
     val mcpTools: List<String> = emptyList(),
     val skills: List<String> = emptyList(),
 ) {
-    val toolNames: Set<String> get() = tools.toSet()
+    val toolNames: Set<String> get() = tools.map(ToolNames::current).toSet()
 
     val mcpToolNames: Set<String> get() = mcpTools.toSet()
 

@@ -1,4 +1,4 @@
-package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
+﻿package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentDefinition
@@ -346,11 +346,15 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val cancelled = AtomicBoolean(false)
         private var turn: Future<*>? = null
 
-        private val input = ChatInputPane("Ask AI about this project…")
+        private val input =
+            ChatInputPane("Ask AI about this project…").apply {
+                name = "chat.promptInput"
+            }
         private val promptHistory = PromptHistory()
 
         private val sendButton =
             JButton("Send").apply {
+                name = "chat.sendButton"
                 toolTipText = "Send message (Enter; Shift+Enter for a new line; Up/Down for prompt history)"
             }
 
@@ -359,22 +363,25 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 "Attach the editor selection, or the whole file when nothing is selected " +
                     "(press again with another file open to attach several)",
                 AllIcons.Actions.AddFile,
-            ) { chatAttachments.attachFromEditor() }
+            ) { chatAttachments.attachFromEditor() }.apply { name = "chat.attachButton" }
 
         private val statusLabel =
             JBLabel(" ").apply {
+                name = "chat.statusLabel"
                 font = JBFont.small()
                 foreground = ChatColors.muted
             }
 
         private val usageLabel =
             JBLabel().apply {
+                name = "chat.usageLabel"
                 font = JBFont.small()
                 foreground = ChatColors.muted
             }
 
         private val contextLabel =
             JBLabel().apply {
+                name = "chat.contextLabel"
                 font = JBFont.small()
                 foreground = ChatColors.muted
             }
@@ -506,11 +513,19 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
         val component: JComponent =
             JPanel(BorderLayout()).apply {
+                name = "chat.root"
                 isOpaque = true
                 background = ChatColors.background
+                toolsButton.component.name = "chat.conversationToolsButton"
+                providerBar.component.name = "chat.providerBar"
+                agentBanner.component.name = "chat.agentBanner"
+                changesBarPanel.component.name = "chat.changesBar"
+                chatAttachments.component.name = "chat.attachmentsBar"
+                invokedSkillsBar.component.name = "chat.invokedSkillsBar"
+                agentReturns.component.name = "chat.agentReturnsBar"
                 add(header, BorderLayout.NORTH)
-                add(transcript.component, BorderLayout.CENTER)
-                add(composer, BorderLayout.SOUTH)
+                add(transcript.component.apply { name = "chat.transcript" }, BorderLayout.CENTER)
+                add(composer.apply { name = "chat.composer" }, BorderLayout.SOUTH)
             }
 
         init {
@@ -742,10 +757,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     checkpointHistorySize = checkpointHistorySize,
                     promptDraft = promptDraft,
                 )
-            transcript.addUserMessage(
-                markdown,
-                checkpointHistorySize?.let { checkpoint -> { restoreCheckpoint(checkpoint) } },
-            )
+            checkpointHistorySize?.let { checkpoint ->
+                transcript.addRestoreCheckpoint { restoreCheckpoint(checkpoint) }
+            }
+            transcript.addUserMessage(markdown)
         }
 
         private fun restoreCheckpoint(checkpointHistorySize: Int) {
@@ -803,7 +818,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     .map { it.trim() }
                     .firstOrNull { it.isNotEmpty() }
                     .orEmpty()
-            return if (line.length <= 90) line else line.take(89).trimEnd() + "…"
+            return if (line.length <= 90) line else line.take(89).trimEnd() + "ÔÇª"
         }
 
         private fun showCompaction(result: HistoryCompaction.Result) {
@@ -926,11 +941,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
         ) {
             when (row.kind) {
                 StoredRow.HANDOFF -> row.handoff?.let { showHandoff(index, it, row.summary) }
-                StoredRow.USER ->
-                    transcript.addUserMessage(
-                        row.text,
-                        row.checkpointHistorySize?.let { checkpoint -> { restoreCheckpoint(checkpoint) } },
-                    )
+                StoredRow.USER -> {
+                    row.checkpointHistorySize?.let { checkpoint ->
+                        transcript.addRestoreCheckpoint { restoreCheckpoint(checkpoint) }
+                    }
+                    transcript.addUserMessage(row.text)
+                }
                 StoredRow.ASSISTANT -> transcript.addAssistantMessage(row.text)
                 StoredRow.TOOL ->
                     transcript.addToolCall(
@@ -1130,7 +1146,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val checkpointHistorySize = history.size
             history.add(ChatMessage.text("user", spec))
             showUserMessage(
-                "**Specification for @${definition.name}** — `$displayPath`\n\n$spec",
+                "**Specification for @${definition.name}** ÔÇö `$displayPath`\n\n$spec",
                 checkpointHistorySize = checkpointHistorySize,
                 promptDraft = spec,
             )
@@ -1161,7 +1177,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
 
             AgentFiles.open(project, path)
             statusLabel.text =
-                "Returned to the chat that started this agent — edit ${AgentPath.display(project, path)} " +
+                "Returned to the chat that started this agent ÔÇö edit ${AgentPath.display(project, path)} " +
                 "there before sending it."
             openChat(parentChatId)
             return true
@@ -1176,7 +1192,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             invokedSkills.map { skill ->
                 val path = SkillPath.display(project, skill.file)
                 PrependedBlock(
-                    marker = "🧭 `/${skill.name}`",
+                    marker = "­ƒº¡ `/${skill.name}`",
                     body =
                         "The user invoked the skill \"${skill.name}\" for this message by typing " +
                             "/${skill.name}. Its instructions are in `$path`: read that file first and " +
@@ -1207,7 +1223,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 }
                 blocks +=
                     PrependedBlock(
-                        marker = "📥 `@${returned.agentName} — $name`",
+                        marker = "­ƒôÑ `@${returned.agentName} ÔÇö $name`",
                         body = "A summary returned by @${returned.agentName}, from the chat that ran it:\n\n$text",
                     )
             }
@@ -1223,7 +1239,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val attachments = chatAttachments.attachments()
             val prepended =
                 returnedBlocks() + invokedSkillBlocks() +
-                    attachments.map { PrependedBlock("📎 `${it.summary}`", it.body) }
+                    attachments.map { PrependedBlock("­ƒôÄ `${it.summary}`", it.body) }
             if (text.isEmpty() && prepended.isEmpty()) return
 
             val attached = prepended.joinToString("\n\n") { it.body }
@@ -1619,8 +1635,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     ""
                 } else {
                     buildString {
-                        append("↑ ${formatTokens(total.totalInputTokens)}   ↓ ${formatTokens(total.outputTokens)}")
-                        total.cacheHitRate?.let { append("   ⚡ ${(it * 100).roundToInt()}%") }
+                        append("Ôåæ ${formatTokens(total.totalInputTokens)}   Ôåô ${formatTokens(total.outputTokens)}")
+                        total.cacheHitRate?.let { append("   ÔÜí ${(it * 100).roundToInt()}%") }
                     }
                 }
             usageLabel.toolTipText =
@@ -1652,7 +1668,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val share = if (window > 0) used.toDouble() / window else null
             contextLabel.text =
                 buildString {
-                    append("◱ ${formatTokens(used)}")
+                    append("Ôù▒ ${formatTokens(used)}")
                     if (window > 0) append(" / ${formatTokens(window)}")
                     share?.let { append("  ${(it * 100).roundToInt()}%") }
                 }
@@ -1700,8 +1716,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             showError(
                 when {
                     next == null -> "Response hit the max_tokens limit and is incomplete."
-                    next != limit -> "Response hit the $limit-token limit — continuing at $next."
-                    else -> "Response hit the max_tokens limit — continuing."
+                    next != limit -> "Response hit the $limit-token limit ÔÇö continuing at $next."
+                    else -> "Response hit the max_tokens limit ÔÇö continuing."
                 },
             )
             return next
@@ -1711,7 +1727,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val extend = ToolCallLimitDialog.confirmExtendIterations(project, used)
             showError(
                 if (extend) {
-                    "Tool-call limit reached — continuing."
+                    "Tool-call limit reached ÔÇö continuing."
                 } else {
                     "Stopped after $used rounds of tool calls. The reply is incomplete."
                 },
