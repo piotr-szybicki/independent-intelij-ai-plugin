@@ -37,7 +37,7 @@ object AgentWorktreeService {
     private val stamp = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.ROOT)
 
     /** Returns whether the project is already opened at [targetPath]. */
-    fun isCurrentWorktree(
+    private fun isCurrentWorktree(
         project: Project,
         targetPath: Path,
     ): Boolean {
@@ -114,18 +114,6 @@ object AgentWorktreeService {
     private fun isCaseInsensitiveFileSystem(): Boolean =
         System.getProperty("os.name").contains("win", ignoreCase = true)
 
-    fun proposedNames(
-        project: Project,
-        agentName: String,
-        handoffId: String,
-    ): Result {
-        val root =
-            project.basePath?.let(Path::of)
-                ?: return Result.Failed("the project has no base directory")
-        val names = names(root, agentName, handoffId)
-        return Result.Created(names.path, names.branch, root, "")
-    }
-
     fun create(
         project: Project,
         agentName: String,
@@ -178,7 +166,7 @@ object AgentWorktreeService {
         )
     }
 
-    internal fun sanitize(value: String): String =
+    private fun sanitize(value: String): String =
         value
             .lowercase(Locale.ROOT)
             .replace(Regex("[^a-z0-9._-]+"), "-")
