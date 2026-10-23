@@ -8,6 +8,8 @@ internal interface TranscriptMessages : RestoreCheckpointMessages {
         description: String,
         specName: String,
         state: String,
+        worktreePath: String? = null,
+        worktreeBranch: String? = null,
         onOpenSpec: () -> Unit,
         onProceed: () -> Boolean,
         onCancel: () -> Unit,
