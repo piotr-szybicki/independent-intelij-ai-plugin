@@ -1,12 +1,11 @@
 package com.github.piotrszybicki.independentintelijaiplugin
 
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.Test
 
-class BasicWiringServiceTest {
-    @Test
-    fun applicationServiceReturnsItsWiringMessage() {
+class BasicWiringServiceTest : BasePlatformTestCase() {
+    fun testApplicationServiceReturnsItsWiringMessage() {
         val service = ApplicationManager.getApplication().getService(BasicWiringService::class.java)
 
         assertThat(service).isNotNull
