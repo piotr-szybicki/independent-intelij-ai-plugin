@@ -2,8 +2,6 @@ package com.github.piotrszybicki.independentintelijaiplugin.agents
 
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GitRepositories
-import com.intellij.ide.impl.OpenProjectTask
-import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -57,16 +55,7 @@ object AgentWorktreeService {
     ): Project? {
         if (isCurrentWorktree(currentProject, targetPath)) return currentProject
         return runCatching {
-            val open = {
-                ProjectUtil.openOrImport(
-                    targetPath,
-                    OpenProjectTask {
-                        projectToClose = currentProject
-                        forceOpenInNewFrame = false
-                        forceReuseFrame = true
-                    },
-                )
-            }
+            val open = { AgentWorktreeProjectOpener.open(currentProject, targetPath) }
             if (ApplicationManager.getApplication().isDispatchThread) return@runCatching open()
             var opened: Project? = null
             ApplicationManager.getApplication().invokeAndWait { opened = open() }
