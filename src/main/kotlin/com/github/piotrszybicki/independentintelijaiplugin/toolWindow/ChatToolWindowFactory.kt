@@ -304,6 +304,10 @@ class ChatToolWindowFactory : ToolWindowFactory {
             saveCurrentChat(active = true)
         }
 
+        private fun applySessionOption(option: SessionOption) {
+            conversationToolsChosen(option.applyTo(conversationTools))
+        }
+
         /*
          * The / popup's half of the same choice. Unlike the checkbox it is also an instruction:
          * the skill is switched on for the rest of the chat and the next message carries a block
@@ -570,6 +574,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
 
             AgentMentionPopup(project, input) { beginHandoff(it) }.install()
+            SessionOptionPopup(input, ::applySessionOption).install()
             SkillMentionPopup(project, input, { conversationTools.activeSkills }) { addSkill(it) }.install()
 
             session.addListener(sessionListener)
@@ -1279,6 +1284,11 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun send() {
             if (!sendButton.isEnabled) return
             val text = input.text.trim()
+            SessionOption.fromCommand(text)?.let { option ->
+                applySessionOption(option)
+                input.text = ""
+                return
+            }
             val attachments = chatAttachments.attachments()
             val prepended =
                 returnedBlocks() + invokedSkillBlocks() +
