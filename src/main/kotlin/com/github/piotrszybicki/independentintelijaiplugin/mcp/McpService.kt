@@ -2,6 +2,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.mcp
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
@@ -30,6 +31,7 @@ class McpService(
 
     private var connections: List<Connection>? = null
     private var builtFrom: String? = null
+    private var builtRoot: String? = null
 
     @Synchronized
     override fun tools(): List<AICodingAgentTool> {
@@ -61,13 +63,14 @@ class McpService(
 
     private fun current(): List<Connection> {
         val text = AICodingAgentSettingsState.getInstance().state.mcpServers
-        connections?.let { if (builtFrom == text) return it }
+        connections?.let { if (builtFrom == text && builtRoot == ChatWorkingDirectory.path(project)) return it }
 
         connections?.forEach { runCatching { it.client?.close() } }
 
         val built = connect(text)
         connections = built
         builtFrom = text
+        builtRoot = ChatWorkingDirectory.path(project)
         return built
     }
 
@@ -82,7 +85,7 @@ class McpService(
                 )
             }
 
-        val workingDir = project.basePath?.let(::File)
+        val workingDir = ChatWorkingDirectory.path(project)?.let(::File)
         val usedNames = mutableSetOf<String>()
 
         return configs.filter { it.enabled }.map { config ->

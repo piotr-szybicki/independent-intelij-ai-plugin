@@ -143,18 +143,14 @@ class FindInFilesTool(
                     ?.let { fileFilter = it }
             }
 
-        val directory = input.get("directory")?.asString
-        if (directory.isNullOrBlank()) {
-            model.isProjectScope = true
-        } else {
-            val dir =
-                PsiTargets.resolveProjectPath(project, directory)
-                    ?: return "Error: directory is outside the project: $directory"
-            if (!dir.isDirectory) return "Error: not a directory: $directory"
-            model.isProjectScope = false
-            model.directoryName = dir.path
-            model.isWithSubdirectories = true
-        }
+        val directory = input.get("directory")?.asString?.takeIf { it.isNotBlank() } ?: "."
+        val dir =
+            PsiTargets.resolveProjectPath(project, directory)
+                ?: return "Error: directory is outside the project: $directory"
+        if (!dir.isDirectory) return "Error: not a directory: $directory"
+        model.isProjectScope = false
+        model.directoryName = dir.path
+        model.isWithSubdirectories = true
 
         val found = mutableListOf<UsageInfo>()
         val files = mutableSetOf<VirtualFile>()

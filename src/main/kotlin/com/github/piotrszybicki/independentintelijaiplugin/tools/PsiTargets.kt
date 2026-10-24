@@ -18,7 +18,7 @@ object PsiTargets : PsiPathResolver, PsiElementResolver {
         project: Project,
         relativePath: String,
     ): File? {
-        val basePath = project.basePath ?: return null
+        val basePath = ChatWorkingDirectory.path(project) ?: return null
         return ProjectPaths.resolve(File(basePath), relativePath)
     }
 
@@ -97,8 +97,7 @@ object PsiTargets : PsiPathResolver, PsiElementResolver {
         val vf =
             ReadAction.computeBlocking<VirtualFile?, RuntimeException> { element.containingFile?.virtualFile }
                 ?: return false
-        val basePath = project.basePath ?: return false
-        return vf.path.startsWith(basePath)
+        return ChatWorkingDirectory.contains(project, vf.path)
     }
 
     private fun occurrenceOffset(
@@ -142,8 +141,8 @@ object PsiTargets : PsiPathResolver, PsiElementResolver {
         project: Project,
         vf: VirtualFile,
     ): String {
-        val basePath = project.basePath
-        return if (basePath != null && vf.path.startsWith(basePath)) {
+        val basePath = ChatWorkingDirectory.path(project)
+        return if (basePath != null && ChatWorkingDirectory.contains(project, vf.path)) {
             vf.path.removePrefix(basePath).trimStart('/', '\\')
         } else {
             vf.path

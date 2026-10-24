@@ -1,4 +1,4 @@
-﻿package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
+package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentDefinition
@@ -36,6 +36,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.Conversation
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillDefinition
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillPath
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunShellCommandTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.SummarizeTool
@@ -638,6 +639,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private fun applyChat(chat: StoredChat) {
+            val worktreePath = chat.agent?.worktreePath
+            if (worktreePath != null &&
+                AgentWorktreeService.openIfNeeded(project, Path.of(worktreePath)) == null
+            ) {
+                showError("Could not attach this chat's worktree: $worktreePath")
+                return
+            }
             resetConversation(chat.id, chat.createdAt)
             history.addAll(chat.messages)
             rows.addAll(chat.transcript)
@@ -660,6 +668,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             session: AgentSession?,
             known: AgentDefinition? = null,
         ) {
+            ChatWorkingDirectory.select(project, session?.worktreePath)
             agentSession = session
             activeAgent =
                 session?.let {
@@ -1138,30 +1147,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             creationError = null,
                         ),
                 )
-            // Closing the project disposes this panel. Persist and capture history first.
             saveCurrentChat(active = false, background = false)
-            val chats = chatHistory.chats().mapNotNull { chatHistory.load(it.id) }
-            val targetProject = AgentWorktreeService.openIfNeeded(project, worktree.path)
-            if (targetProject == null) {
+            if (AgentWorktreeService.openIfNeeded(project, worktree.path) == null) {
                 rows[index] =
                     stored.copy(
-                        handoff = handoff.copy(creationError = "Worktree switch was cancelled or failed"),
+                        handoff = handoff.copy(creationError = "Could not attach the worktree"),
                     )
                 saveCurrentChat(active = true, background = false)
-                showError("Could not open the worktree for @${definition.name}: ${worktree.path}")
+                showError("Could not attach the worktree for @${definition.name}: ${worktree.path}")
                 return false
             }
-            val targetHistory = ChatHistoryService.getInstance(targetProject)
-            chats.forEach { targetHistory.save(it, active = false) }
-            val toolWindow =
-                com.intellij.openapi.wm.ToolWindowManager
-                    .getInstance(targetProject)
-                    .getToolWindow(TOOL_WINDOW_ID) ?: return false
-            toolWindow.show {
-                val panel = panels[targetProject] ?: return@show
-                panel.restoreStarted.set(true)
-                panel.startAgentChat(childId, definition, session, spec, path)
-            }
+            startAgentChat(childId, definition, session, spec, path)
             return true
         }
 
@@ -1239,7 +1235,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             invokedSkills.map { skill ->
                 val path = SkillPath.display(project, skill.file)
                 PrependedBlock(
-                    marker = "­ƒº¡ `/${skill.name}`",
+                    marker = "🧭 `/${skill.name}`",
                     body =
                         "The user invoked the skill \"${skill.name}\" for this message by typing " +
                             "/${skill.name}. Its instructions are in `$path`: read that file first and " +
@@ -1286,7 +1282,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val attachments = chatAttachments.attachments()
             val prepended =
                 returnedBlocks() + invokedSkillBlocks() +
-                    attachments.map { PrependedBlock("­ƒôÄ `${it.summary}`", it.body) }
+                    attachments.map { PrependedBlock("📎 `${it.summary}`", it.body) }
             if (text.isEmpty() && prepended.isEmpty()) return
 
             val attached = prepended.joinToString("\n\n") { it.body }

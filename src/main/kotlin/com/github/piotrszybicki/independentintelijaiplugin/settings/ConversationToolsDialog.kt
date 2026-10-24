@@ -1,4 +1,4 @@
-﻿package com.github.piotrszybicki.independentintelijaiplugin.settings
+package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillDefinition
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ToolCatalog

@@ -160,7 +160,8 @@ internal class ChatTranscript(
         content.repaint()
     }
 
-    override fun addAssistantMessage(markdown: String) = intoAiTurn(AssistantRow(markdown))
+    override fun addAssistantMessage(markdown: String) =
+        intoAiTurn(AssistantRow(markdown) { command -> TerminalCommandPaste.paste(project, command) })
 
     override fun addToolCall(
         requestId: String,

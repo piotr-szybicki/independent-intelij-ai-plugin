@@ -8,6 +8,7 @@ import com.intellij.util.ui.JBUI
 import java.awt.Dimension
 import java.awt.Font
 import javax.swing.JEditorPane
+import javax.swing.text.View
 import javax.swing.text.html.StyleSheet
 
 internal fun chatCodeFontName(): String {
@@ -17,8 +18,16 @@ internal fun chatCodeFontName(): String {
     return colors.globalScheme.editorFontName
 }
 
-internal class HtmlTextPane : JEditorPane("text/html", "") {
+internal class HtmlTextPane(
+    private val allowHorizontalOverflow: Boolean = false,
+) : JEditorPane("text/html", "") {
     private var fixedWidth = -1
+    var layoutControls: (() -> Unit)? = null
+
+    override fun doLayout() {
+        super.doLayout()
+        layoutControls?.invoke()
+    }
 
     init {
         isEditable = false
@@ -35,12 +44,18 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
     private fun addStyles(sheet: StyleSheet) {
         val codeFont = chatCodeFontName()
         val codeBackground = ChatColors.hex(ChatColors.codeBackground)
+        val codeBorder = "1px solid ${ChatColors.hex(ChatColors.aiBubbleBorder)}"
         sheet.addRule("body { margin: 0; padding: 0; }")
         sheet.addRule("p { margin: 0 0 ${JBUI.scale(6)}px 0; }")
         sheet.addRule("ul, ol { margin: ${JBUI.scale(4)}px 0 ${JBUI.scale(6)}px ${JBUI.scale(18)}px; }")
         sheet.addRule("li { margin: ${JBUI.scale(2)}px 0; }")
         sheet.addRule("h1, h2, h3, h4 { margin: ${JBUI.scale(10)}px 0 ${JBUI.scale(4)}px 0; }")
         sheet.addRule("a { color: ${ChatColors.hex(ChatColors.accent)}; }")
+        sheet.addRule("div.shell-code-wrapper { margin: ${JBUI.scale(14)}px 0 ${JBUI.scale(6)}px; }")
+        sheet.addRule(
+            "pre.shell-code-block { margin: 0; border: $codeBorder; " +
+                "padding: ${JBUI.scale(14)}px ${JBUI.scale(7)}px ${JBUI.scale(7)}px; }",
+        )
         sheet.addRule("code { font-family: $codeFont; background-color: $codeBackground; }")
         sheet.addRule(
             "pre { font-family: $codeFont; background-color: $codeBackground; " +
@@ -68,8 +83,20 @@ internal class HtmlTextPane : JEditorPane("text/html", "") {
 
     override fun getPreferredSize(): Dimension {
         val preferred = super.getPreferredSize()
-        return if (fixedWidth > 0) Dimension(fixedWidth, preferred.height) else preferred
+        val width = if (allowHorizontalOverflow) maxOf(fixedWidth, contentMinimumWidth()) else fixedWidth
+        return if (fixedWidth > 0) Dimension(width, preferred.height) else preferred
     }
+
+    override fun getScrollableTracksViewportWidth(): Boolean =
+        if (allowHorizontalOverflow) {
+            maxOf(fixedWidth, contentMinimumWidth()) <= (parent?.width ?: 0)
+        } else {
+            super.getScrollableTracksViewportWidth()
+        }
+
+    private fun contentMinimumWidth(): Int =
+        kotlin.math.ceil(getUI().getRootView(this).getMinimumSpan(View.X_AXIS).toDouble()).toInt() +
+            insets.left + insets.right
 
     override fun getMinimumSize(): Dimension =
         if (fixedWidth > 0) {

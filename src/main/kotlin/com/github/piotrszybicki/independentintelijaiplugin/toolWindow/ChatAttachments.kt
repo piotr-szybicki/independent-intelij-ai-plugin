@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -170,7 +171,7 @@ internal class ChatAttachments(
     }
 
     private fun displayPathOf(virtualFile: VirtualFile?): String {
-        val basePath = project.basePath
+        val basePath = ChatWorkingDirectory.path(project)
         return when {
             virtualFile == null -> "untitled"
             basePath != null && virtualFile.path.startsWith(basePath) ->

@@ -30,6 +30,7 @@ class FindUsagesTool(
                 ReferencesSearch.search(element).mapNotNull { ref ->
                     val refElement = ref.element
                     val refFile = refElement.containingFile?.virtualFile ?: return@mapNotNull null
+                    if (!ChatWorkingDirectory.contains(project, refFile.path)) return@mapNotNull null
                     val doc = FileDocumentManager.getInstance().getDocument(refFile) ?: return@mapNotNull null
                     val refLine = doc.getLineNumber(refElement.textOffset) + 1
                     "${PsiTargets.relativePath(project, refFile)}:$refLine"
