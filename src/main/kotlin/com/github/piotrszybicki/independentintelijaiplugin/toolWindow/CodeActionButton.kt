@@ -33,7 +33,7 @@ internal class CodeActionButton(
                 try {
                     canvas.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
                     canvas.color = ChatColors.accent
-                    canvas.stroke = BasicStroke(JBUI.scale(1.5f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
+                    canvas.stroke = BasicStroke(JBUI.scale(1) * 1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND)
                     canvas.translate(x, y)
                     canvas.drawLine(iconWidth / 5, iconHeight / 2, iconWidth * 2 / 5, iconHeight * 3 / 4)
                     canvas.drawLine(iconWidth * 2 / 5, iconHeight * 3 / 4, iconWidth * 4 / 5, iconHeight / 4)

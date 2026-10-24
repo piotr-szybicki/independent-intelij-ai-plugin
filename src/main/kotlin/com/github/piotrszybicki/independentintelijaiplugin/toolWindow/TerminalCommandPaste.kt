@@ -28,10 +28,10 @@ internal object TerminalCommandPaste {
                 if (!project.isDisposed) {
                     val terminal =
                         idle
-                            ?: manager.createNewSession(
+                            // The newer createNewSession overload is internal API.
+                            ?: manager.createShellWidget(
                                 ChatWorkingDirectory.path(project),
                                 "AI commands",
-                                null,
                                 true,
                                 true,
                             )
