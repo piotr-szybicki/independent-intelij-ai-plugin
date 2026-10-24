@@ -4,15 +4,18 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import javax.swing.JTextPane
+import javax.swing.SwingUtilities
 
 class MentionPopupSupportTest {
     @Test
     fun `accepting a mention suppresses only the immediately following submit`() {
-        val input = JTextPane()
+        SwingUtilities.invokeAndWait {
+            val input = JTextPane()
 
-        ComposerSubmitSuppression.suppressNextSubmit(input)
+            ComposerSubmitSuppression.suppressNextSubmit(input)
 
-        assertTrue(ComposerSubmitSuppression.consumeSuppressedSubmit(input))
-        assertFalse(ComposerSubmitSuppression.consumeSuppressedSubmit(input))
+            assertTrue(ComposerSubmitSuppression.consumeSuppressedSubmit(input))
+            assertFalse(ComposerSubmitSuppression.consumeSuppressedSubmit(input))
+        }
     }
 }

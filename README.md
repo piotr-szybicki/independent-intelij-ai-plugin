@@ -18,6 +18,25 @@ progress return an error instead of claiming success. Files are never clipped to
 context window. Existing `get_file_problems` selections map to `analyse_and_fix`;
 `apply_quick_fix` is no longer available.
 
+## Agent worktrees
+
+Proceeding with an agent handoff creates a separate Git worktree from the current
+chat's committed `HEAD` and attaches it as an additional root in the existing IntelliJ
+project. The original project, window, and chat history stay open. Uncommitted edits
+are not copied to the worktree.
+
+Each agent chat remembers its worktree. Switching chats selects that folder for file
+tools, searches, Git commands, and shell commands; returning to the parent chat restores
+its folder. Local MCP connections are recreated for the selected folder. The agent
+banner shows its branch. A missing worktree prevents opening that chat rather than
+silently using the original project.
+
+Attachment adds a content root and Git mapping; it does not import the worktree's
+Gradle/Maven build or create separate run/debug configurations. Import its build in
+the IDE if needed. IDE actions and run/debug configurations still belong to the shared
+IntelliJ project. Worktrees remain on disk; returning a summary does not merge changes
+or delete the worktree.
+
 ## Packaging it and installation
 
 `buildPlugin` produces the installable distribution ZIP:

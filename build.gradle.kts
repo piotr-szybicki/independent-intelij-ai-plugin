@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
@@ -40,6 +41,11 @@ kotlin {
 
 tasks.withType<JavaCompile>().configureEach {
     options.release = 25
+}
+
+tasks.withType<RunIdeTask>().configureEach {
+    // Avoid broken Windows registry performance counters in the development IDE's heartbeat metrics.
+    systemProperty("oshi.os.windows.hkeyperfdata", "false")
 }
 
 detekt {

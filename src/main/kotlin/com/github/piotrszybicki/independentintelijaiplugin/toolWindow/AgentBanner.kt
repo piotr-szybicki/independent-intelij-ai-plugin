@@ -1,4 +1,4 @@
-﻿package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
+package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.intellij.ui.components.JBLabel
@@ -64,7 +64,7 @@ internal class AgentBanner(
         if (session == null) {
             component.isVisible = false
         } else {
-            label.text = "Agent chat — @${session.agentName}"
+            label.text = "Agent chat — @${session.agentName}" + session.worktreeBranch?.let { " · $it" }.orEmpty()
             label.toolTipText = tools?.let { "Tools in this chat: $it" }
             parentChat.isVisible = session.parentChatId != null
             spec.isVisible = session.specPath != null

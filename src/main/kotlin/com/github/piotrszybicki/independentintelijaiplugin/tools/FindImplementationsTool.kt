@@ -88,7 +88,11 @@ class FindImplementationsTool(
     )
 
     private fun search(target: PsiElement): List<Hit> {
-        val found = DefinitionsScopedSearch.search(target).filter { it != target }
+        val found =
+            DefinitionsScopedSearch
+                .search(
+                    target,
+                ).filter { it != target && PsiTargets.isInProject(project, it) }
 
         return found
             .mapNotNull { describe(it) }

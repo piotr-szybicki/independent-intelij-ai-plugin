@@ -1,4 +1,4 @@
-﻿package com.github.piotrszybicki.independentintelijaiplugin.settings
+package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase
 import com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory

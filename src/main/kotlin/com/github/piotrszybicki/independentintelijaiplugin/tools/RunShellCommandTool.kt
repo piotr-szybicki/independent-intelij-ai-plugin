@@ -121,7 +121,7 @@ class RunShellCommandTool(
         val relativeDir = input.get("working_dir")?.asString
         val workDir =
             if (relativeDir.isNullOrBlank()) {
-                project.basePath?.let(::File) ?: return "Error: the project has no directory on disk"
+                ChatWorkingDirectory.path(project)?.let(::File) ?: return "Error: the project has no directory on disk"
             } else {
                 try {
                     PsiTargets.resolveProjectPath(project, relativeDir)
@@ -252,7 +252,7 @@ class RunShellCommandTool(
         duplicate: Boolean = false,
     ): String {
         val body =
-            runCatching { running.output.digest(project.basePath) }
+            runCatching { running.output.digest(ChatWorkingDirectory.path(project)) }
                 .getOrElse { "[Could not read the persistent log: ${it.message}]" }
         return buildString {
             append("$ ${running.command}\n")

@@ -1,6 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.agents
 
 import com.github.piotrszybicki.independentintelijaiplugin.files.EditorBackedFileReader
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
 import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -85,7 +86,7 @@ object AgentFiles {
         now: LocalDateTime,
         text: () -> String,
     ): Path? {
-        val root = project.basePath ?: return null
+        val root = ChatWorkingDirectory.path(project) ?: return null
         val path = Path.of(root, DIRECTORY, "${sanitize(agentName)}-$kind-${FILE_STAMP.format(now)}.md")
 
         return try {

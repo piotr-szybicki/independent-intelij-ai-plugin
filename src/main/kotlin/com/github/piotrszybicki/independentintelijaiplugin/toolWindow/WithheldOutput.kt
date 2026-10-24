@@ -1,6 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.github.piotrszybicki.independentintelijaiplugin.files.EditorBackedFileReader
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
 import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -24,7 +25,7 @@ internal object WithheldOutput {
         toolName: String,
         output: String,
     ): Path? {
-        val root = project.basePath ?: return null
+        val root = ChatWorkingDirectory.path(project) ?: return null
         val name = "${sanitize(toolName)}-${FILE_STAMP.format(LocalDateTime.now())}.txt"
         val path = Path.of(root, DIRECTORY, name)
 

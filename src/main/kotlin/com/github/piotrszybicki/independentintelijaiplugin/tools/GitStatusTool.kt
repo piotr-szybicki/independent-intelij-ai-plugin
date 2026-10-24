@@ -116,7 +116,7 @@ class GitStatusTool(
     ): Boolean = path.path == root.path || path.path.startsWith(root.path + "/")
 
     private fun relativePath(path: FilePath): String {
-        val basePath = project.basePath ?: return path.path
+        val basePath = ChatWorkingDirectory.path(project) ?: return path.path
         return if (path.path.startsWith(basePath)) {
             path.path.removePrefix(basePath).trimStart('/', '\\')
         } else {

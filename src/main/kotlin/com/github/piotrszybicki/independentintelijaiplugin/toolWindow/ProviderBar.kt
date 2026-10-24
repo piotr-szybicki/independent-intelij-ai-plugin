@@ -1,4 +1,4 @@
-﻿package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
+package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration

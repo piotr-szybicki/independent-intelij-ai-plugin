@@ -14,7 +14,7 @@ object ProjectEnvironment {
                     "run_shell_command input in this dialect, and use this platform's path separators " +
                     "and script extensions in it.",
             )
-            project.basePath?.let { appendLine("- Project root: $it") }
+            ChatWorkingDirectory.path(project)?.let { appendLine("- Project root: $it") }
             append("- IDE: ${ApplicationInfo.getInstance().fullApplicationName}")
         }
 }

@@ -161,7 +161,11 @@ class FindByNameTool(
                     }.getOrDefault(emptyArray())
 
                 for (item in items) {
-                    results.add(renderNavigationItem(candidateName, item))
+                    if (item is PsiElement &&
+                        PsiTargets.isInProject(project, item)
+                    ) {
+                        results.add(renderNavigationItem(candidateName, item))
+                    }
                     if (results.size >= maxResults) return results
                 }
             }

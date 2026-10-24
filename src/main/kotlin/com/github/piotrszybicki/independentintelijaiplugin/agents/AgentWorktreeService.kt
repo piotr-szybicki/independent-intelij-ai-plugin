@@ -1,6 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.agents
 
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
+import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
 import com.github.piotrszybicki.independentintelijaiplugin.tools.GitRepositories
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.project.Project
@@ -39,16 +40,13 @@ object AgentWorktreeService {
         project: Project,
         targetPath: Path,
     ): Boolean {
+        if (!Files.isDirectory(targetPath)) return false
         val basePath = project.basePath?.let(Path::of) ?: return false
         if (samePath(basePath, targetPath)) return true
-        return runCatching {
-            val resolved = GitRepositories.resolve(project, null)
-            resolved is GitRepositories.Resolved.Ok &&
-                samePath(Path.of(resolved.repository.root.path), targetPath)
-        }.getOrDefault(false)
+        return false
     }
 
-    /** Switches the current window to [targetPath], returning its project for agent tools. */
+    /** Attaches [targetPath] to the current project, preserving its window and chat history. */
     fun openIfNeeded(
         currentProject: Project,
         targetPath: Path,
@@ -115,7 +113,7 @@ object AgentWorktreeService {
         val repository = resolved.repository
         val repositoryRoot = Path.of(repository.root.path)
         val root =
-            project.basePath?.let(Path::of)
+            ChatWorkingDirectory.path(project)?.let(Path::of)
                 ?: return Result.Failed("the project has no base directory")
         val worktree = names(root, agentName, handoffId)
         if (Files.exists(worktree.path)) return Result.Failed("destination already exists: ${worktree.path}")

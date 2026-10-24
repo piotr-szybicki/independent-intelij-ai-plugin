@@ -97,8 +97,15 @@ class RunActionTool(
         actionId: String,
         action: AnAction,
     ): String {
-        val editor = FileEditorManager.getInstance(project).selectedTextEditor
-        val editorFile = editor?.let { FileDocumentManager.getInstance().getFile(it.document) }
+        val editor =
+            FileEditorManager.getInstance(project).selectedTextEditor?.takeIf {
+                FileDocumentManager.getInstance().getFile(it.document)?.let { file ->
+                    ChatWorkingDirectory.contains(project, file.path)
+                } == true
+            }
+        val editorFile =
+            editor?.let { FileDocumentManager.getInstance().getFile(it.document) }
+                ?: PsiTargets.resolveProjectFile(project, ".")
 
         val context =
             SimpleDataContext
