@@ -3,7 +3,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.tools
 import com.intellij.analysis.AnalysisScope
 import com.intellij.codeInspection.InspectionManager
 import com.intellij.codeInspection.actions.CodeInspectionAction
-import com.intellij.codeInspection.ex.InspectionManagerEx
+import com.intellij.codeInspection.ex.GlobalInspectionContextEx
 import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.Task
@@ -35,8 +35,7 @@ internal class TrackedInspectionAction(
         Disposer.register(lifetime) { outcome.complete("Code inspection stopped because the project closed.") }
         outcome.whenComplete { _, _ -> Disposer.dispose(lifetime) }
 
-        val manager = InspectionManager.getInstance(project) as InspectionManagerEx
-        val context = TrackedInspectionContext(project, manager)
+        val context = InspectionManager.getInstance(project).createNewGlobalContext() as GlobalInspectionContextEx
         context.setExternalProfile(myExternalProfile)
         context.currentScope = scope
         scope.setSearchInLibraries(false)
@@ -45,18 +44,17 @@ internal class TrackedInspectionAction(
             if (project.isDisposed || outcome.isDone) return@runWhenSmart
             try {
                 PsiDocumentManager.getInstance(project).commitAllDocuments()
-                context.prepare()
                 object : Task.Backgroundable(project, "Inspect Code", true) {
                     private var findings = ""
 
                     override fun run(indicator: ProgressIndicator) {
-                        context.performInspectionsWithProgress(scope, false, false)
+                        context.performInspectionsWithProgress(scope, false, true)
                         findings = ReadAction.compute<String, RuntimeException> { context.findings() }
                     }
 
                     override fun onSuccess() {
                         try {
-                            context.showResults(scope)
+                            context.cleanup()
                         } finally {
                             outcome.complete(findings)
                         }
