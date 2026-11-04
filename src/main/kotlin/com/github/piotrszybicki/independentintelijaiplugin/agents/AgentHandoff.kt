@@ -6,8 +6,6 @@ data class AgentHandoff(
     val parentChatId: String,
     val childChatId: String? = null,
     val state: String = DRAFT,
-    val worktreePath: String? = null,
-    val worktreeBranch: String? = null,
     val creationError: String? = null,
 ) {
     val isSettled: Boolean get() = state != DRAFT

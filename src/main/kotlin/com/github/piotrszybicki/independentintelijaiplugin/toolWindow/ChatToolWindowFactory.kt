@@ -8,7 +8,6 @@ import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentPath
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentToolPolicy
-import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentWorktreeService
 import com.github.piotrszybicki.independentintelijaiplugin.agents.DelegateToAgentTool
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgent
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentEndpoint
@@ -36,7 +35,6 @@ import com.github.piotrszybicki.independentintelijaiplugin.settings.Conversation
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillDefinition
 import com.github.piotrszybicki.independentintelijaiplugin.skills.SkillPath
-import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ProjectEnvironment
 import com.github.piotrszybicki.independentintelijaiplugin.tools.RunShellCommandTool
 import com.github.piotrszybicki.independentintelijaiplugin.tools.SummarizeTool
@@ -89,6 +87,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             project: Project,
             code: String,
             displayPath: String,
+            filePath: String?,
             extension: String,
             lineRange: String,
         ) {
@@ -98,7 +97,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     .getToolWindow(TOOL_WINDOW_ID) ?: return
             toolWindow.show {
                 val panel = panels[project] ?: return@show
-                panel.startSideChat(code, displayPath, extension, lineRange)
+                panel.startSideChat(code, displayPath, filePath, extension, lineRange)
             }
         }
 
@@ -644,13 +643,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private fun applyChat(chat: StoredChat) {
-            val worktreePath = chat.agent?.worktreePath
-            if (worktreePath != null &&
-                AgentWorktreeService.openIfNeeded(project, Path.of(worktreePath)) == null
-            ) {
-                showError("Could not attach this chat's worktree: $worktreePath")
-                return
-            }
             resetConversation(chat.id, chat.createdAt)
             history.addAll(chat.messages)
             rows.addAll(chat.transcript)
@@ -673,7 +665,6 @@ class ChatToolWindowFactory : ToolWindowFactory {
             session: AgentSession?,
             known: AgentDefinition? = null,
         ) {
-            ChatWorkingDirectory.select(project, session?.worktreePath)
             agentSession = session
             activeAgent =
                 session?.let {
@@ -1084,10 +1075,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 agentName = handoff.agentName,
                 description = description,
                 specName = AgentPath.display(project, path),
-                state = handoff.state,
-                worktreePath = handoff.worktreePath,
-                worktreeBranch = handoff.worktreeBranch,
-                onOpenSpec = { openAgentFile(path) },
+                state = handoff.state,                onOpenSpec = { openAgentFile(path) },
                 onProceed = { proceedWithHandoff(index) },
                 onCancel = { cancelHandoff(index) },
                 onOpenChat = {
@@ -1125,43 +1113,9 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
 
             val childId = ChatHistoryService.newChatId()
-            val worktree = AgentWorktreeService.create(project, definition.name, childId)
-            if (worktree !is AgentWorktreeService.Result.Created) {
-                val message = (worktree as AgentWorktreeService.Result.Failed).message
-                rows[index] = stored.copy(handoff = handoff.copy(state = AgentHandoff.FAILED, creationError = message))
-                saveCurrentChat(active = true)
-                showError("Could not create the worktree for @${definition.name}: $message")
-                return false
-            }
-            val session =
-                AgentSession(
-                    definition.name,
-                    chatId,
-                    handoff.specPath,
-                    worktree.path.toString(),
-                    worktree.branch,
-                )
-            rows[index] =
-                stored.copy(
-                    handoff =
-                        handoff.copy(
-                            childChatId = childId,
-                            state = AgentHandoff.PROCEEDED,
-                            worktreePath = worktree.path.toString(),
-                            worktreeBranch = worktree.branch,
-                            creationError = null,
-                        ),
-                )
-            saveCurrentChat(active = false, background = false)
-            if (AgentWorktreeService.openIfNeeded(project, worktree.path) == null) {
-                rows[index] =
-                    stored.copy(
-                        handoff = handoff.copy(creationError = "Could not attach the worktree"),
-                    )
-                saveCurrentChat(active = true, background = false)
-                showError("Could not attach the worktree for @${definition.name}: ${worktree.path}")
-                return false
-            }
+            val session = AgentSession(definition.name, chatId, handoff.specPath)
+            rows[index] = stored.copy(handoff = handoff.copy(childChatId = childId, state = AgentHandoff.PROCEEDED))
+            saveCurrentChat(active = false)
             startAgentChat(childId, definition, session, spec, path)
             return true
         }
@@ -1292,7 +1246,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val attachments = chatAttachments.attachments()
             val prepended =
                 returnedBlocks() + invokedSkillBlocks() +
-                    attachments.map { PrependedBlock("📎 `${it.summary}`", it.body) }
+                    attachments.map { PrependedBlock(AttachmentFileLink.markdown(it.filePath, it.summary), it.body) }
             if (text.isEmpty() && prepended.isEmpty()) return
 
             val attached = prepended.joinToString("\n\n") { it.body }
@@ -1794,11 +1748,12 @@ class ChatToolWindowFactory : ToolWindowFactory {
         override fun startSideChat(
             code: String,
             displayPath: String,
+            filePath: String?,
             extension: String,
             lineRange: String,
         ) {
             startNewChat()
-            chatAttachments.startSideChat(code, displayPath, extension, lineRange)
+            chatAttachments.startSideChat(code, displayPath, filePath, extension, lineRange)
             input.requestFocusInWindow()
         }
 

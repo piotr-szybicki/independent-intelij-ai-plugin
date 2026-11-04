@@ -104,7 +104,7 @@ internal class ChatTranscript(
         endAiTurn()
         clearRequestFailure()
         lastToolGroup = null
-        addRow(UserRow(markdown).also { lastUserRow = it })
+        addRow(UserRow(markdown, project).also { lastUserRow = it })
     }
 
     override fun addHandoff(
@@ -112,8 +112,6 @@ internal class ChatTranscript(
         description: String,
         specName: String,
         state: String,
-        worktreePath: String?,
-        worktreeBranch: String?,
         onOpenSpec: () -> Unit,
         onProceed: () -> Boolean,
         onCancel: () -> Unit,
@@ -127,8 +125,6 @@ internal class ChatTranscript(
                 description,
                 specName,
                 state,
-                worktreePath,
-                worktreeBranch,
                 onOpenSpec = onOpenSpec,
                 onProceed = onProceed,
                 onCancel = onCancel,

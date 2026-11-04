@@ -7,12 +7,14 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.InplaceButton
+import com.intellij.ui.components.ActionLink
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import java.awt.GridLayout
+import java.io.File
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.ScrollPaneConstants
@@ -25,6 +27,7 @@ internal class ChatAttachments(
     data class PendingAttachment(
         val summary: String,
         val body: String,
+        val filePath: String? = null,
     )
 
     private val maxAttachmentChars = 60_000
@@ -58,6 +61,7 @@ internal class ChatAttachments(
         val document = editor.document
         val virtualFile = FileDocumentManager.getInstance().getFile(document)
         val displayPath = displayPathOf(virtualFile)
+        val fileName = virtualFile?.name ?: displayPath
         val extension = virtualFile?.extension.orEmpty()
 
         if (selectedText.isNullOrEmpty()) {
@@ -75,7 +79,8 @@ internal class ChatAttachments(
             }
             add(
                 body = fence("Full contents of $displayPath (${document.lineCount} lines)", extension, text),
-                summary = "$displayPath (whole file)",
+                summary = "$fileName (whole file)",
+                filePath = virtualFile?.url,
             )
             return
         }
@@ -86,27 +91,31 @@ internal class ChatAttachments(
 
         add(
             body = fence("Selected code from $displayPath ($lineRange)", extension, selectedText),
-            summary = "$displayPath ($lineRange)",
+            summary = "$fileName ($lineRange)",
+            filePath = virtualFile?.url,
         )
     }
 
     override fun startSideChat(
         code: String,
         displayPath: String,
+        filePath: String?,
         extension: String,
         lineRange: String,
     ) {
         add(
             body = fence("Selected code from $displayPath ($lineRange)", extension, code),
-            summary = "$displayPath ($lineRange)",
+            summary = "${filePath?.let(::File)?.name ?: displayPath} ($lineRange)",
+            filePath = filePath,
         )
     }
 
     override fun add(
         body: String,
         summary: String,
+        filePath: String?,
     ) {
-        val existing = pending.indexOfFirst { it.summary == summary }
+        val existing = pending.indexOfFirst { it.summary == summary && it.filePath == filePath }
         val othersLength =
             pending
                 .filterIndexed { index, _ -> index != existing }
@@ -119,7 +128,7 @@ internal class ChatAttachments(
             return
         }
 
-        val attachment = PendingAttachment(summary, body)
+        val attachment = PendingAttachment(summary, body, filePath)
         if (existing >= 0) pending[existing] = attachment else pending.add(attachment)
         onStatus(" ")
         refresh()
@@ -152,11 +161,7 @@ internal class ChatAttachments(
             ).apply {
                 border = JBUI.Borders.empty(JBUI.scale(3), JBUI.scale(7))
                 add(
-                    JBLabel("📎 ${attachment.summary}").apply {
-                        font = JBFont.small()
-                        foreground = ChatColors.foreground
-                        toolTipText = attachment.summary
-                    },
+                    attachmentLabel(attachment),
                     BorderLayout.CENTER,
                 )
                 add(
@@ -169,6 +174,22 @@ internal class ChatAttachments(
             add(chip)
         }
     }
+
+    private fun attachmentLabel(attachment: PendingAttachment): JComponent =
+        if (attachment.filePath == null) {
+            JBLabel("📎 ${attachment.summary}").apply {
+                font = JBFont.small()
+                foreground = ChatColors.foreground
+                toolTipText = attachment.summary
+            }
+        } else {
+            ActionLink("📎 ${attachment.summary}") {
+                AttachmentFileLink.open(project, attachment.filePath)
+            }.apply {
+                font = JBFont.small()
+                toolTipText = attachment.filePath
+            }
+        }
 
     private fun displayPathOf(virtualFile: VirtualFile?): String {
         val basePath = ChatWorkingDirectory.path(project)

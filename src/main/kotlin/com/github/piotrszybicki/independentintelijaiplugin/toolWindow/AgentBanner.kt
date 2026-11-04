@@ -64,7 +64,7 @@ internal class AgentBanner(
         if (session == null) {
             component.isVisible = false
         } else {
-            label.text = "Agent chat — @${session.agentName}" + session.worktreeBranch?.let { " · $it" }.orEmpty()
+            label.text = "Agent chat — @${session.agentName}"
             label.toolTipText = tools?.let { "Tools in this chat: $it" }
             parentChat.isVisible = session.parentChatId != null
             spec.isVisible = session.specPath != null
