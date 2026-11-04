@@ -4,6 +4,7 @@ internal interface ChatSideConversation {
     fun startSideChat(
         code: String,
         displayPath: String,
+        filePath: String?,
         extension: String,
         lineRange: String,
     )

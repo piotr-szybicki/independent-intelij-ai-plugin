@@ -68,7 +68,6 @@ object GitRepositories {
         manager: GitRepositoryManager,
     ): GitRepository? {
         val baseDir = ChatWorkingDirectory.path(project)?.let { LocalFileSystem.getInstance().findFileByPath(it) }
-        // Never fall back to a different worktree when this chat's root is missing or unmapped.
         return baseDir?.let { manager.getRepositoryForFile(it) }
     }
 

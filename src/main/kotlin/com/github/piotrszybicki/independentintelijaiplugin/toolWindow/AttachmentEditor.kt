@@ -6,6 +6,7 @@ internal interface AttachmentEditor {
     fun startSideChat(
         code: String,
         displayPath: String,
+        filePath: String?,
         extension: String,
         lineRange: String,
     )
@@ -13,6 +14,7 @@ internal interface AttachmentEditor {
     fun add(
         body: String,
         summary: String,
+        filePath: String?,
     )
 
     fun clear()

@@ -1,12 +1,15 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import com.intellij.openapi.project.Project
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import java.awt.FlowLayout
 import javax.swing.JPanel
+import javax.swing.event.HyperlinkEvent
 
 internal class UserRow(
     markdown: String,
+    project: Project? = null,
 ) : ChatRow(BorderLayout()),
     FailedRequest {
     private val body = HtmlTextPane()
@@ -41,7 +44,23 @@ internal class UserRow(
 
     init {
         border = JBUI.Borders.emptyLeft(ChatMetrics.bubbleIndent)
-        body.setHtml(MarkdownRenderer.toHtml(MarkdownRenderer.normalizeQuoteFences(markdown)))
+        val renderedMarkdown =
+            project?.let { AttachmentFileLink.linkLegacyMarkers(it, markdown) } ?: markdown
+        body.setHtml(
+            MarkdownRenderer.toHtml(
+                MarkdownRenderer.normalizeQuoteFences(renderedMarkdown),
+            ),
+        )
+        body.addHyperlinkListener { event ->
+            val href = event.description ?: return@addHyperlinkListener
+            if (
+                event.eventType == HyperlinkEvent.EventType.ACTIVATED &&
+                project != null &&
+                AttachmentFileLink.isFileLink(href)
+            ) {
+                AttachmentFileLink.open(project, href)
+            }
+        }
         add(bubble, BorderLayout.CENTER)
     }
 

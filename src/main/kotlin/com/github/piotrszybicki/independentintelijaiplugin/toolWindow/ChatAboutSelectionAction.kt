@@ -49,6 +49,6 @@ class ChatAboutSelectionAction :
         val endLine = document.getLineNumber(selectionModel.selectionEnd) + 1
         val lineRange = if (startLine == endLine) "line $startLine" else "lines $startLine-$endLine"
 
-        ChatToolWindowFactory.openSideChat(project, selectedText, displayPath, extension, lineRange)
+        ChatToolWindowFactory.openSideChat(project, selectedText, displayPath, virtualFile?.url, extension, lineRange)
     }
 }
