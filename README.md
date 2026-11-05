@@ -55,3 +55,9 @@ $env:INTELIJ_AI_SETTINGS = "$HOME/.config/independent-ai-plugin-settings.json"
 ```bash
 docker run -d --name ai-usage -e MYSQL_ROOT_PASSWORD=secret -p 3306:3306 mysql:9
 ```
+
+### Web search with Tavily
+
+Add `"tavily": { "token": "your-tavily-api-key" }` to the top-level JSON configuration, then enable `web_serch` in the plugin's tool settings or conversation tools. The token can alternatively reference an environment variable, for example `"$TAVILY_API_KEY"`. Search queries are sent to Tavily and may consume Tavily credits.
+
+When the usage database is enabled, actual Tavily requests are recorded in `tavily_requests` with the query, conversation and tool identifiers, HTTP status, duration, error type, and response body in a JSON column (up to one million characters). Non-JSON or truncated responses are stored as JSON strings. The API token is not recorded. Agent tool calls are also recorded in `model_tool_calls`. Recorded requests do not report billed credits or cost.

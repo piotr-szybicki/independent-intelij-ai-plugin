@@ -287,7 +287,7 @@ class AICodingAgent(
                             runCatching {
                                 val tool =
                                     toolsByName[toolName] ?: throw AICodingAgentApiException("Unknown tool: $toolName")
-                                tool.execute(input)
+                                tool.execute(input, ToolExecutionContext(conversationId, turn.requestId, toolUseId))
                             }.getOrElse { e ->
                                 log.info("Tool '$toolName' failed: ${e.message}")
                                 if (isCancelled()) {

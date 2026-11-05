@@ -12,5 +12,10 @@ interface AICodingAgentTool {
 
     fun execute(input: JsonObject): String
 
+    fun execute(
+        input: JsonObject,
+        context: ToolExecutionContext,
+    ): String = execute(input)
+
     fun toDefinition() = ToolDefinition(name, description, inputSchema)
 }
