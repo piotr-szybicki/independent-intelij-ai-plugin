@@ -1,5 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.logging
 
+import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ToolExecutionContext
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
@@ -14,7 +15,15 @@ import java.sql.Timestamp
 import java.sql.Types
 import java.time.Instant
 import java.util.Properties
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+
+internal fun tavilyResponseJson(body: String): String =
+    if (body.isBlank()) {
+        JsonPrimitive(body).toString()
+    } else {
+        runCatching { JsonParser.parseString(body).toString() }.getOrElse { JsonPrimitive(body).toString() }
+    }
 
 object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
     private val fallback = Logger.getInstance(ModelUsageDatabase::class.java)
@@ -22,6 +31,8 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
     const val TABLE = "model_requests"
 
     const val TOOL_TABLE = "model_tool_calls"
+
+    const val TAVILY_TABLE = "tavily_requests"
 
     private const val RETRY_INTERVAL_MILLIS = 30_000L
 
@@ -176,6 +187,40 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
     }
 
     private val unpricedWarned = ConcurrentHashMap.newKeySet<String>()
+
+    fun recordTavilyCall(
+        context: ToolExecutionContext,
+        query: String,
+        status: Int?,
+        durationMillis: Long,
+        error: String?,
+        responseBody: String?,
+    ) {
+        val startedAt = Timestamp.from(Instant.now().minusMillis(durationMillis))
+        val id = UUID.randomUUID().toString()
+        submit(
+            """
+            INSERT INTO $TAVILY_TABLE (
+                id, conversation_id, request_id, tool_use_id, started_at, query_text,
+                search_depth, max_results, status_code, duration_ms, error, response_body
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE id = id
+            """.trimIndent(),
+        ) { _ ->
+            setString(1, id)
+            setString(2, context.conversationId.ifBlank { UNASSIGNED })
+            setString(3, context.requestId.takeIf { it.isNotBlank() })
+            setString(4, context.toolUseId.takeIf { it.isNotBlank() })
+            setTimestamp(5, startedAt)
+            setString(6, query)
+            setString(7, "basic")
+            setInt(8, 5)
+            if (status == null) setNull(9, Types.INTEGER) else setInt(9, status)
+            setLong(10, durationMillis)
+            setString(11, error)
+            setString(12, responseBody?.let { tavilyResponseJson(truncated(it)) })
+        }
+    }
 
     private fun reportUnpriced(model: String) {
         if (!unpricedWarned.add(model)) return
@@ -335,6 +380,7 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
         try {
             opened.createStatement().use { it.execute(SCHEMA) }
             opened.createStatement().use { it.execute(TOOL_SCHEMA) }
+            opened.createStatement().use { it.execute(TAVILY_SCHEMA) }
             addMissingColumns(opened)
         } catch (e: Exception) {
             runCatching { opened.close() }
@@ -350,23 +396,51 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
 
     private fun addMissingColumns(handle: Connection) {
         for ((name, definition) in ADDED_COLUMNS) {
-            if (hasColumn(handle, name)) continue
+            if (hasColumn(handle, TABLE, name)) continue
             handle.createStatement().use { it.execute("ALTER TABLE $TABLE ADD COLUMN $definition") }
             fallback.info("Added the `$name` column to `$TABLE`")
+        }
+        when (columnType(handle, TAVILY_TABLE, "response_body")) {
+            null -> {
+                handle.createStatement().use {
+                    it.execute(
+                        "ALTER TABLE $TAVILY_TABLE ADD COLUMN response_body JSON NULL",
+                    )
+                }
+                fallback.info("Added the `response_body` column to `$TAVILY_TABLE`")
+            }
+            "json" -> Unit
+            else -> {
+                handle.createStatement().use {
+                    it.executeUpdate(
+                        "UPDATE $TAVILY_TABLE SET response_body = JSON_QUOTE(response_body) " +
+                            "WHERE response_body IS NOT NULL AND JSON_VALID(response_body) = 0",
+                    )
+                    it.execute("ALTER TABLE $TAVILY_TABLE MODIFY COLUMN response_body JSON NULL")
+                }
+                fallback.info("Converted `$TAVILY_TABLE`.`response_body` to JSON")
+            }
         }
     }
 
     private fun hasColumn(
         handle: Connection,
+        table: String,
         column: String,
-    ): Boolean {
+    ): Boolean = columnType(handle, table, column) != null
+
+    private fun columnType(
+        handle: Connection,
+        table: String,
+        column: String,
+    ): String? {
         val sql =
-            "SELECT 1 FROM information_schema.COLUMNS " +
+            "SELECT DATA_TYPE FROM information_schema.COLUMNS " +
                 "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
         return handle.prepareStatement(sql).use { statement ->
-            statement.setString(1, TABLE)
+            statement.setString(1, table)
             statement.setString(2, column)
-            statement.executeQuery().use { it.next() }
+            statement.executeQuery().use { if (it.next()) it.getString(1) else null }
         }
     }
 
@@ -445,6 +519,27 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
             PRIMARY KEY (request_id),
             KEY ${TABLE}_conversation (conversation_id, started_at),
             KEY ${TABLE}_started_at (started_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """.trimIndent()
+
+    private val TAVILY_SCHEMA =
+        """
+        CREATE TABLE IF NOT EXISTS $TAVILY_TABLE (
+            id              VARCHAR(36)  NOT NULL,
+            conversation_id VARCHAR(191) NOT NULL,
+            request_id      VARCHAR(64)  NULL,
+            tool_use_id     VARCHAR(191) NULL,
+            started_at      DATETIME(3)  NOT NULL,
+            query_text      TEXT         NOT NULL,
+            search_depth    VARCHAR(32)  NOT NULL,
+            max_results     INT          NOT NULL,
+            status_code     INT          NULL,
+            duration_ms     BIGINT       NOT NULL,
+            error           TEXT         NULL,
+            response_body   JSON         NULL,
+            PRIMARY KEY (id),
+            KEY ${TAVILY_TABLE}_conversation (conversation_id, started_at),
+            KEY ${TAVILY_TABLE}_request (request_id, tool_use_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """.trimIndent()
 

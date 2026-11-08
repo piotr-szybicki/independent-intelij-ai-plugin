@@ -15,6 +15,7 @@ object ToolCatalog {
 
     val entries: List<Entry> =
         listOf(
+            Entry("web_serch", ToolCategory.READ, false, ::TavilySearchTool),
             Entry("list_directory", ToolCategory.READ, true, ::ListDirectoryTool),
             Entry("read_project_file", ToolCategory.READ, true, ::ReadProjectFileTool),
             Entry("read_library_class", ToolCategory.READ, true, ::ReadLibraryClassTool),
