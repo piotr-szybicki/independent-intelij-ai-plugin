@@ -61,8 +61,9 @@ internal class HtmlTextPane(
             "pre { font-family: $codeFont; background-color: $codeBackground; " +
                 "margin: ${JBUI.scale(6)}px 0; padding: ${JBUI.scale(7)}px; }",
         )
-        sheet.addRule("table { margin: ${JBUI.scale(6)}px 0; }")
-        sheet.addRule("td, th { padding: ${JBUI.scale(2)}px ${JBUI.scale(6)}px; }")
+        sheet.addRule("table { margin: ${JBUI.scale(6)}px 0; border-spacing: 0; }")
+        sheet.addRule("td, th { border: $codeBorder; padding: ${JBUI.scale(3)}px ${JBUI.scale(6)}px; }")
+        sheet.addRule("th { background-color: $codeBackground; }")
     }
 
     fun setHtml(html: String) {
