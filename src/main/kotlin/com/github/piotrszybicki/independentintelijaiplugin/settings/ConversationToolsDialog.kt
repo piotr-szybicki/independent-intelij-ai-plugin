@@ -102,8 +102,8 @@ class ConversationToolsDialog(
                     comment(
                         "Off, this chat takes whatever tools the settings page enables, narrowed by " +
                             "the agent's own tool list. On, the Tools and MCP tools tabs are the whole " +
-                            "of what this chat may call. Other chats are unaffected, and the choice is " +
-                            "saved with this one. Skills are separate -- see that tab.",
+                            "of what this chat may call. MCP choices also become the default for " +
+                            "other inheriting chats until the project closes. Skills are separate.",
                     )
                 }
             }
@@ -146,7 +146,7 @@ class ConversationToolsDialog(
                 row {
                     comment(
                         "No MCP server is connected, so there is nothing to choose here. Servers are " +
-                            "configured on the settings page.",
+                            "configured in the JSON settings file.",
                     )
                 }
                 return@panel

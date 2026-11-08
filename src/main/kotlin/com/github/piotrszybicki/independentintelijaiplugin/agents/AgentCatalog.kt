@@ -24,6 +24,7 @@ object AgentCatalog {
             description = entry.description.ifBlank { "Defined in ${AgentConfiguration.FILE_NAME}." },
             prompt = entry.prompt,
             tools = AgentToolPolicy.of(entry.tools),
+            mcpTools = entry.mcpTools,
             skills = entry.skills,
             specTemplate = entry.specTemplate,
             configurationName = entry.configurationName.ifBlank { null },

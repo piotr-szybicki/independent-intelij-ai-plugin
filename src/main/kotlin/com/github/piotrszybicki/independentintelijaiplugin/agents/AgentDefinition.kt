@@ -8,6 +8,7 @@ data class AgentDefinition(
     val description: String,
     val prompt: String,
     val tools: AgentToolPolicy = AgentToolPolicy.INHERIT,
+    val mcpTools: List<String>? = null,
     // Skills switched on in the chats this agent starts; every other chat begins with none.
     val skills: List<String> = emptyList(),
     val configurationName: String? = null,

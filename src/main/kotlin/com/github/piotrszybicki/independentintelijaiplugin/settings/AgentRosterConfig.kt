@@ -61,6 +61,15 @@ data class AgentRosterConfig(
                 description = entry.string(AgentRosterEntry.DESCRIPTION).orEmpty().trim(),
                 prompt = entry.string(AgentRosterEntry.PROMPT).orEmpty().trim(),
                 tools = entry.names(name, AgentRosterEntry.TOOLS),
+                mcpTools =
+                    if (entry.has(
+                            AgentRosterEntry.MCP_TOOLS,
+                        )
+                    ) {
+                        entry.names(name, AgentRosterEntry.MCP_TOOLS)
+                    } else {
+                        null
+                    },
                 skills = entry.names(name, AgentRosterEntry.SKILLS),
                 specTemplate = entry.string(AgentRosterEntry.SPEC_TEMPLATE).orEmpty().trim(),
                 configurationName = entry.string(AgentRosterEntry.CONFIGURATION).orEmpty().trim(),
