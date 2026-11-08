@@ -7,6 +7,19 @@ import org.junit.Test
 
 class ShellCommandBlocksTest {
     @Test
+    fun `tables render alongside shell blocks with inline formatting and escaped pipes`() {
+        val markdown = "| Name | Value |\n| :--- | ---: |\n| **One** | a\\|b |\n\n```bash\necho ok\n```"
+        val blocks = ShellCommandBlocks(markdown)
+        for (html in listOf(blocks.html, MarkdownRenderer.toHtml(markdown))) {
+            assertTrue(html.contains("<table>"))
+            assertTrue(html.contains("<strong>One</strong>"))
+            assertTrue(html.contains("a|b"))
+            assertTrue(html.contains("align=\"right\""))
+        }
+        assertEquals(listOf("echo ok"), blocks.contents)
+    }
+
+    @Test
     fun `each shell block gets its own exact command without the fence newline`() {
         val blocks =
             ShellCommandBlocks("```bash\necho '<hello>'\nprintf world\n```\n\n```powershell\nGet-Location\n```")

@@ -1,12 +1,19 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import org.commonmark.ext.gfm.tables.TablesExtension
 import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 
 object MarkdownRenderer {
-    private val parser: Parser = Parser.builder().build()
+    internal val extensions = listOf(TablesExtension.create())
+    private val parser: Parser = Parser.builder().extensions(extensions).build()
 
-    private val renderer: HtmlRenderer = HtmlRenderer.builder().escapeHtml(true).build()
+    private val renderer: HtmlRenderer =
+        HtmlRenderer
+            .builder()
+            .extensions(extensions)
+            .escapeHtml(true)
+            .build()
 
     fun toHtml(markdown: String): String = renderer.render(parser.parse(markdown)).trim()
 

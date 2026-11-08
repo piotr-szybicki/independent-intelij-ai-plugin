@@ -1,11 +1,14 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
+import com.intellij.icons.AllIcons
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
+import java.awt.Dimension
 import java.awt.FlowLayout
+import javax.swing.JLayeredPane
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 
@@ -42,9 +45,9 @@ internal class AiTurnRow(
     }
 
     private val export =
-        CardButton("Export MD", "Save this reply as a Markdown file") {
+        CodeActionButton(AllIcons.Actions.Download, "Save this reply as a Markdown file", "Exporting…") {
             onExport(toMarkdown())
-        }
+        }.apply { preferredSize = JBUI.size(24) }
 
     private val returnSummary =
         CardButton(
@@ -75,7 +78,6 @@ internal class AiTurnRow(
             add(
                 JPanel(FlowLayout(FlowLayout.LEFT, JBUI.scale(6), 0)).apply {
                     isOpaque = false
-                    add(export.component)
                     add(returnSummary.component)
                     add(continueTurn.component)
                 },
@@ -86,7 +88,7 @@ internal class AiTurnRow(
 
     init {
         border = JBUI.Borders.emptyRight(ChatMetrics.bubbleIndent)
-        add(
+        val bubble =
             RoundedPanel(
                 BorderLayout(0, JBUI.scale(3)),
                 fill = { ChatColors.aiBubble },
@@ -102,9 +104,30 @@ internal class AiTurnRow(
                 )
                 add(stack, BorderLayout.CENTER)
                 add(footer, BorderLayout.SOUTH)
-            },
-            BorderLayout.CENTER,
-        )
+            }
+        val frame =
+            object : JLayeredPane() {
+                override fun getPreferredSize(): Dimension {
+                    val size = bubble.preferredSize
+                    return Dimension(size.width, size.height + JBUI.scale(12))
+                }
+
+                override fun doLayout() {
+                    val size = JBUI.scale(24)
+                    val bubbleHeight = (height - size / 2).coerceAtLeast(0)
+                    bubble.setBounds(0, 0, width, bubbleHeight)
+                    export.setBounds(
+                        (width - size - JBUI.scale(12)).coerceAtLeast(0),
+                        bubbleHeight - size / 2,
+                        size,
+                        size,
+                    )
+                }
+            }.apply {
+                add(bubble, JLayeredPane.DEFAULT_LAYER)
+                add(export, JLayeredPane.PALETTE_LAYER)
+            }
+        add(frame, BorderLayout.CENTER)
         addContent(first)
     }
 

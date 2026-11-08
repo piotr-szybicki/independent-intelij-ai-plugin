@@ -88,5 +88,5 @@ internal class ShellCodeControls(
         icon: Icon,
         tooltip: String,
         action: () -> Unit,
-    ): JButton = CodeActionButton(icon, tooltip, action)
+    ): JButton = CodeActionButton(icon, tooltip, action = action)
 }

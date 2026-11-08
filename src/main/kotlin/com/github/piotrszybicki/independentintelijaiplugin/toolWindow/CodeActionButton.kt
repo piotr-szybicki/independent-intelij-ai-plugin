@@ -13,6 +13,7 @@ import javax.swing.Timer
 internal class CodeActionButton(
     private val originalIcon: Icon,
     private val originalTooltip: String,
+    private val feedbackTooltip: String = if (originalTooltip == "Copy code") "Copied" else "Opening terminal…",
     action: () -> Unit,
 ) : JButton(originalIcon) {
     private var feedbackStarted = 0L
@@ -53,7 +54,7 @@ internal class CodeActionButton(
             action()
             feedbackStarted = System.nanoTime()
             icon = confirmationIcon
-            toolTipText = if (originalTooltip == "Copy code") "Copied" else "Opening terminal…"
+            toolTipText = feedbackTooltip
             animateFeedback()
             feedbackTimer.restart()
         }

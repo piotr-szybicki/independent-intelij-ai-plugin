@@ -14,6 +14,7 @@ internal class ShellCommandBlocks(
     val html: String =
         HtmlRenderer
             .builder()
+            .extensions(MarkdownRenderer.extensions)
             .escapeHtml(true)
             .nodeRendererFactory { context ->
                 object : NodeRenderer {
@@ -53,8 +54,13 @@ internal class ShellCommandBlocks(
                     }
                 }
             }.build()
-            .render(Parser.builder().build().parse(markdown))
-            .trim()
+            .render(
+                Parser
+                    .builder()
+                    .extensions(MarkdownRenderer.extensions)
+                    .build()
+                    .parse(markdown),
+            ).trim()
 
     val contents: List<String> get() = commands
 
