@@ -18,7 +18,6 @@ import javax.swing.event.DocumentEvent
 internal class AgentMentionPopup(
     private val project: Project,
     private val input: JTextPane,
-    private val onChosen: (AgentDefinition) -> Unit,
 ) {
     private var popup: JBPopup? = null
 
@@ -88,9 +87,8 @@ internal class AgentMentionPopup(
                 .setNamerForFiltering { "${it.name} ${it.description}" }
                 .setItemChosenCallback { agent ->
                     ComposerSubmitSuppression.suppressNextSubmit(input)
-                    MentionPopupSupport.removeMarker(input, MENTION, offset)
-                    onChosen(agent)
-                }.setAdText("Keep typing to filter, Enter hands over, Escape leaves the @ alone")
+                    MentionPopupSupport.replaceMarker(input, MENTION, "@${agent.name} ", offset)
+                }.setAdText("Choose an agent, then add instructions or send the mention alone")
                 .createPopup()
 
         popup = created

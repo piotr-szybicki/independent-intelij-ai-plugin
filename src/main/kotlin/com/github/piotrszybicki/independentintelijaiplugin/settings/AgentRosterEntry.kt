@@ -18,6 +18,7 @@ data class AgentRosterEntry(
     val skills: List<String> = emptyList(),
     // What a spec file for this agent starts from when there is no reply to draft one out of.
     val specTemplate: String = "",
+    val mcpTools: List<String>? = null,
 ) {
     fun toJson(): JsonObject =
         JsonObject().apply {
@@ -25,6 +26,7 @@ data class AgentRosterEntry(
             addProperty(DESCRIPTION, description)
             addProperty(PROMPT, prompt)
             add(TOOLS, JsonArray().apply { tools.forEach { add(it) } })
+            mcpTools?.let { names -> add(MCP_TOOLS, JsonArray().apply { names.forEach { add(it) } }) }
             add(SKILLS, JsonArray().apply { skills.forEach { add(it) } })
             addProperty(SPEC_TEMPLATE, specTemplate)
             addProperty(CONFIGURATION, configurationName)
@@ -36,6 +38,7 @@ data class AgentRosterEntry(
         const val DESCRIPTION = "description"
         const val PROMPT = "prompt"
         const val TOOLS = "tools"
+        const val MCP_TOOLS = "mcp-tools"
         const val SKILLS = "skills"
         const val SPEC_TEMPLATE = "spec-template"
         const val CONFIGURATION = "configuration"

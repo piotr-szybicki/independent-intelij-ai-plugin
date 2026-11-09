@@ -40,6 +40,26 @@ data class McpServerConfig(
                     )
             }
 
+        /** Read only the MCP section of the shared agent configuration file. */
+        fun parseSettings(text: String): List<McpServerConfig> {
+            if (text.isBlank()) return emptyList()
+            val root =
+                try {
+                    JsonParser.parseString(text)
+                } catch (e: Exception) {
+                    throw McpConfigException("not valid JSON: ${e.message}")
+                }
+            if (!root.isJsonObject) throw McpConfigException("expected a JSON object at the top level")
+            val section = root.asJsonObject.get("mcpServers") ?: return emptyList()
+            return try {
+                parseAll(JsonObject().apply { add("mcpServers", section) }.toString())
+            } catch (e: McpConfigException) {
+                throw e
+            } catch (e: Exception) {
+                throw McpConfigException("invalid MCP configuration: ${e.message}")
+            }
+        }
+
         fun parseAll(text: String): List<McpServerConfig> {
             if (text.isBlank()) return emptyList()
 

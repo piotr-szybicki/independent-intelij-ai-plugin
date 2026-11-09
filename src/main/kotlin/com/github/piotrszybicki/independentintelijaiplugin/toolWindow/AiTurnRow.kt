@@ -6,9 +6,7 @@ import com.intellij.ui.components.panels.VerticalLayout
 import com.intellij.util.ui.JBFont
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
-import java.awt.Dimension
 import java.awt.FlowLayout
-import javax.swing.JLayeredPane
 import javax.swing.JPanel
 import javax.swing.SwingConstants
 
@@ -84,6 +82,7 @@ internal class AiTurnRow(
                 BorderLayout.WEST,
             )
             add(cost, BorderLayout.CENTER)
+            add(export, BorderLayout.EAST)
         }
 
     init {
@@ -105,29 +104,7 @@ internal class AiTurnRow(
                 add(stack, BorderLayout.CENTER)
                 add(footer, BorderLayout.SOUTH)
             }
-        val frame =
-            object : JLayeredPane() {
-                override fun getPreferredSize(): Dimension {
-                    val size = bubble.preferredSize
-                    return Dimension(size.width, size.height + JBUI.scale(12))
-                }
-
-                override fun doLayout() {
-                    val size = JBUI.scale(24)
-                    val bubbleHeight = (height - size / 2).coerceAtLeast(0)
-                    bubble.setBounds(0, 0, width, bubbleHeight)
-                    export.setBounds(
-                        (width - size - JBUI.scale(12)).coerceAtLeast(0),
-                        bubbleHeight - size / 2,
-                        size,
-                        size,
-                    )
-                }
-            }.apply {
-                add(bubble, JLayeredPane.DEFAULT_LAYER)
-                add(export, JLayeredPane.PALETTE_LAYER)
-            }
-        add(frame, BorderLayout.CENTER)
+        add(bubble, BorderLayout.CENTER)
         addContent(first)
     }
 

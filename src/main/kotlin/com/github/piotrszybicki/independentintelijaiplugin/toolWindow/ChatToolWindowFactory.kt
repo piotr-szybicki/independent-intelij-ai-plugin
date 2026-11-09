@@ -4,6 +4,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentCatalog
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentDefinition
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentFiles
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentHandoff
+import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentMcpSelection
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentPath
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentReturn
 import com.github.piotrszybicki.independentintelijaiplugin.agents.AgentSession
@@ -27,6 +28,7 @@ import com.github.piotrszybicki.independentintelijaiplugin.history.ChatHistorySe
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredChat
 import com.github.piotrszybicki.independentintelijaiplugin.history.StoredRow
 import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
+import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpTool
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsConfigurable
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfiguration
@@ -205,8 +207,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     (builtInTools + mcp.allTools()).filter { it.name in wanted }
                 } else {
                     val defaults = defaultTools()
-                    (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
-                        .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
+                    selectAgentTools(defaults)
                 }
             val tracked = ChangeTrackingTool.wrapAll(selected, session)
             if (activeAgent != null) return tracked
@@ -238,6 +239,17 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val enabled: List<AICodingAgentTool>,
         )
 
+        private fun selectAgentTools(defaults: DefaultTools): List<AICodingAgentTool> {
+            val selected =
+                (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
+                    .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
+            val selectors = activeAgent?.mcpTools ?: return selected
+            return selected.filterNot { it is McpTool } +
+                defaults.everything
+                    .filterIsInstance<McpTool>()
+                    .filter { AgentMcpSelection.includes(selectors, it.serverName, it.name) }
+        }
+
         /*
          * The layer under the agent and under this chat: the `conversation-defaults` section of
          * the settings file where it names tools, and the settings page where it does not. A named
@@ -246,17 +258,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private fun defaultTools(): DefaultTools {
             val defaults = AgentConfigurations.getInstance(project).conversationDefaults().defaults
-            val mcpTools = if (defaults.mcpTools == null) mcp.tools() else mcp.allTools()
+            val mcpTools = mcp.allTools()
             val enabledBuiltIn =
                 defaults.tools
                     ?.toSet()
                     ?.let { names -> builtInTools.filter { it.name in names } }
                     ?: ToolCatalog.enabledIn(builtInTools)
-            val enabledMcp =
-                defaults.mcpTools
-                    ?.toSet()
-                    ?.let { names -> mcpTools.filter { it.name in names } }
-                    ?: mcpTools
+            val enabledMcp = mcp.enabledTools(defaults.mcpTools.orEmpty())
             return DefaultTools(builtInTools + mcpTools, enabledBuiltIn + enabledMcp)
         }
 
@@ -278,10 +286,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
          */
         private fun inheritedTools(): ConversationTools {
             val defaults = defaultTools()
-            val selected =
-                (activeAgent?.tools ?: AgentToolPolicy.INHERIT)
-                    .select(everything = defaults.everything, enabledInSettings = defaults.enabled)
-                    .map { it.name }
+            val selected = selectAgentTools(defaults).map { it.name }
             val builtInNames = builtInTools.mapTo(mutableSetOf()) { it.name }
             return ConversationTools(
                 tools = selected.filter { it in builtInNames },
@@ -298,6 +303,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             )
 
         private fun conversationToolsChosen(chosen: ConversationTools) {
+            if (chosen.overridden) mcp.selectTools(chosen.mcpTools)
             applyConversationTools(chosen)
             statusLabel.text = chosen.describe() + " It takes effect from the next message."
             saveCurrentChat(active = true)
@@ -572,7 +578,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 },
             )
 
-            AgentMentionPopup(project, input) { beginHandoff(it) }.install()
+            AgentMentionPopup(project, input).install()
             SessionOptionPopup(input, ::applySessionOption).install()
             SkillMentionPopup(project, input, { conversationTools.activeSkills }) { addSkill(it) }.install()
 
@@ -704,7 +710,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         }
 
         private fun snapshot(): StoredChat? {
-            if (history.isEmpty() || rows.isEmpty()) return null
+            if (rows.isEmpty()) return null
             return StoredChat(
                 id = chatId,
                 title = ChatHistoryService.titleFor(rows),
@@ -975,23 +981,23 @@ class ChatToolWindowFactory : ToolWindowFactory {
             }
         }
 
-        private fun beginHandoff(definition: AgentDefinition) {
+        private fun beginHandoff(definition: AgentDefinition): Boolean {
             if (!sendButton.isEnabled) {
                 statusLabel.text = "Wait for the current reply to finish before handing over."
-                return
+                return false
             }
             if (currentConversationLevel() >= MAX_CONVERSATION_LEVELS) {
                 statusLabel.text =
                     "Agent handoffs are limited to $MAX_CONVERSATION_LEVELS conversation levels. " +
                     "Return to a parent chat to start another agent."
-                return
+                return false
             }
 
             val reply = transcript.lastTurnMarkdown()
             val path = AgentFiles.spec(project, definition, reply)
             if (path == null) {
                 showError("The specification for @${definition.name} could not be written to .cache.")
-                return
+                return false
             }
 
             val handoff = AgentHandoff(definition.name, path.toString(), chatId)
@@ -1013,6 +1019,50 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 } else {
                     "Edit the spec, then press Proceed to start @${definition.name}."
                 }
+            return true
+        }
+
+        private fun startDirectAgent(
+            definition: AgentDefinition,
+            instructions: String,
+        ): Boolean {
+            if (currentConversationLevel() >= MAX_CONVERSATION_LEVELS) {
+                statusLabel.text = "Agent handoffs are limited to $MAX_CONVERSATION_LEVELS conversation levels."
+                return false
+            }
+            val path = AgentFiles.spec(project, definition, instructions)
+            if (path == null) {
+                showError("The specification for @${definition.name} could not be written to .cache.")
+                return false
+            }
+            val childId = ChatHistoryService.newChatId()
+            val handoff =
+                AgentHandoff(
+                    definition.name,
+                    path.toString(),
+                    chatId,
+                    childChatId = childId,
+                    state = AgentHandoff.PROCEEDED,
+                )
+            val index = rows.size
+            rows +=
+                StoredRow(
+                    StoredRow.HANDOFF,
+                    name = definition.name,
+                    summary = definition.description,
+                    text = AgentPath.display(project, path),
+                    handoff = handoff,
+                )
+            showHandoff(index, handoff, definition.description)
+            saveCurrentChat(active = false, background = false)
+            startAgentChat(
+                childId,
+                definition,
+                AgentSession(definition.name, chatId, path.toString()),
+                instructions,
+                path,
+            )
+            return true
         }
 
         /*
@@ -1075,7 +1125,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
                 agentName = handoff.agentName,
                 description = description,
                 specName = AgentPath.display(project, path),
-                state = handoff.state,                onOpenSpec = { openAgentFile(path) },
+                state = handoff.state,
+                onOpenSpec = { openAgentFile(path) },
                 onProceed = { proceedWithHandoff(index) },
                 onCancel = { cancelHandoff(index) },
                 onOpenChat = {
@@ -1238,6 +1289,21 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private fun send() {
             if (!sendButton.isEnabled) return
             val text = input.text.trim()
+            val agents = AgentCatalog.all(project)
+            val mention = AgentMention.parse(text, agents.map { it.name })
+            if (mention != null) {
+                val definition = agents.first { it.name == mention.name }
+                if (chatAttachments.attachments().isNotEmpty() || invokedSkills.isNotEmpty()) {
+                    statusLabel.text = "Remove attachments and skill mentions before starting an agent this way."
+                    return
+                }
+                if (mention.instructions.isEmpty()) {
+                    if (beginHandoff(definition)) input.text = ""
+                } else {
+                    startDirectAgent(definition, mention.instructions)
+                }
+                return
+            }
             SessionOption.fromCommand(text)?.let { option ->
                 applySessionOption(option)
                 input.text = ""

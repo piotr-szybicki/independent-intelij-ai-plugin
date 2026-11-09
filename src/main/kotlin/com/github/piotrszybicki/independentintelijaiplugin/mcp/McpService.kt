@@ -1,7 +1,7 @@
 package com.github.piotrszybicki.independentintelijaiplugin.mcp
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.AICodingAgentTool
-import com.github.piotrszybicki.independentintelijaiplugin.settings.AICodingAgentSettingsState
+import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
@@ -32,14 +32,24 @@ class McpService(
     private var connections: List<Connection>? = null
     private var builtFrom: String? = null
     private var builtRoot: String? = null
+    private val selection = McpToolSelection()
 
     @Synchronized
     override fun tools(): List<AICodingAgentTool> {
         val all = current().flatMap { it.tools }
-        val enabled = AICodingAgentSettingsState.getInstance().state.enabledMcpTools
-        if (enabled.isBlank()) return all
-        val enabledSet = enabled.split(",").mapTo(mutableSetOf()) { it.trim() }
+        val enabledSet = selection.enabled(emptySet())
         return all.filter { it.name in enabledSet }
+    }
+
+    @Synchronized
+    fun selectTools(names: Collection<String>) {
+        selection.set(names)
+    }
+
+    @Synchronized
+    fun enabledTools(defaultNames: Collection<String>): List<AICodingAgentTool> {
+        val enabled = selection.enabled(defaultNames)
+        return current().flatMap { it.tools }.filter { it.name in enabled }
     }
 
     /** Every tool every connected server offers, before the settings page's selection narrows it. */
@@ -62,7 +72,7 @@ class McpService(
     override fun dispose() = reload()
 
     private fun current(): List<Connection> {
-        val text = AICodingAgentSettingsState.getInstance().state.mcpServers
+        val text = AgentConfigurations.getInstance(project).text().orEmpty()
         connections?.let { if (builtFrom == text && builtRoot == ChatWorkingDirectory.path(project)) return it }
 
         connections?.forEach { runCatching { it.client?.close() } }
@@ -77,7 +87,7 @@ class McpService(
     private fun connect(text: String): List<Connection> {
         val configs =
             try {
-                McpServerConfig.parseAll(text)
+                McpServerConfig.parseSettings(text)
             } catch (e: McpConfigException) {
                 LOG.info("MCP configuration is unusable: ${e.message}")
                 return listOf(

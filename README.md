@@ -60,4 +60,43 @@ docker run -d --name ai-usage -e MYSQL_ROOT_PASSWORD=secret -p 3306:3306 mysql:9
 
 Add `"tavily": { "token": "your-tavily-api-key" }` to the top-level JSON configuration, then enable `web_serch` in the plugin's tool settings or conversation tools. The token can alternatively reference an environment variable, for example `"$TAVILY_API_KEY"`. Search queries are sent to Tavily and may consume Tavily credits.
 
+### MCP servers
+
+Add an `mcpServers` object alongside `configurations` in the JSON file named by
+`INTELIJ_AI_SETTINGS`. For example, GitHub's remote server can use a personal access token:
+
+```json
+"mcpServers": {
+  "github": {
+    "url": "https://api.githubcopilot.com/mcp/",
+    "headers": { "Authorization": "Bearer ${env:GITHUB_PAT}" }
+  }
+}
+```
+
+Set `GITHUB_PAT` in the IDE's environment before starting it. Keep the surrounding JSON object
+and its existing `configurations` section; the example is one property, not a complete file.
+The chat's tool selector lists connected MCP tools. Changes to the configuration are picked up
+when tools are next requested. Connection and configuration errors are recorded in the IDE log.
+MCP tools start disabled unless named in `conversation-defaults.mcp-tools`. Changes in the chat
+tool selector are remembered as the project's MCP defaults until the project closes; chats with
+their own saved selections keep those selections. Local servers can instead specify `command`,
+`args`, and `env`.
+
+An agent can choose MCP tools separately from its built-in `tools` policy. Add an entry to
+the top-level `agents` array, for example:
+
+```json
+{
+  "name": "github-agent",
+  "description": "Works with GitHub repositories, issues, and pull requests.",
+  "prompt": "Help with GitHub repositories, issues, and pull requests. Review changes and ask before consequential actions.",
+  "mcp-tools": ["github/*"]
+}
+```
+
+`github/*` selects every tool offered by the server named `github`; `*` selects all MCP servers,
+and a qualified tool name selects one tool. An empty array selects none. Omitting `mcp-tools`
+inherits the normal tool policy. The chat's tool selector can override the agent's selection.
+
 When the usage database is enabled, actual Tavily requests are recorded in `tavily_requests` with the query, conversation and tool identifiers, HTTP status, duration, error type, and response body in a JSON column (up to one million characters). Non-JSON or truncated responses are stored as JSON strings. The API token is not recorded. Agent tool calls are also recorded in `model_tool_calls`. Recorded requests do not report billed credits or cost.
