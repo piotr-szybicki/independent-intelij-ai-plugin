@@ -100,3 +100,5 @@ and a qualified tool name selects one tool. An empty array selects none. Omittin
 inherits the normal tool policy. The chat's tool selector can override the agent's selection.
 
 When the usage database is enabled, actual Tavily requests are recorded in `tavily_requests` with the query, conversation and tool identifiers, HTTP status, duration, error type, and response body in a JSON column (up to one million characters). Non-JSON or truncated responses are stored as JSON strings. The API token is not recorded. Agent tool calls are also recorded in `model_tool_calls`. Recorded requests do not report billed credits or cost.
+
+Set `conversation-defaults.max-tool-output-tokens` in the JSON configuration to control the per-tool-result token limit (default 500). A limit of 0 requires approval for any result with tokens. Set `conversation-defaults.check-tool-output-tokens` to `false` to disable the check entirely; it defaults to `true`.

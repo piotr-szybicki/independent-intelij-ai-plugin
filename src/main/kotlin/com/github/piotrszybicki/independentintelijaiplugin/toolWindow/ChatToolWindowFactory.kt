@@ -1365,7 +1365,8 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val model = configuration.model
             val maxTokens = maxOf(configuration.maxTokens, raisedMaxTokens)
             val maxIterations = AICodingAgentSettingsState.getInstance().state.maxIterations
-            val maxToolOutputTokens = AICodingAgentSettingsState.getInstance().state.maxToolOutputTokens
+            val outputDefaults = AgentConfigurations.getInstance(project).conversationDefaults().defaults
+            val maxToolOutputTokens = outputDefaults.maxToolOutputTokens
             val contextWindow = configuration.contextWindowTokens
             val conversationId = chatId
             val agentPrompt = activeAgent?.prompt.orEmpty()
@@ -1523,6 +1524,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
                             reasoning = reasoning,
                             conversationId = conversationId,
                             maxToolOutputTokens = maxToolOutputTokens,
+                            checkToolOutputTokens = outputDefaults.checkToolOutputTokens,
                             meter = contextMeter,
                             agentPrompt = agentPrompt,
                         )

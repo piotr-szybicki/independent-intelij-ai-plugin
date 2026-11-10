@@ -40,20 +40,10 @@ data class ReasoningOptions(
 
     private fun isLegacyAnthropicThinkingModel(model: String): Boolean = model.lowercase().contains("haiku")
 
-    fun reasoningJson(): JsonObject? =
-        when (thinking) {
-            ThinkingMode.PROVIDER_DEFAULT -> null
-            ThinkingMode.OFF -> reasoningEffort("none")
-            ThinkingMode.ADAPTIVE -> reasoningEffort(effort.openAiValue ?: DEFAULT_OPENAI_EFFORT)
-        }
-
-    private fun reasoningEffort(value: String): JsonObject = JsonObject().apply { addProperty("effort", value) }
-
     companion object {
         private const val DEFAULT_MAX_TOKENS = 8000
         private const val MIN_LEGACY_THINKING_BUDGET = 1024
         private const val DEFAULT_LEGACY_THINKING_BUDGET = 4096
-        private const val DEFAULT_OPENAI_EFFORT = "medium"
 
         val PROVIDER_DEFAULT = ReasoningOptions(Effort.PROVIDER_DEFAULT, ThinkingMode.PROVIDER_DEFAULT)
 

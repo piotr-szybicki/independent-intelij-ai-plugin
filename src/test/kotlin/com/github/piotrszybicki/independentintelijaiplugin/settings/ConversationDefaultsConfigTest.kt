@@ -8,6 +8,18 @@ import org.junit.Test
 
 class ConversationDefaultsConfigTest {
     @Test
+    fun `output limit and check are independent`() {
+        val defaults = ConversationDefaultsConfig.parse(
+            """{"conversation-defaults":{"max-tool-output-tokens":0,"check-tool-output-tokens":false}}""",
+        )
+        assertEquals(0, defaults.maxToolOutputTokens)
+        assertEquals(false, defaults.checkToolOutputTokens)
+        assertEquals(defaults, ConversationDefaultsConfig.parse("""{"conversation-defaults":${defaults.toJson()}}"""))
+        assertThrows(AgentConfigurationException::class.java) {
+            ConversationDefaultsConfig.parse("""{"conversation-defaults":{"check-tool-output-tokens":"false"}}""")
+        }
+    }
+    @Test
     fun `reads all three arrays`() {
         val defaults =
             ConversationDefaultsConfig.parse(

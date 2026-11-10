@@ -2,6 +2,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.logging
 
 import com.github.piotrszybicki.independentintelijaiplugin.aicodingagent.ToolExecutionContext
 import com.github.piotrszybicki.independentintelijaiplugin.settings.AgentConfigurations
+import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.google.gson.JsonPrimitive
 import com.intellij.openapi.diagnostic.Logger
@@ -89,16 +90,18 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
         statusCode: Int,
         durationMillis: Long,
         body: String,
+        headers: Map<String, List<String>>,
     ) {
         val document = asJson(body)
+        val headersJson = Gson().toJson(headers)
         submit(
             """
             INSERT INTO $TABLE (
-                request_id, conversation_id, started_at, response_id, status_code, duration_ms, response_body
+                request_id, conversation_id, started_at, response_id, status_code, duration_ms, response_body, response_headers
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-                response_id = ?, status_code = ?, duration_ms = ?, response_body = ?
+                response_id = ?, status_code = ?, duration_ms = ?, response_body = ?, response_headers = ?
             """.trimIndent(),
         ) { startedAt ->
             setString(1, requestId)
@@ -108,10 +111,12 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
             setInt(5, statusCode)
             setLong(6, durationMillis)
             setString(7, document)
-            setString(8, responseId.takeIf { it.isNotBlank() })
-            setInt(9, statusCode)
-            setLong(10, durationMillis)
-            setString(11, document)
+            setString(8, headersJson)
+            setString(9, responseId.takeIf { it.isNotBlank() })
+            setInt(10, statusCode)
+            setLong(11, durationMillis)
+            setString(12, document)
+            setString(13, headersJson)
         }
     }
 
@@ -392,6 +397,7 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
     private val ADDED_COLUMNS =
         listOf(
             "cost_usd" to "cost_usd DECIMAL(12,6) NULL AFTER cache_hit_rate",
+            "response_headers" to "response_headers JSON NULL AFTER response_body",
         )
 
     private fun addMissingColumns(handle: Connection) {
@@ -516,6 +522,7 @@ object ModelUsageDatabase : ModelExchangeRecorder, ModelToolRecorder {
             cost_usd           DECIMAL(12,6) NULL,
             request_body       JSON         NULL,
             response_body      JSON         NULL,
+            response_headers   JSON         NULL,
             PRIMARY KEY (request_id),
             KEY ${TABLE}_conversation (conversation_id, started_at),
             KEY ${TABLE}_started_at (started_at)
