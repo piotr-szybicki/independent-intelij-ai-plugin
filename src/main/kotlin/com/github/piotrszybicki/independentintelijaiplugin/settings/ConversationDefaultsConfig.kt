@@ -24,8 +24,12 @@ data class ConversationDefaultsConfig(
     val checkToolOutputTokens: Boolean = true,
 ) {
     val saysNothing: Boolean
-        get() = tools == null && mcpTools == null && skills.isEmpty() &&
-            maxToolOutputTokens == 500 && checkToolOutputTokens
+        get() =
+            tools == null &&
+                mcpTools == null &&
+                skills.isEmpty() &&
+                maxToolOutputTokens == 500 &&
+                checkToolOutputTokens
 
     // A null array is left out rather than written as [], because the two do not mean the same.
     fun toJson(): JsonObject =
