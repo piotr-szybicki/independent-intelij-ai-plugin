@@ -36,6 +36,7 @@ object AICodingAgentClient {
     ): AICodingAgentTurn =
         sendMessageAttempt(endpoint, model, maxTokens, messages, tools, system, reasoning, conversationId, 0)
 
+    @Suppress("LongParameterList")
     private fun sendMessageAttempt(
         endpoint: AICodingAgentEndpoint,
         model: String,
@@ -113,15 +114,18 @@ object AICodingAgentClient {
         val response =
             try {
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            } catch (e: InterruptedException) {
+                LOG.info("API request interrupted: ${e.message}")
+                val elapsed = System.currentTimeMillis() - startedAt
+                ModelExchangeLog.recordFailure(conversationId, requestId, e.toString())
+                ModelUsageDatabase.recordFailure(conversationId, requestId, elapsed, e.toString())
+                Thread.currentThread().interrupt()
+                throw e
             } catch (e: Exception) {
                 LOG.info("API request failed: ${e.message}")
                 val elapsed = System.currentTimeMillis() - startedAt
                 ModelExchangeLog.recordFailure(conversationId, requestId, e.toString())
                 ModelUsageDatabase.recordFailure(conversationId, requestId, elapsed, e.toString())
-                if (e is InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw e
-                }
                 throw AICodingAgentApiException("Could not reach ${endpoint.url}: ${e.message}")
             }
         LOG.info("${endpoint.protocol.name} response <- ${response.statusCode()}: ${response.body()}")
