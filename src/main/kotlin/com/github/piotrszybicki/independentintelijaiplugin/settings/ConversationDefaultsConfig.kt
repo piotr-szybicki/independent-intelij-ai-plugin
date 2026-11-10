@@ -23,7 +23,9 @@ data class ConversationDefaultsConfig(
     val maxToolOutputTokens: Int = 500,
     val checkToolOutputTokens: Boolean = true,
 ) {
-    val saysNothing: Boolean get() = tools == null && mcpTools == null && skills.isEmpty() && maxToolOutputTokens == 500 && checkToolOutputTokens
+    val saysNothing: Boolean
+        get() = tools == null && mcpTools == null && skills.isEmpty() &&
+            maxToolOutputTokens == 500 && checkToolOutputTokens
 
     // A null array is left out rather than written as [], because the two do not mean the same.
     fun toJson(): JsonObject =
@@ -66,19 +68,28 @@ data class ConversationDefaultsConfig(
                 tools = section.names(TOOLS)?.map(ToolNames::current)?.distinct(),
                 mcpTools = section.names(MCP_TOOLS),
                 skills = section.names(SKILLS).orEmpty(),
-                maxToolOutputTokens = section.get("max-tool-output-tokens")?.let { value ->
-                    val number = if (value.isJsonPrimitive && value.asJsonPrimitive.isNumber) value.asString.toIntOrNull() else null
-                    if (number == null || number < 0) {
-                        throw AgentConfigurationException("\"$SECTION\".max-tool-output-tokens must be a non-negative integer")
-                    }
-                    number
-                } ?: 500,
-                checkToolOutputTokens = section.get("check-tool-output-tokens")?.let { value ->
-                    if (!value.isJsonPrimitive || !value.asJsonPrimitive.isBoolean) {
-                        throw AgentConfigurationException("\"$SECTION\".check-tool-output-tokens must be a boolean")
-                    }
-                    value.asBoolean
-                } ?: true,
+                maxToolOutputTokens =
+                    section.get("max-tool-output-tokens")?.let { value ->
+                        val number =
+                            if (value.isJsonPrimitive && value.asJsonPrimitive.isNumber) {
+                                value.asString.toIntOrNull()
+                            } else {
+                                null
+                            }
+                        if (number == null || number < 0) {
+                            throw AgentConfigurationException(
+                                "\"$SECTION\".max-tool-output-tokens must be a non-negative integer",
+                            )
+                        }
+                        number
+                    } ?: 500,
+                checkToolOutputTokens =
+                    section.get("check-tool-output-tokens")?.let { value ->
+                        if (!value.isJsonPrimitive || !value.asJsonPrimitive.isBoolean) {
+                            throw AgentConfigurationException("\"$SECTION\".check-tool-output-tokens must be a boolean")
+                        }
+                        value.asBoolean
+                    } ?: true,
             )
         }
 

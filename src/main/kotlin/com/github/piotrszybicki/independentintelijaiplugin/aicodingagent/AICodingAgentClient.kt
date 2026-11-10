@@ -154,7 +154,15 @@ object AICodingAgentClient {
                     LOG.info("Rate limited; retrying in ${delay}ms (retry ${retryCount + 1})")
                     Thread.sleep(delay)
                     return sendMessageAttempt(
-                        endpoint, model, maxTokens, messages, tools, system, reasoning, conversationId, retryCount + 1,
+                        endpoint,
+                        model,
+                        maxTokens,
+                        messages,
+                        tools,
+                        system,
+                        reasoning,
+                        conversationId,
+                        retryCount + 1,
                     )
                 }
             }
