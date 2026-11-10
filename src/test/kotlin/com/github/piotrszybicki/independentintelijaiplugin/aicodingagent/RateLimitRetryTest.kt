@@ -1,9 +1,9 @@
 package com.github.piotrszybicki.independentintelijaiplugin.aicodingagent
 
-import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.time.Instant
 
 class RateLimitRetryTest {
     private val now = Instant.parse("2026-11-10T12:00:00Z")

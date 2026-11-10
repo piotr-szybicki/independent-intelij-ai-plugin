@@ -57,9 +57,14 @@ class ReasoningOptionsTest {
 
     @Test
     fun `omits reasoning from the Responses request`() {
-        val body = OpenAiProtocol.responsesRequest(
-            "gpt-5.3-codex", 8000, null, listOf(ChatMessage.text("user", "hi")), emptyList(),
-        )
+        val body =
+            OpenAiProtocol.responsesRequest(
+                "gpt-5.3-codex",
+                8000,
+                null,
+                listOf(ChatMessage.text("user", "hi")),
+                emptyList(),
+            )
         assertFalse(body.has("reasoning"))
     }
 }
