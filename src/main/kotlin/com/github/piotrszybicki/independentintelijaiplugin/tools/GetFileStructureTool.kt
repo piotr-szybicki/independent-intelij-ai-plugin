@@ -322,7 +322,3 @@ open class GetFileStructureTool(
         }
     }
 }
-
-class GetClassStructureTool(
-    project: Project,
-) : GetFileStructureTool(project, classMode = true)
