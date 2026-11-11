@@ -50,7 +50,7 @@ class ChangeSessionServiceTest : BasePlatformTestCase() {
     }
 
     fun testPendingEditSurvivesStateReload() {
-        val file = myFixture.addFileToProject("pending.txt", "original").virtualFile
+        val file = localFile("pending.txt", "original")
         val session = ChangeSessionService.getInstance(project)
         val document =
             com.intellij.openapi.fileEditor.FileDocumentManager
@@ -72,7 +72,7 @@ class ChangeSessionServiceTest : BasePlatformTestCase() {
     }
 
     fun testPendingDeletionSurvivesStateReload() {
-        val file = myFixture.addFileToProject("pending-deletion.txt", "original").virtualFile
+        val file = localFile("pending-deletion.txt", "original")
         val parent = file.parent
         val session = ChangeSessionService.getInstance(project)
         WriteCommandAction.runWriteCommandAction(project) { session.trackDeletion(file) { file.delete(this) } }
@@ -82,5 +82,24 @@ class ChangeSessionServiceTest : BasePlatformTestCase() {
         assertEquals(1, session.changedFileCount)
         assertEmpty(session.revertAll())
         assertEquals("original", VfsUtilCore.loadText(parent.findChild("pending-deletion.txt")!!))
+    }
+
+    private fun localFile(
+        name: String,
+        content: String,
+    ): com.intellij.openapi.vfs.VirtualFile {
+        val directory =
+            java.nio.file.Files
+                .createTempDirectory("ai-change-test")
+        val path =
+            java.nio.file.Files
+                .writeString(directory.resolve(name), content)
+        path.toFile().deleteOnExit()
+        directory.toFile().deleteOnExit()
+        return requireNotNull(
+            com.intellij.openapi.vfs.LocalFileSystem
+                .getInstance()
+                .refreshAndFindFileByNioFile(path),
+        )
     }
 }
