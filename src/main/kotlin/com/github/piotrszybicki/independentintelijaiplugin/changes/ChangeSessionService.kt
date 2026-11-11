@@ -43,6 +43,7 @@ class ChangeSessionService(
     }
 
     class StoredState {
+        @Suppress("DoubleMutabilityForCollection")
         var entries: MutableList<StoredEntry> = mutableListOf()
     }
 

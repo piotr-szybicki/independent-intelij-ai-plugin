@@ -20,9 +20,7 @@ open class GetFileStructureTool(
 ) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_MAX_DEPTH = 3
-        private const val MAX_MAX_DEPTH = 10
         private const val DEFAULT_MAX_ITEMS = 300
-        private const val MAX_MAX_ITEMS = 1000
         private const val MAX_CANDIDATES = 20
         private const val MAX_ERROR_CHARS = 500
     }
