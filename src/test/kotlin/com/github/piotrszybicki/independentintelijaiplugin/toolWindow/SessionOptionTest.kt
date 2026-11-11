@@ -15,7 +15,7 @@ class SessionOptionTest {
         val chosen = SessionOption.CODING_TOOLS.applyTo(current)
 
         assertTrue(chosen.overridden)
-        assertEquals(20, chosen.tools.size)
+        assertEquals(21, chosen.tools.size)
         assertTrue(chosen.tools.containsAll(listOf("edit_file_lines", "run_shell_command", "analyse_and_fix")))
         assertTrue(chosen.tools.all { name -> ToolCatalog.entries.any { it.name == name } })
         assertTrue(chosen.mcpTools.isEmpty())
