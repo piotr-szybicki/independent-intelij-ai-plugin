@@ -33,6 +33,20 @@ object AICodingAgentClient {
         system: String? = null,
         reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
         conversationId: String = "",
+    ): AICodingAgentTurn =
+        sendMessageAttempt(endpoint, model, maxTokens, messages, tools, system, reasoning, conversationId, 0)
+
+    @Suppress("LongParameterList")
+    private fun sendMessageAttempt(
+        endpoint: AICodingAgentEndpoint,
+        model: String,
+        maxTokens: Int,
+        messages: List<ChatMessage>,
+        tools: List<ToolDefinition>,
+        system: String?,
+        reasoning: ReasoningOptions,
+        conversationId: String,
+        retryCount: Int,
     ): AICodingAgentTurn {
         endpoint.validate()?.let { throw AICodingAgentApiException("Cannot send the request: $it") }
 
@@ -73,7 +87,6 @@ object AICodingAgentClient {
                             repaired,
                             tools,
                             cacheKey = conversationId,
-                            reasoning = reasoning.reasoningJson(),
                         ).toString()
             }
         LOG.info("${endpoint.protocol.name} request -> ${endpoint.url}: $requestBody")
@@ -101,6 +114,13 @@ object AICodingAgentClient {
         val response =
             try {
                 httpClient.send(request, HttpResponse.BodyHandlers.ofString())
+            } catch (e: InterruptedException) {
+                LOG.info("API request interrupted: ${e.message}")
+                val elapsed = System.currentTimeMillis() - startedAt
+                ModelExchangeLog.recordFailure(conversationId, requestId, e.toString())
+                ModelUsageDatabase.recordFailure(conversationId, requestId, elapsed, e.toString())
+                Thread.currentThread().interrupt()
+                throw e
             } catch (e: Exception) {
                 LOG.info("API request failed: ${e.message}")
                 val elapsed = System.currentTimeMillis() - startedAt
@@ -108,7 +128,6 @@ object AICodingAgentClient {
                 ModelUsageDatabase.recordFailure(conversationId, requestId, elapsed, e.toString())
                 throw AICodingAgentApiException("Could not reach ${endpoint.url}: ${e.message}")
             }
-
         LOG.info("${endpoint.protocol.name} response <- ${response.statusCode()}: ${response.body()}")
 
         val root =
@@ -119,17 +138,39 @@ object AICodingAgentClient {
 
         val responseId = providerResponseId(root)
         ModelExchangeLog.recordResponse(conversationId, requestId, response.body())
+        val elapsed = System.currentTimeMillis() - startedAt
         ModelUsageDatabase.recordResponse(
             conversationId,
             requestId,
             responseId,
             response.statusCode(),
-            System.currentTimeMillis() - startedAt,
+            elapsed,
             response.body(),
+            response.headers().map(),
         )
 
         if (response.statusCode() !in 200..299) {
-            throw AICodingAgentApiException(errorMessage(root) ?: "HTTP ${response.statusCode()}: ${response.body()}")
+            val error = errorMessage(root) ?: "HTTP ${response.statusCode()}: ${response.body()}"
+            ModelUsageDatabase.recordFailure(conversationId, requestId, elapsed, error)
+            if (response.statusCode() == 429) {
+                val delay = rateLimitRetryDelay(response.headers().firstValue("Retry-After").orElse(null), retryCount)
+                if (delay != null) {
+                    LOG.info("Rate limited; retrying in ${delay}ms (retry ${retryCount + 1})")
+                    Thread.sleep(delay)
+                    return sendMessageAttempt(
+                        endpoint,
+                        model,
+                        maxTokens,
+                        messages,
+                        tools,
+                        system,
+                        reasoning,
+                        conversationId,
+                        retryCount + 1,
+                    )
+                }
+            }
+            throw AICodingAgentApiException(error)
         }
         if (root == null) throw AICodingAgentApiException("Empty or unrecognised response from ${endpoint.url}")
 

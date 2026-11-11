@@ -17,6 +17,7 @@ interface ModelExchangeRecorder {
         statusCode: Int,
         durationMillis: Long,
         body: String,
+        headers: Map<String, List<String>>,
     )
 
     fun recordFailure(

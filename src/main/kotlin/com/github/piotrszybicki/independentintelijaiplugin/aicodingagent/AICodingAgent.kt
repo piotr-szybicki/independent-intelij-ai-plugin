@@ -149,7 +149,8 @@ class AICodingAgent(
         isCancelled: () -> Boolean = { false },
         reasoning: ReasoningOptions = ReasoningOptions.PROVIDER_DEFAULT,
         conversationId: String = "",
-        maxToolOutputTokens: Int = 0,
+        maxToolOutputTokens: Int = 500,
+        checkToolOutputTokens: Boolean = true,
         meter: ContextMeter = ContextMeter(),
         agentPrompt: String = "",
     ) {
@@ -303,7 +304,7 @@ class AICodingAgent(
 
                     val resultTokens = TokenCounter.count(resultText)
                     val produced = outcome == ToolOutcome.OK || outcome == ToolOutcome.FAILED
-                    if (maxToolOutputTokens > 0 && produced && resultTokens > maxToolOutputTokens) {
+                    if (checkToolOutputTokens && produced && resultTokens > maxToolOutputTokens) {
                         log.info(
                             "Tool '$toolName' returned $resultTokens tokens, over the " +
                                 "$maxToolOutputTokens-token limit: withholding it",

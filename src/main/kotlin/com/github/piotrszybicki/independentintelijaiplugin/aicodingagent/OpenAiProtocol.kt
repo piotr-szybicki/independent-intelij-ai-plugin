@@ -157,14 +157,12 @@ internal object OpenAiProtocol {
         messages: List<ChatMessage>,
         tools: List<ToolDefinition>,
         cacheKey: String? = null,
-        reasoning: JsonObject? = null,
     ): JsonObject =
         JsonObject().apply {
             addProperty("model", model)
             addProperty("max_output_tokens", maxTokens)
             addCacheKey(cacheKey)
             if (!system.isNullOrEmpty()) addProperty("instructions", system)
-            if (reasoning != null) add("reasoning", reasoning)
             addProperty("store", false)
 
             val input = JsonArray()
