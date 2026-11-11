@@ -6,15 +6,11 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.WriteAction
 import com.intellij.openapi.command.CommandProcessor
 import com.intellij.openapi.command.WriteCommandAction
-import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.PersistentStateComponent
+import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.StoragePathMacros
-import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.testFramework.LightVirtualFile
-import java.util.Base64
-import java.nio.charset.StandardCharsets
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.EditorFactory
@@ -25,7 +21,11 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.testFramework.LightVirtualFile
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -53,24 +53,29 @@ class ChangeSessionService(
         var deleted: Boolean = false
     }
 
-    override fun getState(): StoredState = synchronized(lock) {
-        StoredState().apply {
-            baselines.forEach { (file, text) ->
-                entries.add(StoredEntry().apply {
-                    path = file.path
-                    content = Base64.getEncoder().encodeToString(text.toByteArray(StandardCharsets.UTF_8))
-                })
-            }
-            deletions.values.forEach { deletion ->
-                entries.add(StoredEntry().apply {
-                    path = deletion.parent.path + "/" + deletion.file.name
-                    relativePath = deletion.relativePath
-                    content = Base64.getEncoder().encodeToString(deletion.contents)
-                    deleted = true
-                })
+    override fun getState(): StoredState =
+        synchronized(lock) {
+            StoredState().apply {
+                baselines.forEach { (file, text) ->
+                    entries.add(
+                        StoredEntry().apply {
+                            path = file.path
+                            content = Base64.getEncoder().encodeToString(text.toByteArray(StandardCharsets.UTF_8))
+                        },
+                    )
+                }
+                deletions.values.forEach { deletion ->
+                    entries.add(
+                        StoredEntry().apply {
+                            path = deletion.parent.path + "/" + deletion.file.name
+                            relativePath = deletion.relativePath
+                            content = Base64.getEncoder().encodeToString(deletion.contents)
+                            deleted = true
+                        },
+                    )
+                }
             }
         }
-    }
 
     override fun loadState(state: StoredState) {
         val fs = LocalFileSystem.getInstance()

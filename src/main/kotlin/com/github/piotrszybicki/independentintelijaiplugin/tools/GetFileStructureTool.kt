@@ -28,23 +28,46 @@ open class GetFileStructureTool(
     }
 
     override val name = if (classMode) "get_class_sturcture" else "get_file_structure"
-    override val description = if (classMode) {
-        "Outline a source class from the project, libraries, or JDK by class name, including declaration line ranges. Provide the fully qualified class name when available."
-    } else {
-        "Outline a non-source file by project-relative path, such as a configuration file. For source files such as Java, Kotlin, or Python, use get_class_sturcture instead."
-    }
-    override val inputSchema: JsonObject = JsonObject().apply {
-        addProperty("type", "object")
-        val parameter = if (classMode) "class_name" else "path"
-        add("properties", JsonObject().apply {
-            add(parameter, JsonObject().apply {
-                addProperty("type", "string")
-                addProperty("description", if (classMode) "Class name; provide the fully qualified name when available." else "File path relative to the project root.")
-            })
-        })
-        add("required", com.google.gson.JsonArray().apply { add(parameter) })
-        addProperty("additionalProperties", false)
-    }
+    override val description =
+        if (classMode) {
+            "Outline a source class from the project, libraries, or JDK, including declaration line ranges. " +
+                "Provide the fully qualified class name when available."
+        } else {
+            "Outline a non-source file by project-relative path, such as a configuration file. " +
+                "For Java, Kotlin, Python, and other source files, use get_class_sturcture instead."
+        }
+    override val inputSchema: JsonObject =
+        JsonObject().apply {
+            addProperty("type", "object")
+            val parameter = if (classMode) "class_name" else "path"
+            add(
+                "properties",
+                JsonObject().apply {
+                    add(
+                        parameter,
+                        JsonObject().apply {
+                            addProperty("type", "string")
+                            addProperty(
+                                "description",
+                                if (classMode) {
+                                    "Class name; provide the fully qualified name when available."
+                                } else {
+                                    "File path relative to the project root."
+                                },
+                            )
+                        },
+                    )
+                },
+            )
+            add(
+                "required",
+                com.google.gson
+                    .JsonArray()
+                    .apply { add(parameter) },
+            )
+            addProperty("additionalProperties", false)
+        }
+
     override fun execute(input: JsonObject): String {
         val path =
             input
@@ -300,4 +323,6 @@ open class GetFileStructureTool(
     }
 }
 
-class GetClassStructureTool(project: Project) : GetFileStructureTool(project, classMode = true)
+class GetClassStructureTool(
+    project: Project,
+) : GetFileStructureTool(project, classMode = true)

@@ -48,10 +48,14 @@ class ChangeSessionServiceTest : BasePlatformTestCase() {
         assertEquals(0, session.changedFileCount)
         assertEmpty(session.changedFiles())
     }
+
     fun testPendingEditSurvivesStateReload() {
         val file = myFixture.addFileToProject("pending.txt", "original").virtualFile
         val session = ChangeSessionService.getInstance(project)
-        val document = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance().getDocument(file)!!
+        val document =
+            com.intellij.openapi.fileEditor.FileDocumentManager
+                .getInstance()
+                .getDocument(file)!!
         session.beginCapture()
         try {
             WriteCommandAction.runWriteCommandAction(project, "Edit", null, Runnable { document.setText("changed") })

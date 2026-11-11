@@ -1,7 +1,6 @@
 package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
-import com.github.piotrszybicki.independentintelijaiplugin.tools.PsiTargets
 import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
 import com.intellij.diff.requests.SimpleDiffRequest
