@@ -14,8 +14,9 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import java.util.Locale
 
-class GetFileStructureTool(
+open class GetFileStructureTool(
     private val project: Project,
+    private val classMode: Boolean = false,
 ) : AICodingAgentTool {
     companion object {
         private const val DEFAULT_MAX_DEPTH = 3
@@ -26,66 +27,24 @@ class GetFileStructureTool(
         private const val MAX_ERROR_CHARS = 500
     }
 
-    override val name = "get_file_structure"
-    override val description =
-        "Outlines a file's classes, methods, fields and other declarations with the lines each " +
-            "one spans, as start-end, or a single number when it fits on one line (Structure " +
-            "view). Far cheaper than reading the whole file, and a range feeds " +
-            "read_project_file and edit_file_lines directly. Pass 'path' for a project file, or " +
-            "'class_name' for a library or JDK class, whose lines feed read_library_class. For " +
-            "one known symbol, use get_symbol_info."
-    override val inputSchema: JsonObject =
-        JsonObject().apply {
-            addProperty("type", "object")
-            add(
-                "properties",
-                JsonObject().apply {
-                    add(
-                        "path",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty(
-                                "description",
-                                "File path relative to the project root, e.g. src/Main.kt. Give this or 'class_name'.",
-                            )
-                        },
-                    )
-                    add(
-                        "class_name",
-                        JsonObject().apply {
-                            addProperty("type", "string")
-                            addProperty(
-                                "description",
-                                "Class from a library, framework or the JDK, simple or fully qualified. Use " +
-                                    "instead of 'path' for anything outside the project.",
-                            )
-                        },
-                    )
-                    add(
-                        "max_depth",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty(
-                                "description",
-                                "How far to descend: 1 for top-level declarations only, 2 to include their " +
-                                    "members. Defaults to $DEFAULT_MAX_DEPTH, maximum $MAX_MAX_DEPTH.",
-                            )
-                        },
-                    )
-                    add(
-                        "max_items",
-                        JsonObject().apply {
-                            addProperty("type", "integer")
-                            addProperty(
-                                "description",
-                                "Stop after this many entries. Defaults to $DEFAULT_MAX_ITEMS, maximum $MAX_MAX_ITEMS.",
-                            )
-                        },
-                    )
-                },
-            )
-        }
-
+    override val name = if (classMode) "get_class_sturcture" else "get_file_structure"
+    override val description = if (classMode) {
+        "Outline a source class from the project, libraries, or JDK by class name, including declaration line ranges. Provide the fully qualified class name when available."
+    } else {
+        "Outline a non-source file by project-relative path, such as a configuration file. For source files such as Java, Kotlin, or Python, use get_class_sturcture instead."
+    }
+    override val inputSchema: JsonObject = JsonObject().apply {
+        addProperty("type", "object")
+        val parameter = if (classMode) "class_name" else "path"
+        add("properties", JsonObject().apply {
+            add(parameter, JsonObject().apply {
+                addProperty("type", "string")
+                addProperty("description", if (classMode) "Class name; provide the fully qualified name when available." else "File path relative to the project root.")
+            })
+        })
+        add("required", com.google.gson.JsonArray().apply { add(parameter) })
+        addProperty("additionalProperties", false)
+    }
     override fun execute(input: JsonObject): String {
         val path =
             input
@@ -100,13 +59,14 @@ class GetFileStructureTool(
                 ?.trim()
                 ?.takeIf { it.isNotEmpty() }
 
-        if (path == null && className == null) return "Error: give either 'path' or 'class_name'"
+        if (classMode && (className == null || path != null)) return "Error: give only 'class_name'"
+        if (!classMode && (path == null || className != null)) return "Error: give only 'path'"
         if (path != null && className != null) {
             return "Error: give either 'path' or 'class_name', not both"
         }
 
-        val maxDepth = (input.get("max_depth")?.asInt ?: DEFAULT_MAX_DEPTH).coerceIn(1, MAX_MAX_DEPTH)
-        val maxItems = (input.get("max_items")?.asInt ?: DEFAULT_MAX_ITEMS).coerceIn(1, MAX_MAX_ITEMS)
+        val maxDepth = DEFAULT_MAX_DEPTH
+        val maxItems = DEFAULT_MAX_ITEMS
 
         val source = if (path != null) fromPath(path) else fromClassName(requireNotNull(className))
         val target =
@@ -339,3 +299,5 @@ class GetFileStructureTool(
         }
     }
 }
+
+class GetClassStructureTool(project: Project) : GetFileStructureTool(project, classMode = true)

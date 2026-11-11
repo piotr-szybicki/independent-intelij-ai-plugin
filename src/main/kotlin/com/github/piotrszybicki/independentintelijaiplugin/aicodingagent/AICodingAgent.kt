@@ -82,7 +82,7 @@ class AICodingAgent(
             on a statement of intent about work you have not done. When something takes several
             steps, take the first one now instead of describing the plan and stopping.
 
-            Outline before you read. For a file you do not already know, call get_file_structure
+            Outline before you read. For a source class, call get_class_sturcture; for other files, call get_file_structure
             first and read only the ranges you need to understand the structure. Each declaration comes back with the
             span it covers -- start-end for anything spanning several lines, a single number
             when it fits on one -- and that range is what read_project_file and edit_file_lines

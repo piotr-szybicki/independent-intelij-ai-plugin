@@ -20,7 +20,7 @@ class ReadProjectFileTool(
         "Reads a project file, returning the requested lines each prefixed with its line number, " +
             "plus the total line count. Omit start_line/end_line for the whole file. Those line " +
             "numbers are what edit_file_lines takes; never include the prefixes in content passed " +
-            "back. For a file you do not already know, outline it with get_file_structure first " +
+            "back. For a file you do not already know, outline source classes with get_class_sturcture or other files with get_file_structure first " +
             "and read the range it gives for the declaration you want, rather than the whole file."
     override val inputSchema: JsonObject =
         JsonObject().apply {

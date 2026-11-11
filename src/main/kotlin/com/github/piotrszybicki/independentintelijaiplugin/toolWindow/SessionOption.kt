@@ -17,6 +17,7 @@ internal enum class SessionOption(
             "read_project_file",
             "read_library_class",
             "get_file_structure",
+            "get_class_sturcture",
             "find_in_files",
             "find_by_name",
             "find_usages",

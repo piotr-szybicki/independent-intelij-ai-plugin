@@ -2,7 +2,10 @@ package com.github.piotrszybicki.independentintelijaiplugin.toolWindow
 
 import com.github.piotrszybicki.independentintelijaiplugin.changes.ChangeSessionService
 import com.github.piotrszybicki.independentintelijaiplugin.tools.PsiTargets
-import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.diff.DiffContentFactory
+import com.intellij.diff.DiffManager
+import com.intellij.diff.requests.SimpleDiffRequest
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.components.JBLabel
@@ -91,7 +94,7 @@ internal class ChangesBar(
     private fun changedFileRow(file: VirtualFile): JComponent {
         var hovered = false
         val deleted = session.isDeleted(file)
-        val path = PsiTargets.relativePath(project, file)
+        val path = session.displayPath(file)
         val row =
             RoundedPanel(
                 BorderLayout(JBUI.scale(6), 0),
@@ -141,11 +144,27 @@ internal class ChangesBar(
     }
 
     private fun openChangedFile(file: VirtualFile) {
-        if (!file.isValid) {
+        if (session.isDeleted(file) || !file.isValid) {
             onStatus("${file.name} is no longer there.")
             return
         }
-        FileEditorManager.getInstance(project).openFile(file, true)
+        val baseline = session.baselineFor(file)
+        val document = FileDocumentManager.getInstance().getDocument(file)
+        if (baseline == null || document == null) {
+            onStatus("Cannot show changes for ${file.name}.")
+            return
+        }
+        val factory = DiffContentFactory.getInstance()
+        DiffManager.getInstance().showDiff(
+            project,
+            SimpleDiffRequest(
+                "AI changes: ${file.name}",
+                factory.create(project, baseline, file.fileType),
+                factory.create(project, document),
+                "Before AI changes",
+                "Current",
+            ),
+        )
     }
 
     private fun approveChanges() {
