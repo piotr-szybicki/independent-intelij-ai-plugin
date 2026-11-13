@@ -23,6 +23,7 @@ import javax.swing.JComponent
 internal class ConversationToolsButton(
     private val project: Project,
     private val mcpTools: () -> List<AICodingAgentTool>,
+    private val canDelegate: () -> Boolean,
     private val inherited: () -> ConversationTools,
     private val onChanged: (ConversationTools) -> Unit,
 ) {
@@ -68,6 +69,7 @@ internal class ConversationToolsButton(
                             project = project,
                             mcpEntries = entries,
                             skills = skills,
+                            canDelegate = canDelegate(),
                             initial = selection,
                             inherited = inherited(),
                         )

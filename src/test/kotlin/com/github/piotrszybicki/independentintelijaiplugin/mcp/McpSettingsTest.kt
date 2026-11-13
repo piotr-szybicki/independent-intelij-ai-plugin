@@ -7,6 +7,20 @@ import org.junit.Test
 
 class McpSettingsTest {
     @Test
+    fun `reads editable tool list and distinguishes absent from empty`() {
+        val servers = McpServerConfig.parseSettings(
+            """{"mcpServers":{"one":{"url":"https://example.com","tools":["read", "write"]},
+                "two":{"url":"https://example.com","tools":[]},"three":{"url":"https://example.com"}}}""",
+        )
+        assertEquals(listOf("read", "write"), servers[0].tools)
+        assertEquals(emptyList<String>(), servers[1].tools)
+        assertEquals(null, servers[2].tools)
+        assertThrows(McpConfigException::class.java) {
+            McpServerConfig.parseSettings("""{"mcpServers":{"one":{"url":"https://example.com","tools":[1]}}}""")
+        }
+    }
+
+    @Test
     fun `reads servers alongside agent configurations`() {
         val servers =
             McpServerConfig.parseSettings(

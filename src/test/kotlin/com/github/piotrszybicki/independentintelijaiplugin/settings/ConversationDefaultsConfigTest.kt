@@ -1,12 +1,26 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConversationDefaultsConfigTest {
+    @Test
+    fun `delegation follows chat override and configured defaults`() {
+        val inherited = ConversationTools.INHERIT
+        assertFalse(inherited.allowsDelegation(listOf("read_project_file"), false))
+        assertFalse(inherited.allowsDelegation(emptyList(), false))
+        assertTrue(inherited.allowsDelegation(listOf("delegate_to_agent"), false))
+        assertTrue(inherited.allowsDelegation(null, false))
+        assertFalse(inherited.allowsDelegation(listOf("delegate_to_agent"), true))
+        assertFalse(ConversationTools(overridden = true).allowsDelegation(null, false))
+        assertTrue(ConversationTools(overridden = true, tools = listOf("delegate_to_agent"))
+            .allowsDelegation(emptyList(), false))
+    }
+
     @Test
     fun `output limit and check are independent`() {
         val defaults =

@@ -1,6 +1,14 @@
 package com.github.piotrszybicki.independentintelijaiplugin.settings
 
 import com.github.piotrszybicki.independentintelijaiplugin.logging.ModelUsageDatabase
+import com.github.piotrszybicki.independentintelijaiplugin.mcp.McpService
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonObject
+import com.google.gson.JsonArray
+import com.google.gson.JsonParser
+import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.application.WriteIntentReadAction
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.github.piotrszybicki.independentintelijaiplugin.toolWindow.ChatToolWindowFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.progress.ProgressIndicator
@@ -35,6 +43,7 @@ class AICodingAgentSettingsConfigurable : Configurable {
     override fun createComponent(): JComponent =
         panel {
             row {
+                button("Add MCP Server") { addMcpServer() }
                 button("Reload Configuration") { reloadConfiguration() }.component.name =
                     "settings.reloadConfigurationButton"
                 button("Test MySQL Connection") { testUsageDatabase() }.component.name =
@@ -75,6 +84,79 @@ class AICodingAgentSettingsConfigurable : Configurable {
         loadedDatabase = configurations.usageDatabase()
         if (previous != loadedDatabase.database) ModelUsageDatabase.close()
         ChatToolWindowFactory.refreshProviderBars()
+    }
+
+    private fun addMcpServer() {
+        val project = project() ?: return
+        val configurations = AgentConfigurations.getInstance(project)
+        var resolvedFile: com.intellij.openapi.vfs.VirtualFile? = null
+        WriteIntentReadAction.run { resolvedFile = configurations.virtualFile() }
+        val file = resolvedFile ?: run {
+            Messages.showErrorDialog("The configuration file is unavailable.", "Add MCP Server")
+            return
+        }
+        val dialog = AddMcpServerDialog()
+        if (!dialog.showAndGet()) return
+        val server = dialog.configuration()
+        try {
+            WriteIntentReadAction.run {
+            val document = FileDocumentManager.getInstance().getDocument(file)
+                ?: error("Cannot open the configuration file for editing.")
+            val root = JsonParser.parseString(document.text).asJsonObject
+            val existing = root.get("mcpServers")
+            require(existing == null || existing.isJsonObject) { "mcpServers must be an object." }
+            val servers = existing?.asJsonObject ?: JsonObject().also { root.add("mcpServers", it) }
+            require(!servers.has(server.name)) { "A server with this name already exists." }
+            servers.add(server.name, JsonObject().apply {
+                addProperty("url", server.url)
+                if (server.headers.isNotEmpty()) add("headers", JsonObject().apply {
+                    server.headers.forEach { (key, value) -> addProperty(key, value) }
+                })
+            })
+            val updated = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root) + "\n"
+            WriteCommandAction.runWriteCommandAction(project) { document.setText(updated) }
+            FileDocumentManager.getInstance().saveDocument(document)
+            }
+            reloadConfiguration()
+        } catch (e: Exception) {
+            Messages.showErrorDialog(e.message ?: e.toString(), "Add MCP Server")
+            return
+        }
+        ProgressManager.getInstance().run(object : Task.Modal(project, "Discovering MCP Tools", false) {
+            private var result: McpService.Companion.ProbeToolsResult? = null
+            override fun run(indicator: ProgressIndicator) {
+                indicator.isIndeterminate = true
+                result = McpService.probeTools(project, listOf(server)).first()
+            }
+            override fun onSuccess() {
+                val found = result ?: return
+                if (found.error != null) {
+                    Messages.showErrorDialog("Server saved, but tool discovery failed: " + found.error, "MCP Server")
+                } else {
+                    try {
+                        WriteIntentReadAction.run {
+                        val document = FileDocumentManager.getInstance().getDocument(file)
+                            ?: error("Cannot open the configuration file for editing.")
+                        val root = JsonParser.parseString(document.text).asJsonObject
+                        val entry = root.getAsJsonObject("mcpServers")?.getAsJsonObject(server.name)
+                            ?: error("The saved server was removed during discovery.")
+                        require(entry.get("url")?.asString == server.url) {
+                            "The server address changed during discovery."
+                        }
+                        entry.add("tools", JsonArray().apply { found.tools.forEach { add(it.name) } })
+                        val updated = GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root) + "\n"
+                        WriteCommandAction.runWriteCommandAction(project) { document.setText(updated) }
+                        FileDocumentManager.getInstance().saveDocument(document)
+                        }
+                        reloadConfiguration()
+                        Messages.showInfoMessage("Server saved. Discovered ${found.tools.size} tool(s):\n" +
+                            found.tools.joinToString("\n") { it.name }, "MCP Server")
+                    } catch (e: Exception) {
+                        Messages.showErrorDialog("Could not save discovered tools: ${e.message}", "MCP Server")
+                    }
+                }
+            }
+        })
     }
 
     private fun showProblem(message: String) {

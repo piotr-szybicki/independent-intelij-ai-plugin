@@ -102,7 +102,7 @@ class McpService(
             val client = McpClient(config, workingDir)
             try {
                 val tools =
-                    client.connect().map { descriptor ->
+                    client.connect().filter { config.tools == null || it.name in config.tools }.map { descriptor ->
                         McpTool(
                             project,
                             config,

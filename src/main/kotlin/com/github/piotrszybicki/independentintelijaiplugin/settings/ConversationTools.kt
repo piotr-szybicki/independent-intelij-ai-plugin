@@ -29,6 +29,13 @@ data class ConversationTools(
     /** The skills this chat may use. Empty means none are described to the model at all. */
     val activeSkills: Set<String> get() = skills.toSet()
 
+    fun allowsDelegation(defaultTools: List<String>?, isSpecialist: Boolean): Boolean =
+        !isSpecialist && if (overridden) {
+            "delegate_to_agent" in toolNames
+        } else {
+            defaultTools == null || "delegate_to_agent" in defaultTools
+        }
+
     val toolCount: Int get() = tools.size + mcpTools.size
 
     /** Whether anything has been chosen here, and so whether it is worth saving with the chat. */

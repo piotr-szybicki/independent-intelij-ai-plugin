@@ -10,6 +10,7 @@ data class McpServerConfig(
     val env: Map<String, String> = emptyMap(),
     val url: String? = null,
     val headers: Map<String, String> = emptyMap(),
+    val tools: List<String>? = null,
     val enabled: Boolean = true,
     val timeoutSeconds: Int = DEFAULT_TIMEOUT_SECONDS,
 ) {
@@ -114,6 +115,12 @@ data class McpServerConfig(
                 env = stringMap(name, entry, "env"),
                 url = url,
                 headers = stringMap(name, entry, "headers"),
+                tools = entry.get("tools")?.let { value ->
+                    if (!value.isJsonArray || value.asJsonArray.any { !it.isJsonPrimitive || !it.asJsonPrimitive.isString }) {
+                        throw McpConfigException("\"$name\".tools must be an array of tool names")
+                    }
+                    value.asJsonArray.map { it.asString }
+                },
                 enabled = enabled,
                 timeoutSeconds = (entry.get("timeoutSeconds")?.asInt ?: DEFAULT_TIMEOUT_SECONDS).coerceIn(1, 600),
             )

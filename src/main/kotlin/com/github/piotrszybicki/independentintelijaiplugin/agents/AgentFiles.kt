@@ -2,6 +2,7 @@ package com.github.piotrszybicki.independentintelijaiplugin.agents
 
 import com.github.piotrszybicki.independentintelijaiplugin.files.EditorBackedFileReader
 import com.github.piotrszybicki.independentintelijaiplugin.tools.ChatWorkingDirectory
+import com.intellij.openapi.application.WriteIntentReadAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
@@ -103,7 +104,11 @@ object AgentFiles {
         how: String,
     ): String = "<!-- $what\n     $how -->\n\n"
 
-    private fun findFile(path: Path): VirtualFile? = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path)
+    private fun findFile(path: Path): VirtualFile? {
+        var file: VirtualFile? = null
+        WriteIntentReadAction.run { file = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(path) }
+        return file
+    }
 
     private fun sanitize(name: String): String =
         name.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.ifEmpty { "agent" }.take(60)
