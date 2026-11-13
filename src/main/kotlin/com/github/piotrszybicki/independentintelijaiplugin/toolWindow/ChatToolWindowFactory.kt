@@ -210,28 +210,13 @@ class ChatToolWindowFactory : ToolWindowFactory {
                     selectAgentTools(defaults)
                 }
             val tracked = ChangeTrackingTool.wrapAll(selected, session)
-            if (activeAgent != null) return tracked
+            val configuredTools = AgentConfigurations.getInstance(project).conversationDefaults().defaults.tools
+            if (!conversationTools.allowsDelegation(configuredTools, activeAgent != null)) return tracked
             return tracked +
                 DelegateToAgentTool(
                     agents = { AgentCatalog.all(project) },
                     prepare = ::prepareAgentHandoff,
                 )
-        }
-
-        private fun agentRosterPrompt(): String {
-            if (activeAgent != null) return ""
-            val agents = AgentCatalog.all(project).filter { it.prompt.isNotBlank() }
-            if (agents.isEmpty()) return ""
-
-            return buildString {
-                appendLine("Specialist agents available for a reviewed hand-off:")
-                agents.forEach { appendLine("- @${it.name}: ${it.description}") }
-                append(
-                    "Use delegate_to_agent when a bounded task would benefit from one of these " +
-                        "specialists. It prepares a draft specification only. Tell the user that they " +
-                        "must review the hand-off card and press Proceed before the agent starts.",
-                )
-            }
         }
 
         private class DefaultTools(
@@ -289,7 +274,16 @@ class ChatToolWindowFactory : ToolWindowFactory {
             val selected = selectAgentTools(defaults).map { it.name }
             val builtInNames = builtInTools.mapTo(mutableSetOf()) { it.name }
             return ConversationTools(
-                tools = selected.filter { it in builtInNames },
+                tools = selected.filter { it in builtInNames } +
+                    if (ConversationTools.INHERIT.allowsDelegation(
+                            AgentConfigurations.getInstance(project).conversationDefaults().defaults.tools,
+                            activeAgent != null,
+                        )
+                    ) {
+                        listOf("delegate_to_agent")
+                    } else {
+                        emptyList()
+                    },
                 mcpTools = selected.filter { it !in builtInNames },
             )
         }
@@ -298,6 +292,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
             ConversationToolsButton(
                 project = project,
                 mcpTools = { mcp.allTools() },
+                canDelegate = { activeAgent == null },
                 inherited = { inheritedTools() },
                 onChanged = { chosen -> conversationToolsChosen(chosen) },
             )
@@ -339,11 +334,7 @@ class ChatToolWindowFactory : ToolWindowFactory {
         private val agent =
             AICodingAgent(
                 tools = { agentTools() },
-                environment = {
-                    listOf(ProjectEnvironment.describe(project), agentRosterPrompt())
-                        .filter { it.isNotBlank() }
-                        .joinToString("\n\n")
-                },
+                environment = { ProjectEnvironment.describe(project) },
                 skills = { SkillCatalog.describe(project, conversationTools.activeSkills) },
             )
 

@@ -35,13 +35,19 @@ class ConversationToolsDialog(
     private val skills: List<SkillDefinition>,
     initial: ConversationTools,
     private val inherited: ConversationTools,
+    canDelegate: Boolean = false,
 ) : DialogWrapper(project) {
+    private val entries = ToolCatalog.entries + if (canDelegate) {
+        listOf(ToolCatalog.Entry("delegate_to_agent", ToolCategory.SUPPORT, true) { error("UI only") })
+    } else {
+        emptyList()
+    }
     private val start = if (initial.overridden) initial else inherited
 
     private val customBox = JBCheckBox("Use a tool set chosen for this chat only", initial.overridden)
 
     private val toolBoxes: Map<String, JBCheckBox> =
-        ToolCatalog.entries.associate { entry ->
+        entries.associate { entry ->
             entry.name to JBCheckBox(entry.name, entry.name in start.toolNames)
         }
 
@@ -72,7 +78,7 @@ class ConversationToolsDialog(
         get() =
             ConversationTools(
                 overridden = customBox.isSelected,
-                tools = ToolCatalog.entries.map { it.name }.filter { toolBoxes.getValue(it).isSelected },
+                tools = entries.map { it.name }.filter { toolBoxes.getValue(it).isSelected },
                 mcpTools =
                     mcpEntries
                         .map { it.qualifiedName }
@@ -125,14 +131,14 @@ class ConversationToolsDialog(
         panel {
             row {
                 button("Read-Only Defaults") { selectTools(ToolCatalog.parse(ToolCatalog.DEFAULT_ENABLED)) }
-                button("Select All") { selectTools(ToolCatalog.entries.mapTo(mutableSetOf()) { it.name }) }
+                button("Select All") { selectTools(entries.mapTo(mutableSetOf()) { it.name }) }
                 button("Clear") { selectTools(emptySet()) }
             }
             for (category in ToolCategory.entries) {
                 group {
                     row { cell(categoryMasters.getValue(category)) }
                     indent {
-                        for (entry in ToolCatalog.entries.filter { it.category == category }) {
+                        for (entry in entries.filter { it.category == category }) {
                             row { cell(toolBoxes.getValue(entry.name)) }
                         }
                     }
@@ -262,7 +268,7 @@ class ConversationToolsDialog(
     }
 
     private fun boxesIn(category: ToolCategory): List<JBCheckBox> =
-        ToolCatalog.entries.filter { it.category == category }.map { toolBoxes.getValue(it.name) }
+        entries.filter { it.category == category }.map { toolBoxes.getValue(it.name) }
 
     private fun boxesIn(server: String): List<JBCheckBox> =
         mcpEntries.filter { it.serverName == server }.map { mcpBoxes.getValue(it.qualifiedName) }

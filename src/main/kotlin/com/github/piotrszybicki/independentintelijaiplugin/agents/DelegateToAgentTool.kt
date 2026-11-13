@@ -13,11 +13,18 @@ class DelegateToAgentTool(
 ) : AICodingAgentTool {
     override val name = "delegate_to_agent"
 
-    override val description =
-        "Prepares a draft specification for a configured specialist agent. The hand-off is not " +
+    override val description: String
+        get() = buildString {
+            append("Prepares a draft specification for a configured specialist agent. The hand-off is not " +
             "started automatically: the user reviews the generated spec and must press Proceed. " +
             "Use this for a bounded investigation, review, debugging task, or implementation task " +
-            "that benefits from a focused separate chat."
+            "that benefits from a focused separate chat. Tell the user to review the hand-off card and press Proceed.")
+            val available = agents().filter { it.prompt.isNotBlank() }
+            if (available.isNotEmpty()) {
+                append("\n\nSpecialist agents available for a reviewed hand-off:\n")
+                available.forEach { append("- @${it.name}: ${it.description}\n") }
+            }
+        }
 
     override val inputSchema: JsonObject =
         JsonObject().apply {

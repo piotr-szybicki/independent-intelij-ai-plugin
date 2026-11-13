@@ -2,6 +2,8 @@ package com.github.piotrszybicki.independentintelijaiplugin.agents
 
 import com.google.gson.JsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class DelegateToAgentToolTest {
@@ -12,6 +14,16 @@ class DelegateToAgentToolTest {
             prompt = "Investigate the request.",
             origin = AgentDefinition.CONFIGURATION,
         )
+
+    @Test
+    fun `description reflects available specialists`() {
+        var agents = listOf(investigate)
+        val tool = DelegateToAgentTool({ agents }) { _, _ -> "" }
+        assertTrue(tool.description.contains("@investigate-agent: Investigates code."))
+        agents = emptyList()
+        assertFalse(tool.description.contains("@investigate-agent"))
+        assertTrue(tool.description.contains("press Proceed"))
+    }
 
     @Test
     fun `prepares a handoff for a configured agent`() {
